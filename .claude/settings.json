@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(zig build:*)",
+      "Bash(zig fetch:*)",
+      "Bash(zig fmt:*)",
+      "Bash(./zig-out/bin/cbm:*)"
+    ]
+  }
+}
