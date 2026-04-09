@@ -91,16 +91,345 @@ pub const DiscoverOptions = struct {
     max_file_size: u64 = 0, // 0 = no limit
 };
 
+const IgnoreRule = struct {
+    pattern: []const u8,
+    anchored: bool,
+    dir_only: bool,
+    negated: bool,
+};
+
+fn joinPath(allocator: std.mem.Allocator, parent: []const u8, child: []const u8) ![]u8 {
+    if (parent.len == 0) {
+        return allocator.dupe(u8, child);
+    }
+    return std.fs.path.join(allocator, &.{ parent, child });
+}
+
+fn loadIgnoreFile(
+    allocator: std.mem.Allocator,
+    root: []const u8,
+    filename: []const u8,
+    rules: *std.ArrayList(IgnoreRule),
+) !void {
+    const path = try joinPath(allocator, root, filename);
+    defer allocator.free(path);
+
+    const bytes = std.fs.cwd().readFileAlloc(allocator, path, 8 * 1024 * 1024) catch |err| switch (err) {
+        error.FileNotFound => return,
+        else => return err,
+    };
+    defer allocator.free(bytes);
+
+    var lines = std.mem.split(u8, bytes, "\n");
+    while (lines.next()) |raw_line| {
+        var line = std.mem.trim(u8, raw_line, " \t\r");
+        if (line.len == 0 or line[0] == '#') {
+            continue;
+        }
+
+        var negated = false;
+        if (line[0] == '!') {
+            negated = true;
+            line = line[1..];
+        }
+        line = std.mem.trim(u8, line, " \t");
+        if (line.len == 0) {
+            continue;
+        }
+        if (std.mem.endsWith(u8, line, "/")) {
+            line = line[0 .. line.len - 1];
+        }
+        if (line.len == 0) {
+            continue;
+        }
+        const anchored = line.len > 0 and line[0] == '/';
+        const normalized = if (anchored) line[1..] else line;
+        if (normalized.len == 0) {
+            continue;
+        }
+        const dir_only = std.mem.endsWith(u8, normalized, "/");
+        const stored = try allocator.dupe(u8, normalized);
+        try rules.append(allocator, .{
+            .pattern = stored,
+            .anchored = anchored,
+            .dir_only = dir_only,
+            .negated = negated,
+        });
+    }
+}
+
+fn ruleMatches(rule: IgnoreRule, candidate: []const u8, is_dir: bool) bool {
+    if (rule.negated) {
+        return false;
+    }
+    if (rule.dir_only and !is_dir) {
+        return false;
+    }
+    if (rule.anchored) {
+        if (!std.mem.startsWith(u8, candidate, rule.pattern)) {
+            return false;
+        }
+    }
+    if (!std.mem.containsAtLeast(u8, candidate, 1, rule.pattern)) {
+        return false;
+    }
+    return true;
+}
+
+fn shouldIgnorePath(rules: []const IgnoreRule, candidate: []const u8, is_dir: bool) bool {
+    var matched = false;
+    for (rules) |rule| {
+        if (ruleMatches(rule, candidate, is_dir)) {
+            if (rule.negated) {
+                matched = false;
+            } else {
+                matched = true;
+            }
+        }
+    }
+    return matched;
+}
+
+fn isSkipDirectory(name: []const u8) bool {
+    const dirs = [_][]const u8{
+        ".git",
+        ".hg",
+        ".svn",
+        ".idea",
+        ".vscode",
+        ".cache",
+        ".turbo",
+        ".next",
+        "node_modules",
+        "dist",
+        "build",
+        "target",
+        "out",
+        ".github",
+    };
+    for (dirs) |item| {
+        if (std.mem.eql(u8, name, item)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn isSkipFileSuffix(name: []const u8) bool {
+    const suffixes = [_][]const u8{
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".svg",
+        ".ico",
+        ".pyc",
+        ".class",
+        ".o",
+        ".obj",
+        ".so",
+        ".dll",
+        ".dylib",
+        ".a",
+        ".zip",
+        ".gz",
+        ".tgz",
+        ".bz2",
+        ".7z",
+        ".exe",
+        ".bin",
+        ".jar",
+        ".class",
+        ".dat",
+        ".mp3",
+        ".mp4",
+        ".mov",
+        ".avi",
+        ".woff",
+        ".woff2",
+    };
+    for (suffixes) |suffix| {
+        if (std.mem.endsWith(u8, name, suffix)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn isFastSkipFile(name: []const u8, opts: DiscoverOptions) bool {
+    if (opts.mode != .fast) {
+        return false;
+    }
+
+    const fast_names = [_][]const u8{
+        "LICENSE",
+        "license",
+        "go.sum",
+        "go.work.sum",
+        "yarn.lock",
+        "package-lock.json",
+        "pnpm-lock.yaml",
+        "pnpm-lock.yml",
+    };
+    for (fast_names) |item| {
+        if (std.mem.eql(u8, name, item)) {
+            return true;
+        }
+    }
+    if (std.mem.endsWith(u8, name, ".d.ts")) {
+        return true;
+    }
+    if (std.mem.endsWith(u8, name, ".pb.go")) {
+        return true;
+    }
+    return false;
+}
+
+fn languageForFileName(name: []const u8) ?Language {
+    if (std.mem.eql(u8, name, "Dockerfile")) {
+        return .dockerfile;
+    }
+    if (std.mem.eql(u8, name, "Makefile")) {
+        return .makefile;
+    }
+    if (std.mem.eql(u8, name, "CMakeLists.txt")) {
+        return .cmake;
+    }
+    if (std.mem.eql(u8, name, ".gitignore")) {
+        return null;
+    }
+    return null;
+}
+
+fn containsAny(haystack: []const u8, needle: []const []const u8) bool {
+    for (needle) |n| {
+        if (std.mem.indexOf(u8, haystack, n) != null) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn languageForMFile(abs_path: []const u8) !Language {
+    const file = std.fs.cwd().openFile(abs_path, .{}) catch return .magma;
+    defer file.close();
+
+    var buf: [4096]u8 = undefined;
+    const n = try file.readAll(&buf);
+    const sample = buf[0..n];
+
+    if (containsAny(sample, &.{ "@interface", "@implementation", "@protocol", "@property", "#import", "@encode" })) {
+        return .objc;
+    }
+    if (containsAny(sample, &.{ "theorem", "induction", "theorems", "import Mathlib", "classical", "lemma" })) {
+        return .magma;
+    }
+    return .matlab;
+}
+
+fn discoverForDirectory(
+    allocator: std.mem.Allocator,
+    dir: std.fs.Dir,
+    abs_base: []const u8,
+    rel_base: []const u8,
+    opts: DiscoverOptions,
+    ignore_rules: []const IgnoreRule,
+    out: *std.ArrayList(FileInfo),
+) !void {
+    var iterator = try dir.iterate();
+
+    while (try iterator.next()) |entry| {
+        if (entry.kind == .sym_link) {
+            continue;
+        }
+
+        const rel_path = if (rel_base.len == 0) try allocator.dupe(u8, entry.name) else try std.fs.path.join(allocator, &.{ rel_base, entry.name });
+        defer allocator.free(rel_path);
+
+        if (entry.kind == .directory) {
+            if (isSkipDirectory(entry.name) or isFastSkipFile(entry.name, opts)) {
+                continue;
+            }
+            if (shouldIgnorePath(ignore_rules, rel_path, true)) {
+                continue;
+            }
+
+            var child = try dir.openDir(entry.name, .{ .iterate = true });
+            defer child.close();
+
+            const child_abs = try joinPath(allocator, abs_base, entry.name);
+            defer allocator.free(child_abs);
+            try discoverForDirectory(allocator, child, child_abs, rel_path, opts, ignore_rules, out);
+            continue;
+        }
+
+        if (entry.kind != .file) {
+            continue;
+        }
+
+        if (shouldIgnorePath(ignore_rules, rel_path, false)) {
+            continue;
+        }
+        if (isSkipFileSuffix(entry.name) or isFastSkipFile(entry.name, opts)) {
+            continue;
+        }
+
+        const stat = try dir.statFile(entry.name);
+        if (opts.max_file_size > 0 and stat.size > 0 and @as(u64, @intCast(stat.size)) > opts.max_file_size) {
+            continue;
+        }
+
+        const abs_path = try joinPath(allocator, abs_base, entry.name);
+        defer allocator.free(abs_path);
+
+        var language = languageForFileName(entry.name);
+        if (language == null) {
+            const ext = std.fs.path.extension(entry.name);
+            if (std.mem.eql(u8, ext, ".m")) {
+                language = try languageForMFile(abs_path);
+            } else {
+                language = languageForExtension(ext);
+            }
+        }
+        if (language) |lang| {
+            const rel_dup = try allocator.dupe(u8, rel_path);
+            const abs_dup = try allocator.dupe(u8, abs_path);
+            try out.append(allocator, .{
+                .path = abs_dup,
+                .rel_path = rel_dup,
+                .language = lang,
+                .size = stat.size,
+            });
+        }
+    }
+}
+
 pub fn discoverFiles(
     allocator: std.mem.Allocator,
     repo_path: []const u8,
     opts: DiscoverOptions,
 ) ![]FileInfo {
-    _ = allocator;
-    _ = repo_path;
-    _ = opts;
-    // TODO: walk directory tree, detect languages, respect .gitignore
-    return &.{};
+    const root_abs = try std.fs.cwd().realpathAlloc(allocator, repo_path);
+    defer allocator.free(root_abs);
+
+    var ignore_rules = std.ArrayList(IgnoreRule).init(allocator);
+    defer {
+        for (ignore_rules.items) |item| {
+            allocator.free(item.pattern);
+        }
+        ignore_rules.deinit();
+    }
+
+    // Repository root ignore files are supported, including filename-based overrides.
+    try loadIgnoreFile(allocator, root_abs, ".gitignore", &ignore_rules);
+    try loadIgnoreFile(allocator, root_abs, ".cbmignore", &ignore_rules);
+
+    var out = std.ArrayList(FileInfo).init(allocator);
+    var root = try std.fs.openDirAbsolute(root_abs, .{ .iterate = true, .no_follow = true });
+    defer root.close();
+
+    try discoverForDirectory(allocator, root, root_abs, "", opts, ignore_rules.items, &out);
+    return try out.toOwnedSlice();
 }
 
 pub fn languageForExtension(ext: []const u8) ?Language {
