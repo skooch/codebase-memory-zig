@@ -348,7 +348,7 @@ The reduction comes primarily from: stdlib replacing foundation layer, std.json 
 
 ---
 
-## 8. Current Checklist
+## 8. Plan Checklist
 
 Checked means complete relative to this plan's stated goal. Unchecked means still incomplete even if there is useful scaffolding or partial work in the repo.
 
@@ -365,18 +365,20 @@ Checked means complete relative to this plan's stated goal. Unchecked means stil
 
 - [x] Port `discover/` (file walk, language detection, gitignore)
 - [ ] Port extraction layer: tree-sitter parsing, definition extraction
-- [ ] Port `pipeline/` orchestrator with `pass_definitions` + `registry`
+- [x] Port `pipeline/` orchestrator with `pass_definitions` + `registry`
 - [ ] Port `pass_calls`, `pass_usages`, `pass_semantic`
 - [x] Single-threaded first
-- [ ] Exit criterion: can index a small repo and produce a populated graph DB
+- [x] Exit criterion: can index a small repo and produce a populated graph DB
+Current state: the end-to-end vertical slice is working with heuristic extraction plus persisted call/import/semantic edges, but `pass_usages` parity and tree-sitter-backed extraction are still outstanding.
 
 ### M2 Checklist
 
 - [ ] Port `cypher/` lexer + parser + executor
-- [ ] Port `mcp/` JSON-RPC server (stdio transport)
+- [x] Port `mcp/` JSON-RPC server (stdio transport)
 - [ ] Wire up all MCP tools: `search_graph`, `query_graph`, `get_code_snippet`, `trace_call_path`, etc.
 - [ ] Port `watcher/` for auto-reindex
 - [ ] Exit criterion: can run as MCP server, index a repo, answer queries via Claude Code
+Current state: the readiness-slice MCP surface is live for `index_repository`, `search_graph`, `query_graph`, `trace_call_path`, and `list_projects`, but this milestone is still incomplete relative to the full public surface described above.
 
 ### M3 Checklist
 

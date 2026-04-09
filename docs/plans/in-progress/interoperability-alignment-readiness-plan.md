@@ -58,12 +58,6 @@ Phase 2
 | Track this as a separate plan in `docs/plans/in-progress/` | The work is broader than a single code fix and needs a durable checklist before implementation starts. |
 | Treat interoperability as a vertical-slice milestone, not a full-port milestone | Alignment tests become useful once the core indexing + query path exists, even if deferred features are still unfinished. |
 
-## Checklist Status
-- [x] **Phase 1 completed** — interoperability scope and alignment contract are documented.
-- [x] **Phase 3 completed** — minimal MCP/public surface (5 tools + query behavior) is in place.
-- [ ] **Phase 2 complete** — extraction still uses heuristic parsing; tree-sitter-backed replacement remains outstanding.
-- [ ] **Phase 4 complete** — cross-implementation fixture + harness still missing.
-
 ## Phase Deliverables
 - **Phase 1 (done):** Scope, exclusions, and comparison rules are now explicit in implementation docs.
 - **Phase 2 (in_progress):** Indexing pipeline persists to store and resolves calls/semantics with registry context.
@@ -72,4 +66,12 @@ Phase 2
 
 ## Errors
 | Error | Attempt | Resolution |
-|-------|---------|------------|
+
+## Plan Checklist
+- [x] **Phase 1 complete** — interoperability scope, exclusions, and deterministic comparison rules are documented.
+- [ ] **Phase 1 stretch goal complete** — per-tool alignment mismatch contract is still not explicitly written down.
+- [x] **Phase 2 vertical slice works** — discovery, extraction retention, registry resolution, and persisted call/import/semantic edges are working end-to-end.
+- [x] **Phase 2 hardening landed** — cross-file call-edge regression coverage exists and graph-buffer ID / allocation rollback bugs found during review have been fixed.
+- [ ] **Phase 2 parity complete** — heuristic extraction is still in place; tree-sitter-backed Rust/Zig/Python/JS extraction remains outstanding.
+- [x] **Phase 3 complete** — the five readiness-scope MCP tools and automation entrypoints are available.
+- [ ] **Phase 4 complete** — fixture corpus, semantic diff harness, and first mismatch pass are still outstanding.

@@ -27,13 +27,16 @@
   - [x] Plan moved into progress tracking.
 
 ### Phase 2: Minimum Indexing Vertical Slice
-- **Status:** complete
+- **Status:** in_progress
 - Actions:
   - Implemented pipeline end-to-end execution path from file discovery through graph persistence.
   - Added heuristic extraction of symbols/calls/imports/semantic hints for Rust, Zig, Python, and JavaScript/TS.
   - Implemented registry-based symbol resolution with import-context support.
   - Persisted registry-resolved imports/calls/semantic edges from GraphBuffer into SQLite store.
   - Fixed extraction and pipeline cleanup paths so errors do not leak memory.
+  - Added regression coverage for cross-file Python call-edge persistence.
+  - Fixed graph buffer node/edge ID handling so edge allocation does not break node lookups.
+  - Hardened graph buffer rollback on allocation failures and added allocation-failure regression coverage.
 - Files modified:
   - `src/extractor.zig`
   - `src/pipeline.zig`
