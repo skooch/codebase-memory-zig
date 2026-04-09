@@ -67,14 +67,10 @@ pub fn extractFile(
     var unresolved_calls = std.ArrayList(UnresolvedCall).init(allocator);
     var unresolved_imports = std.ArrayList(UnresolvedImport).init(allocator);
     var semantic_hints = std.ArrayList(SemanticHint).init(allocator);
-    var has_owned = false;
-
-    errdefer if (!has_owned) {
-        freeExtractedSymbols(allocator, symbols.items);
-        freeUnresolvedCalls(allocator, unresolved_calls.items);
-        freeUnresolvedImports(allocator, unresolved_imports.items);
-        freeSemanticHints(allocator, semantic_hints.items);
-    };
+    errdefer freePendingExtractedSymbols(allocator, &symbols);
+    errdefer freePendingUnresolvedCalls(allocator, &unresolved_calls);
+    errdefer freePendingUnresolvedImports(allocator, &unresolved_imports);
+    errdefer freePendingSemanticHints(allocator, &semantic_hints);
 
     const qn_base = try normalizePath(allocator, rel);
     defer allocator.free(qn_base);
@@ -95,17 +91,17 @@ pub fn extractFile(
         1,
     );
     if (file_id == 0) {
-        has_owned = true;
-        return .{
-            .file_path = try allocator.dupe(u8, rel),
-            .file_id = 0,
-            .module_id = 0,
-            .language = file.language,
-            .symbols = try symbols.toOwnedSlice(),
-            .unresolved_calls = try unresolved_calls.toOwnedSlice(),
-            .unresolved_imports = try unresolved_imports.toOwnedSlice(),
-            .semantic_hints = try semantic_hints.toOwnedSlice(),
-        };
+        return finishExtraction(
+            allocator,
+            try allocator.dupe(u8, rel),
+            0,
+            0,
+            file.language,
+            &symbols,
+            &unresolved_calls,
+            &unresolved_imports,
+            &semantic_hints,
+        );
     }
 
     var module_id: i64 = file_id;
@@ -138,17 +134,17 @@ pub fn extractFile(
 
     const bytes = std.fs.cwd().readFileAlloc(allocator, file.path, 8 * 1024 * 1024) catch |err| switch (err) {
         error.IsDir => {
-            has_owned = true;
-            return .{
-                .file_path = try allocator.dupe(u8, rel),
-                .file_id = file_id,
-                .module_id = module_id,
-                .language = file.language,
-                .symbols = try symbols.toOwnedSlice(),
-                .unresolved_calls = try unresolved_calls.toOwnedSlice(),
-                .unresolved_imports = try unresolved_imports.toOwnedSlice(),
-                .semantic_hints = try semantic_hints.toOwnedSlice(),
-            };
+            return finishExtraction(
+                allocator,
+                try allocator.dupe(u8, rel),
+                file_id,
+                module_id,
+                file.language,
+                &symbols,
+                &unresolved_calls,
+                &unresolved_imports,
+                &semantic_hints,
+            );
         },
         else => return err,
     };
@@ -235,17 +231,17 @@ pub fn extractFile(
         }
     }
 
-    has_owned = true;
-    return .{
-        .file_path = try allocator.dupe(u8, rel),
-        .file_id = file_id,
-        .module_id = module_id,
-        .language = file.language,
-        .symbols = try symbols.toOwnedSlice(),
-        .unresolved_calls = try unresolved_calls.toOwnedSlice(),
-        .unresolved_imports = try unresolved_imports.toOwnedSlice(),
-        .semantic_hints = try semantic_hints.toOwnedSlice(),
-    };
+    return finishExtraction(
+        allocator,
+        try allocator.dupe(u8, rel),
+        file_id,
+        module_id,
+        file.language,
+        &symbols,
+        &unresolved_calls,
+        &unresolved_imports,
+        &semantic_hints,
+    );
 }
 
 fn parseImports(
@@ -409,7 +405,7 @@ fn parseSemanticHint(language: discover.Language, line: []const u8) ?struct {
         .python => if (parsePythonInheritance(line)) |parent_name| .{ .parent_name = parent_name, .relation = "INHERITS" } else null,
         .javascript, .typescript, .tsx => if (parseJsInheritance(line)) |parent_name| .{ .parent_name = parent_name, .relation = "INHERITS" } else null,
         .rust => if (parseRustSemanticHint(line)) |hint| .{
-            .parent_name = hint.parent,
+            .parent_name = hint.trait_name,
             .relation = hint.relation,
         } else null,
         else => null,
@@ -418,18 +414,11 @@ fn parseSemanticHint(language: discover.Language, line: []const u8) ?struct {
 
 fn parseRustSemanticHint(line: []const u8) ?struct {
     relation: []const u8,
-    parent: []const u8,
+    trait_name: []const u8,
 } {
-    const impl_pos = std.mem.indexOf(u8, line, "impl ");
-    if (impl_pos == null) return null;
-    const after_impl = std.mem.trim(u8, line[impl_pos.? + "impl ".len ..], " \t");
-    if (after_impl.len == 0) return null;
-    const for_pos = std.mem.indexOf(u8, after_impl, " for ");
-    if (for_pos == null) return null;
-    const parent_raw = std.mem.trim(u8, after_impl[for_pos.? + " for ".len ..], " \t");
-    if (parent_raw.len == 0) return null;
-    const parent = firstIdentifier(parent_raw) orelse return null;
-    return .{ .relation = "IMPLEMENTS", .parent = parent };
+    const parts = parseRustImplParts(line) orelse return null;
+    const trait_name = parts.trait_name orelse return null;
+    return .{ .relation = "IMPLEMENTS", .trait_name = trait_name };
 }
 
 fn collectCalls(
@@ -437,9 +426,10 @@ fn collectCalls(
     line: []const u8,
     language: discover.Language,
 ) !?[]const []const u8 {
-    _ = language;
     if (line.len == 0) return null;
-    var names = std.ArrayList([]const u8).init(allocator);
+    if (isDeclarationLine(language, line)) return null;
+    var names: std.ArrayList([]const u8) = .empty;
+    errdefer freePendingStringSlices(allocator, &names);
     var i: usize = 0;
 
     while (i < line.len) {
@@ -478,7 +468,7 @@ fn collectCalls(
         }
         if (j < line.len and line[j] == '(' and callee.len > 0) {
             if (!isKeywordCandidate(callee)) {
-                try names.append(try allocator.dupe(u8, callee));
+                try names.append(allocator, try allocator.dupe(u8, callee));
             }
         }
         i = j + 1;
@@ -487,7 +477,7 @@ fn collectCalls(
     if (names.items.len == 0) {
         return null;
     }
-    return try names.toOwnedSlice();
+    return try names.toOwnedSlice(allocator);
 }
 
 fn parseSymbol(language: discover.Language, line: []const u8) ?ParsedSymbol {
@@ -567,23 +557,8 @@ fn parseRustDefs(line: []const u8) ?ParsedSymbol {
 }
 
 fn parseRustImpl(line: []const u8) ?[]const u8 {
-    const impl_pos = std.mem.indexOf(u8, line, "impl ");
-    if (impl_pos == null) return null;
-    var cursor = impl_pos.? + "impl ".len;
-    const trimmed = std.mem.trim(u8, line[cursor..], " \t");
-    if (trimmed.len == 0) return null;
-    if (trimmed[0] == '<') {
-        const close = std.mem.indexOf(u8, trimmed, ">") orelse return null;
-        cursor = close + 1;
-    } else {
-        cursor = 0;
-    }
-
-    const after = if (cursor == 0) trimmed else trimmed[cursor..];
-    const spaced = std.mem.trim(u8, after, " \t");
-    const for_pos = std.mem.indexOf(u8, spaced, " for ");
-    const target = if (for_pos) |p| spaced[0..p] else spaced;
-    return firstIdentifier(target);
+    const parts = parseRustImplParts(line) orelse return null;
+    return parts.target_name;
 }
 
 fn parseZigDefs(line: []const u8) ?ParsedSymbol {
@@ -704,6 +679,81 @@ fn normalizeUsePath(spec: []const u8) []const u8 {
     return std.mem.trim(u8, path, " \t;");
 }
 
+fn finishExtraction(
+    allocator: std.mem.Allocator,
+    file_path: []const u8,
+    file_id: i64,
+    module_id: i64,
+    language: discover.Language,
+    symbols: *std.ArrayList(ExtractedSymbol),
+    unresolved_calls: *std.ArrayList(UnresolvedCall),
+    unresolved_imports: *std.ArrayList(UnresolvedImport),
+    semantic_hints: *std.ArrayList(SemanticHint),
+) !FileExtraction {
+    errdefer allocator.free(file_path);
+
+    const owned_symbols = try symbols.toOwnedSlice();
+    errdefer freeExtractedSymbols(allocator, owned_symbols);
+
+    const owned_calls = try unresolved_calls.toOwnedSlice();
+    errdefer freeUnresolvedCalls(allocator, owned_calls);
+
+    const owned_imports = try unresolved_imports.toOwnedSlice();
+    errdefer freeUnresolvedImports(allocator, owned_imports);
+
+    const owned_hints = try semantic_hints.toOwnedSlice();
+    errdefer freeSemanticHints(allocator, owned_hints);
+
+    return .{
+        .file_path = file_path,
+        .file_id = file_id,
+        .module_id = module_id,
+        .language = language,
+        .symbols = owned_symbols,
+        .unresolved_calls = owned_calls,
+        .unresolved_imports = owned_imports,
+        .semantic_hints = owned_hints,
+    };
+}
+
+fn parseRustImplParts(line: []const u8) ?struct {
+    target_name: []const u8,
+    trait_name: ?[]const u8,
+} {
+    const impl_pos = std.mem.indexOf(u8, line, "impl ");
+    if (impl_pos == null) return null;
+
+    var trimmed = std.mem.trim(u8, line[impl_pos.? + "impl ".len ..], " \t");
+    if (trimmed.len == 0) return null;
+
+    if (trimmed[0] == '<') {
+        const close = std.mem.indexOf(u8, trimmed, ">") orelse return null;
+        trimmed = std.mem.trim(u8, trimmed[close + 1 ..], " \t");
+        if (trimmed.len == 0) return null;
+    }
+
+    if (std.mem.indexOf(u8, trimmed, " for ")) |for_pos| {
+        const trait_raw = std.mem.trim(u8, trimmed[0..for_pos], " \t");
+        const target_raw = std.mem.trim(u8, trimmed[for_pos + " for ".len ..], " \t");
+        const trait_name = firstIdentifier(trait_raw) orelse return null;
+        const target_name = firstIdentifier(target_raw) orelse return null;
+        return .{
+            .target_name = target_name,
+            .trait_name = trait_name,
+        };
+    }
+
+    const target_name = firstIdentifier(trimmed) orelse return null;
+    return .{
+        .target_name = target_name,
+        .trait_name = null,
+    };
+}
+
+fn isDeclarationLine(language: discover.Language, line: []const u8) bool {
+    return parseSymbol(language, line) != null;
+}
+
 fn stripComments(language: discover.Language, line: []const u8) []const u8 {
     return switch (language) {
         .python => stripCommentToken(line, '#'),
@@ -784,6 +834,46 @@ fn freeStringSlices(allocator: std.mem.Allocator, names: []const []const u8) voi
     allocator.free(names);
 }
 
+fn freePendingStringSlices(allocator: std.mem.Allocator, names: *std.ArrayList([]const u8)) void {
+    for (names.items) |name| allocator.free(name);
+    names.deinit(allocator);
+}
+
+fn freePendingExtractedSymbols(allocator: std.mem.Allocator, symbols: *std.ArrayList(ExtractedSymbol)) void {
+    for (symbols.items) |s| {
+        allocator.free(s.label);
+        allocator.free(s.name);
+        allocator.free(s.qualified_name);
+        allocator.free(s.file_path);
+    }
+    symbols.deinit();
+}
+
+fn freePendingUnresolvedCalls(allocator: std.mem.Allocator, calls: *std.ArrayList(UnresolvedCall)) void {
+    for (calls.items) |c| {
+        allocator.free(c.callee_name);
+        allocator.free(c.file_path);
+    }
+    calls.deinit();
+}
+
+fn freePendingUnresolvedImports(allocator: std.mem.Allocator, imports: *std.ArrayList(UnresolvedImport)) void {
+    for (imports.items) |i| {
+        allocator.free(i.import_name);
+        allocator.free(i.file_path);
+    }
+    imports.deinit();
+}
+
+fn freePendingSemanticHints(allocator: std.mem.Allocator, hints: *std.ArrayList(SemanticHint)) void {
+    for (hints.items) |h| {
+        allocator.free(h.parent_name);
+        allocator.free(h.file_path);
+        allocator.free(h.relation);
+    }
+    hints.deinit();
+}
+
 pub fn freeExtractedSymbols(allocator: std.mem.Allocator, symbols: []ExtractedSymbol) void {
     for (symbols) |s| {
         allocator.free(s.label);
@@ -836,4 +926,25 @@ test "extractor parses definitions for core languages" {
     try std.testing.expect(parseSymbol(.javascript, "const run = async () => {}") != null);
     try std.testing.expect(parseSymbol(.javascript, "class Service extends Base") != null);
     try std.testing.expect(parseSymbol(.rust, "impl Display for Foo") != null);
+}
+
+test "rust impl parsing keeps target and trait roles straight" {
+    const parts = parseRustImplParts("impl Display for Foo {") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("Foo", parts.target_name);
+    try std.testing.expect(parts.trait_name != null);
+    try std.testing.expectEqualStrings("Display", parts.trait_name.?);
+
+    const hint = parseRustSemanticHint("impl Display for Foo {") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("Display", hint.trait_name);
+}
+
+test "call collection skips declaration lines" {
+    try std.testing.expect((try collectCalls(std.testing.allocator, "fn main() void {}", .zig)) == null);
+    try std.testing.expect((try collectCalls(std.testing.allocator, "def hello(x):", .python)) == null);
+    try std.testing.expect((try collectCalls(std.testing.allocator, "class Foo(Base):", .python)) == null);
+
+    const calls = (try collectCalls(std.testing.allocator, "result = helper(value)", .python)) orelse return error.TestUnexpectedResult;
+    defer freeStringSlices(std.testing.allocator, calls);
+    try std.testing.expectEqual(@as(usize, 1), calls.len);
+    try std.testing.expectEqualStrings("helper", calls[0]);
 }

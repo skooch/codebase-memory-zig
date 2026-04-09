@@ -79,12 +79,20 @@ pub const Pipeline = struct {
 
         var gb = GraphBuffer.init(self.allocator, self.project_name);
         defer gb.deinit();
+        var extractions = std.ArrayList(extractor.FileExtraction).init(self.allocator);
+        defer {
+            for (extractions.items) |extraction| {
+                extractor.freeFileExtraction(self.allocator, extraction);
+            }
+            extractions.deinit();
+        }
 
         for (discovered_files) |file| {
             const extraction = extractFile(self.allocator, self.project_name, file, &gb) catch |err| {
                 std.log.warn("extractor failed for {s}: {}", .{ file.rel_path, err });
                 continue;
             };
+
             const symbol_count = extraction.symbols.len;
             const unresolved_call_count = extraction.unresolved_calls.len;
             const unresolved_import_count = extraction.unresolved_imports.len;
@@ -100,7 +108,7 @@ pub const Pipeline = struct {
                     semantic_hint_count,
                 },
             );
-            extractor.freeFileExtraction(self.allocator, extraction);
+            try extractions.append(extraction);
 
             if (self.cancelled.load(.acquire)) {
                 return PipelineError.Cancelled;
@@ -114,6 +122,10 @@ pub const Pipeline = struct {
         std.log.info(
             "pipeline graph buffer: {} nodes, {} edges",
             .{ gb.nodeCount(), gb.edgeCount() },
+        );
+        std.log.debug(
+            "pipeline retained extraction models for {} files",
+            .{extractions.items.len},
         );
 
         // TODO: implement extraction and storage phases.
