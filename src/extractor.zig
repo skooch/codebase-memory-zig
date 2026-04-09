@@ -371,7 +371,7 @@ fn parseRustImports(
     const path = normalizeUsePath(path_raw);
     if (path.len == 0) return;
 
-            try out.append(allocator, .{
+    try out.append(allocator, .{
         .importer_id = importer_id,
         .import_name = try allocator.dupe(u8, path),
         .file_path = try allocator.dupe(u8, file_path),
@@ -389,7 +389,7 @@ fn parseZigImports(
     const after = line[import_pos + "@import(".len ..];
     const spec = extractQuotedString(after) orelse return;
     if (spec.len == 0) return;
-            try out.append(allocator, .{
+    try out.append(allocator, .{
         .importer_id = importer_id,
         .import_name = try allocator.dupe(u8, spec),
         .file_path = try allocator.dupe(u8, file_path),
@@ -470,7 +470,7 @@ fn collectCalls(
                 try names.append(allocator, try allocator.dupe(u8, callee));
             }
         }
-        i = j + 1;
+        i = j;
     }
 
     if (names.items.len == 0) {

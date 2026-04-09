@@ -205,3 +205,81 @@ test "pipeline run handles simple extraction pipeline" {
     defer p.deinit();
     try p.run(&s);
 }
+
+test "pipeline retention enables call-edge emission across files" {
+    const allocator = std.testing.allocator;
+
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(
+        allocator,
+        "/tmp/cbm-pipeline-test-{x}",
+        .{project_id},
+    );
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    {
+        var dir = try std.fs.cwd().openDir(project_dir, .{});
+        defer dir.close();
+
+        var util = try dir.createFile("util.py", .{});
+        try util.writeAll(
+            \\def helper(x):
+            \\    return x
+            \\
+        );
+        util.close();
+
+        var app = try dir.createFile("app.py", .{});
+        try app.writeAll(
+            \\from util import helper
+            \\def main():
+            \\    return helper(1)
+            \\
+        );
+        app.close();
+    }
+
+    var db = try store.Store.openMemory(allocator);
+    defer db.deinit();
+
+    var pipeline = Pipeline.init(allocator, project_dir, .full);
+    defer pipeline.deinit();
+    try pipeline.run(&db);
+
+    const project_name = std.fs.path.basename(project_dir);
+
+    const main_nodes = try db.searchNodes(.{
+        .project = project_name,
+        .name_pattern = "main",
+        .label_pattern = "Function",
+        .limit = 10,
+    });
+    defer db.freeNodes(main_nodes);
+    try std.testing.expect(main_nodes.len == 1);
+
+    const helper_nodes = try db.searchNodes(.{
+        .project = project_name,
+        .name_pattern = "helper",
+        .label_pattern = "Function",
+        .limit = 10,
+    });
+    defer db.freeNodes(helper_nodes);
+    try std.testing.expect(helper_nodes.len == 1);
+
+    const calls = try db.findEdgesBySource(project_name, main_nodes[0].id, "CALLS");
+    defer db.freeEdges(calls);
+
+    if (calls.len != 1) {
+        return error.TestUnexpectedResult;
+    }
+
+    if (calls[0].target_id != helper_nodes[0].id) {
+        std.debug.print(
+            "helper node id {d}, expected call target {d}\n",
+            .{ helper_nodes[0].id, calls[0].target_id },
+        );
+        return error.TestUnexpectedResult;
+    }
+}

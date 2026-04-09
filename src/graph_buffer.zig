@@ -58,7 +58,8 @@ pub const GraphBuffer = struct {
     nodes_by_id: std.ArrayList(BufferNode),
     edges: std.ArrayList(BufferEdge),
     edge_keys: std.StringHashMap(void),
-    next_id: i64 = 1,
+    next_node_id: i64 = 1,
+    next_edge_id: i64 = 1,
 
     pub fn init(allocator: std.mem.Allocator, project: []const u8) GraphBuffer {
         return .{
@@ -110,8 +111,8 @@ pub const GraphBuffer = struct {
             return id;
         }
 
-        const id = self.next_id;
-        self.next_id += 1;
+        const id = self.next_node_id;
+        self.next_node_id += 1;
         const node = try ownedNodeFromSlices(
             self.allocator,
             label,
@@ -154,8 +155,8 @@ pub const GraphBuffer = struct {
             return id;
         }
 
-        const id = self.next_id;
-        self.next_id += 1;
+        const id = self.next_node_id;
+        self.next_node_id += 1;
         const node = try ownedNodeFromSlices(
             self.allocator,
             label,
@@ -221,8 +222,8 @@ pub const GraphBuffer = struct {
             return GraphBufferError.OutOfMemory;
         };
 
-        const id = self.next_id;
-        self.next_id += 1;
+        const id = self.next_edge_id;
+        self.next_edge_id += 1;
         self.edges.append(self.allocator, .{
             .id = id,
             .source_id = source_id,
