@@ -1,6 +1,6 @@
 # Zig Port of codebase-memory-mcp
 
-## Status: Draft / Needs User Decisions
+## Status: In Progress / Open Technical Decisions Remain
 
 ---
 
@@ -327,3 +327,53 @@ Cross-compilation to Linux/Windows/macOS comes free.
 | **Total** | **~33,000** | **~23,000** | **~30% reduction** |
 
 The reduction comes primarily from: stdlib replacing foundation layer, std.json replacing manual JSON manipulation, and cutting ~4,000 LOC of dead/half-baked features.
+
+---
+
+## 8. Current Checklist
+
+Checked means complete relative to this plan's stated goal. Unchecked means still incomplete even if there is useful scaffolding or partial work in the repo.
+
+### M0 Checklist
+
+- [ ] `build.zig` compiles SQLite + tree-sitter runtime + one grammar
+- [ ] Foundation types: allocator wrappers, string interning, logging
+- [x] Port `store/` to Zig calling SQLite via `@cImport`
+- [x] Port `graph_buffer/` using `std.HashMap` + `std.ArrayList`
+- [x] Tests: store CRUD, graph buffer ops
+- [x] Exit criterion: can create a store, insert nodes/edges, query them
+
+### M1 Checklist
+
+- [x] Port `discover/` (file walk, language detection, gitignore)
+- [ ] Port extraction layer: tree-sitter parsing, definition extraction
+- [ ] Port `pipeline/` orchestrator with `pass_definitions` + `registry`
+- [ ] Port `pass_calls`, `pass_usages`, `pass_semantic`
+- [x] Single-threaded first
+- [ ] Exit criterion: can index a small repo and produce a populated graph DB
+
+### M2 Checklist
+
+- [ ] Port `cypher/` lexer + parser + executor
+- [ ] Port `mcp/` JSON-RPC server (stdio transport)
+- [ ] Wire up all MCP tools: `search_graph`, `query_graph`, `get_code_snippet`, `trace_call_path`, etc.
+- [ ] Port `watcher/` for auto-reindex
+- [ ] Exit criterion: can run as MCP server, index a repo, answer queries via Claude Code
+
+### M3 Checklist
+
+- [ ] Port parallel extraction (`pass_parallel`) using `std.Thread.Pool`
+- [ ] Port MinHash similarity detection
+- [ ] Port CLI subcommands (`install`, `uninstall`, `update`, `config`)
+- [ ] Memory budget tracking
+- [ ] Port FQN computation
+- [ ] Exit criterion: performance parity with C version on a large repo, CLI works
+
+### M4 Checklist
+
+- [ ] Incremental re-indexing
+- [ ] Git history pass (change coupling)
+- [ ] Route node creation
+- [ ] Test tagging
+- [ ] Config-code linking
+- [ ] Decorator enrichment
