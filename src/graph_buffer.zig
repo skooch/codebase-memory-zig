@@ -39,15 +39,25 @@ fn ownedNodeFromSlices(
     end_line: i32,
     properties_json: []const u8,
 ) !BufferNode {
+    const label_copy = try allocator.dupe(u8, label);
+    errdefer allocator.free(label_copy);
+    const name_copy = try allocator.dupe(u8, name);
+    errdefer allocator.free(name_copy);
+    const qn_copy = try allocator.dupe(u8, qualified_name);
+    errdefer allocator.free(qn_copy);
+    const file_path_copy = try allocator.dupe(u8, file_path);
+    errdefer allocator.free(file_path_copy);
+    const properties_copy = try allocator.dupe(u8, properties_json);
+
     return .{
         .id = 0,
-        .label = try allocator.dupe(u8, label),
-        .name = try allocator.dupe(u8, name),
-        .qualified_name = try allocator.dupe(u8, qualified_name),
-        .file_path = try allocator.dupe(u8, file_path),
+        .label = label_copy,
+        .name = name_copy,
+        .qualified_name = qn_copy,
+        .file_path = file_path_copy,
         .start_line = start_line,
         .end_line = end_line,
-        .properties_json = try allocator.dupe(u8, properties_json),
+        .properties_json = properties_copy,
     };
 }
 
@@ -112,7 +122,8 @@ pub const GraphBuffer = struct {
         }
 
         const id = self.next_node_id;
-        self.next_node_id += 1;
+        const qn_copy = try self.allocator.dupe(u8, qualified_name);
+        errdefer self.allocator.free(qn_copy);
         const node = try ownedNodeFromSlices(
             self.allocator,
             label,
@@ -123,21 +134,19 @@ pub const GraphBuffer = struct {
             end_line,
             "{}",
         );
-        const qn_copy = try self.allocator.dupe(u8, qualified_name);
+        errdefer self.freeNode(node);
 
         var inserted = node;
         inserted.id = id;
         self.nodes_by_id.append(self.allocator, inserted) catch {
-            self.freeNode(node);
-            self.allocator.free(qn_copy);
             return GraphBufferError.OutOfMemory;
         };
         self.nodes_by_qn.put(qn_copy, id) catch {
             _ = self.nodes_by_id.pop();
-            self.freeNode(node);
             return GraphBufferError.OutOfMemory;
         };
 
+        self.next_node_id += 1;
         return id;
     }
 
@@ -156,7 +165,8 @@ pub const GraphBuffer = struct {
         }
 
         const id = self.next_node_id;
-        self.next_node_id += 1;
+        const qn_copy = try self.allocator.dupe(u8, qualified_name);
+        errdefer self.allocator.free(qn_copy);
         const node = try ownedNodeFromSlices(
             self.allocator,
             label,
@@ -167,20 +177,18 @@ pub const GraphBuffer = struct {
             end_line,
             properties_json,
         );
-        const qn_copy = try self.allocator.dupe(u8, qualified_name);
+        errdefer self.freeNode(node);
 
         var inserted = node;
         inserted.id = id;
         self.nodes_by_id.append(self.allocator, inserted) catch {
-            self.freeNode(node);
-            self.allocator.free(qn_copy);
             return GraphBufferError.OutOfMemory;
         };
         self.nodes_by_qn.put(qn_copy, id) catch {
             _ = self.nodes_by_id.pop();
-            self.freeNode(node);
             return GraphBufferError.OutOfMemory;
         };
+        self.next_node_id += 1;
         return id;
     }
 
@@ -223,7 +231,6 @@ pub const GraphBuffer = struct {
         };
 
         const id = self.next_edge_id;
-        self.next_edge_id += 1;
         self.edges.append(self.allocator, .{
             .id = id,
             .source_id = source_id,
@@ -237,6 +244,7 @@ pub const GraphBuffer = struct {
             self.allocator.free(props_copy);
             return GraphBufferError.OutOfMemory;
         };
+        self.next_edge_id += 1;
         return id;
     }
 
@@ -252,8 +260,13 @@ pub const GraphBuffer = struct {
     pub fn findNodeById(self: *const GraphBuffer, id: i64) ?*const BufferNode {
         if (id <= 0) return null;
         const idx = @as(usize, @intCast(id - 1));
-        if (idx >= self.nodes_by_id.items.len) return null;
-        return &self.nodes_by_id.items[idx];
+        if (idx < self.nodes_by_id.items.len and self.nodes_by_id.items[idx].id == id) {
+            return &self.nodes_by_id.items[idx];
+        }
+        for (self.nodes_by_id.items) |*node| {
+            if (node.id == id) return node;
+        }
+        return null;
     }
 
     pub fn nodes(self: *const GraphBuffer) []const BufferNode {
@@ -369,4 +382,47 @@ test "graph buffer basic ops" {
     };
     try std.testing.expectEqual(@as(i64, 0), dedup);
     try std.testing.expectEqual(@as(usize, 1), gb.edgeCount());
+}
+
+fn graphBufferNodeInsertAllocationFailureImpl(allocator: std.mem.Allocator) !void {
+    var gb = GraphBuffer.init(allocator, "test-project");
+    defer gb.deinit();
+
+    const id = gb.upsertNode("Function", "foo", "test.foo", "src/main.zig", 1, 10) catch |err| {
+        try std.testing.expectEqual(GraphBufferError.OutOfMemory, err);
+        try std.testing.expectEqual(@as(i64, 1), gb.next_node_id);
+        try std.testing.expectEqual(@as(usize, 0), gb.nodeCount());
+        try std.testing.expect(gb.findNodeById(1) == null);
+        return err;
+    };
+
+    try std.testing.expectEqual(@as(i64, 1), id);
+    try std.testing.expectEqual(@as(i64, 2), gb.next_node_id);
+    try std.testing.expectEqual(@as(usize, 1), gb.nodeCount());
+}
+
+test "graph buffer keeps node ids stable across allocation failures" {
+    try std.testing.checkAllAllocationFailures(
+        std.testing.allocator,
+        graphBufferNodeInsertAllocationFailureImpl,
+        .{},
+    );
+}
+
+test "graph buffer findNodeById tolerates sparse ids" {
+    var gb = GraphBuffer.init(std.testing.allocator, "test-project");
+    defer gb.deinit();
+
+    const id1 = try gb.upsertNode("Function", "foo", "test.foo", "src/main.zig", 1, 10);
+    try std.testing.expectEqual(@as(i64, 1), id1);
+
+    gb.next_node_id = 3;
+    const id3 = try gb.upsertNode("Function", "bar", "test.bar", "src/main.zig", 12, 20);
+    try std.testing.expectEqual(@as(i64, 3), id3);
+
+    if (gb.findNodeById(id3)) |node| {
+        try std.testing.expectEqualStrings("bar", node.name);
+    } else {
+        return error.TestExpectedEqual;
+    }
 }
