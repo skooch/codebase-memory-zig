@@ -120,7 +120,7 @@ fn loadIgnoreFile(
     };
     defer allocator.free(bytes);
 
-    var lines = std.mem.split(u8, bytes, "\n");
+    var lines = std.mem.splitScalar(u8, bytes, '\n');
     while (lines.next()) |raw_line| {
         var line = std.mem.trim(u8, raw_line, " \t\r");
         if (line.len == 0 or line[0] == '#') {
@@ -336,7 +336,7 @@ fn discoverForDirectory(
     ignore_rules: []const IgnoreRule,
     out: *std.ArrayList(FileInfo),
 ) !void {
-    var iterator = try dir.iterate();
+    var iterator = dir.iterate();
 
     while (try iterator.next()) |entry| {
         if (entry.kind == .sym_link) {
@@ -398,7 +398,7 @@ fn discoverForDirectory(
                 .path = abs_dup,
                 .rel_path = rel_dup,
                 .language = lang,
-                .size = stat.size,
+                .size = @intCast(stat.size),
             });
         }
     }
@@ -412,24 +412,24 @@ pub fn discoverFiles(
     const root_abs = try std.fs.cwd().realpathAlloc(allocator, repo_path);
     defer allocator.free(root_abs);
 
-    var ignore_rules = std.ArrayList(IgnoreRule).init(allocator);
+    var ignore_rules = std.ArrayList(IgnoreRule).empty;
     defer {
         for (ignore_rules.items) |item| {
             allocator.free(item.pattern);
         }
-        ignore_rules.deinit();
+        ignore_rules.deinit(allocator);
     }
 
     // Repository root ignore files are supported, including filename-based overrides.
     try loadIgnoreFile(allocator, root_abs, ".gitignore", &ignore_rules);
     try loadIgnoreFile(allocator, root_abs, ".cbmignore", &ignore_rules);
 
-    var out = std.ArrayList(FileInfo).init(allocator);
+    var out = std.ArrayList(FileInfo).empty;
     var root = try std.fs.openDirAbsolute(root_abs, .{ .iterate = true, .no_follow = true });
     defer root.close();
 
     try discoverForDirectory(allocator, root, root_abs, "", opts, ignore_rules.items, &out);
-    return try out.toOwnedSlice();
+    return try out.toOwnedSlice(allocator);
 }
 
 pub fn languageForExtension(ext: []const u8) ?Language {

@@ -191,7 +191,25 @@ const McpRequest = struct {
 
 This eliminates ~500 lines of manual JSON string building in mcp.c.
 
-### 4.6 Build System
+### 4.6 Interoperability Readiness Slice
+
+For the first alignment milestone, we scope parity checks to:
+
+- Tool surface: `index_repository`, `search_graph`, `query_graph`, `trace_call_path`, `list_projects`.
+- Language extraction slice: Rust, Zig, Python, JavaScript/TypeScript.
+- Graph comparison scope: `nodes`, `edges`, and traversal around `CALLS`/`CONTAINS`/`IMPLEMENTS`/`INHERITS`.
+- Deterministic behavior:
+  - Stable ordering in query/list responses.
+  - Path normalization to `/` in serialized output.
+  - No requirement for internal IDs or deferred feature-specific metadata.
+
+### Exclusions in scope
+
+- **CUT features**: do not block alignment until promoted.
+- **DEFER features**: do not block alignment.
+- `watcher` auto-index behavior is deferred for the initial readiness gate.
+
+### 4.7 Build System
 
 ```zig
 // build.zig sketch

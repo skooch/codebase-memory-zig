@@ -6,6 +6,25 @@ Status key: **STUB** (type signatures exist, no implementation), **MISSING** (no
 
 ---
 
+## Readiness Alignment Scope (Current Gate)
+
+For the first interoperability pass, we evaluate only this subset:
+
+- `index_repository`
+- `search_graph`
+- `query_graph`
+- `trace_call_path`
+- `list_projects`
+
+Comparator assumptions for this scope:
+
+- Path values are normalized to `/`.
+- Tool output order is treated as deterministic (name/file/qualified_name ordering where applicable).
+- Internal IDs, watcher callbacks, and deferred/missing modules are ignored unless explicitly promoted.
+- CUT and DEFER sections in the larger plan are out-of-scope for mismatch scoring during this gate.
+
+---
+
 ## MCP Server (`mcp.zig` vs `mcp/mcp.c`)
 
 The Zig stub has the 14 tool names as an enum but zero handler implementations.

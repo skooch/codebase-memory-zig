@@ -24,7 +24,7 @@ pub const BufferEdge = struct {
     properties_json: []const u8 = "{}",
 };
 
-const GraphBufferError = error{
+pub const GraphBufferError = error{
     OutOfMemory,
     DuplicateEdge,
 };

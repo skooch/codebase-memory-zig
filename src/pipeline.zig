@@ -1,16 +1,14 @@
-// pipeline.zig — Indexing pipeline orchestrator.
+// pipeline — Indexing pipeline orchestrator.
 //
-// Orchestrates multi-pass indexing of a repository:
-//   1. Discovery: walk filesystem, detect languages
-//   2. Extraction: tree-sitter AST -> definition nodes
-//   3. Resolution: call/usage/semantic edges via registry
-//   4. Post-passes: git history, similarity, routes, tests
+// Orchestrates discovery, extraction, symbol registry, resolution passes, and
+// persistence to the store.
 
 const std = @import("std");
 const discover = @import("discover.zig");
 const GraphBuffer = @import("graph_buffer.zig").GraphBuffer;
 const extractor = @import("extractor.zig");
-const extractFile = extractor.extractFile;
+const Registry = @import("registry.zig").Registry;
+const store = @import("store.zig");
 
 pub const IndexMode = enum {
     full, // read everything, build from scratch
@@ -20,9 +18,8 @@ pub const IndexMode = enum {
 pub const PipelineError = error{
     Cancelled,
     DiscoveryFailed,
-};
-
-pub const PassFn = *const fn (*PipelineContext) anyerror!void;
+    OutOfMemory,
+} || store.StoreError;
 
 pub const PipelineContext = struct {
     project_name: []const u8,
@@ -53,10 +50,8 @@ pub const Pipeline = struct {
         _ = self;
     }
 
-    pub fn run(self: *Pipeline) PipelineError!void {
-        if (self.cancelled.load(.acquire)) {
-            return PipelineError.Cancelled;
-        }
+    pub fn run(self: *Pipeline, db: *store.Store) PipelineError!void {
+        if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
 
         const discovered_files = discover.discoverFiles(
             self.allocator,
@@ -68,73 +63,104 @@ pub const Pipeline = struct {
         };
         defer self.freeDiscoveredFiles(discovered_files);
 
-        if (self.cancelled.load(.acquire)) {
-            return PipelineError.Cancelled;
-        }
-
         if (discovered_files.len == 0) {
             std.log.info("pipeline discovered 0 indexable files in {s}", .{self.repo_path});
             return;
         }
 
+        try db.deleteProject(self.project_name);
+        try db.upsertProject(self.project_name, self.repo_path);
+
         var gb = GraphBuffer.init(self.allocator, self.project_name);
         defer gb.deinit();
-        var extractions = std.ArrayList(extractor.FileExtraction).init(self.allocator);
+
+        var reg = Registry.init(self.allocator);
+        defer reg.deinit();
+
+        var extractions = std.ArrayList(extractor.FileExtraction).empty;
         defer {
             for (extractions.items) |extraction| {
                 extractor.freeFileExtraction(self.allocator, extraction);
             }
-            extractions.deinit();
+            extractions.deinit(self.allocator);
         }
 
         for (discovered_files) |file| {
+            if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
+
             const extraction = extractFile(self.allocator, self.project_name, file, &gb) catch |err| {
                 std.log.warn("extractor failed for {s}: {}", .{ file.rel_path, err });
                 continue;
             };
 
-            const symbol_count = extraction.symbols.len;
-            const unresolved_call_count = extraction.unresolved_calls.len;
-            const unresolved_import_count = extraction.unresolved_imports.len;
-            const semantic_hint_count = extraction.semantic_hints.len;
+            for (extraction.symbols) |sym| {
+                try reg.add(
+                    sym.name,
+                    sym.qualified_name,
+                    sym.label,
+                    sym.file_path,
+                );
+            }
+            for (extraction.unresolved_imports) |imp| {
+                const alias = normalizeImportAlias(imp.import_name);
+                if (alias.len == 0) continue;
+                try reg.addImportBinding(imp.importer_id, alias, imp.import_name);
+            }
 
+            const unresolved_import_count = extraction.unresolved_imports.len;
+            const unresolved_call_count = extraction.unresolved_calls.len;
+            const semantic_hint_count = extraction.semantic_hints.len;
             std.log.debug(
                 "file {s} extracted {d} symbols, {d} imports, {d} calls, {d} semantic hints",
                 .{
                     extraction.file_path,
-                    symbol_count,
+                    extraction.symbols.len,
                     unresolved_import_count,
                     unresolved_call_count,
                     semantic_hint_count,
                 },
             );
-            try extractions.append(extraction);
 
-            if (self.cancelled.load(.acquire)) {
-                return PipelineError.Cancelled;
+            try extractions.append(self.allocator, extraction);
+        }
+
+        for (extractions.items) |extraction| {
+            if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
+            for (extraction.unresolved_imports) |imp| {
+                const importer_node = gb.findNodeById(imp.importer_id) orelse continue;
+                if (reg.resolve(imp.import_name, imp.importer_id, importer_node.file_path, null)) |res| {
+                    if (gb.findNodeByQualifiedName(res.qualified_name)) |target| {
+                        _ = gb.insertEdge(imp.importer_id, target.id, "IMPORTS") catch {};
+                    }
+                }
+            }
+
+            for (extraction.unresolved_calls) |call| {
+                const caller_node = gb.findNodeById(call.caller_id) orelse continue;
+                if (reg.resolve(call.callee_name, call.caller_id, caller_node.file_path, null)) |res| {
+                    if (gb.findNodeByQualifiedName(res.qualified_name)) |target| {
+                        if (target.id != call.caller_id) {
+                            _ = gb.insertEdge(call.caller_id, target.id, "CALLS") catch {};
+                        }
+                    }
+                }
+            }
+
+            for (extraction.semantic_hints) |hint| {
+                const child_node = gb.findNodeById(hint.child_id) orelse continue;
+                if (reg.resolve(hint.parent_name, hint.child_id, child_node.file_path, null)) |res| {
+                    if (gb.findNodeByQualifiedName(res.qualified_name)) |target| {
+                        _ = gb.insertEdge(hint.child_id, target.id, hint.relation) catch {};
+                    }
+                }
             }
         }
 
-        std.log.info(
-            "pipeline discovered {} files for {s} ({s})",
-            .{ discovered_files.len, self.repo_path, self.project_name },
-        );
+        try gb.dumpToStore(db);
         std.log.info(
             "pipeline graph buffer: {} nodes, {} edges",
             .{ gb.nodeCount(), gb.edgeCount() },
         );
-        std.log.debug(
-            "pipeline retained extraction models for {} files",
-            .{extractions.items.len},
-        );
-
-        // TODO: implement extraction and storage phases.
-        // - pass_definitions
-        // - pass_calls
-        // - pass_usages
-        // - pass_semantic
-        // - pass_similarity
-        // - pass_gitdiff
     }
 
     pub fn cancel(self: *Pipeline) void {
@@ -149,3 +175,33 @@ pub const Pipeline = struct {
         self.allocator.free(discovered_files);
     }
 };
+
+fn extractFile(
+    allocator: std.mem.Allocator,
+    project_name: []const u8,
+    file: discover.FileInfo,
+    gb: *GraphBuffer,
+) !extractor.FileExtraction {
+    return try extractor.extractFile(allocator, project_name, file, gb);
+}
+
+fn normalizeImportAlias(raw: []const u8) []const u8 {
+    const trimmed = std.mem.trim(u8, raw, " \t\"'");
+    if (trimmed.len == 0) return "";
+    if (std.mem.lastIndexOfAny(u8, trimmed, "/\\")) |idx| {
+        return trimmed[idx + 1 ..];
+    }
+    if (std.mem.lastIndexOf(u8, trimmed, ".")) |dot| {
+        if (dot + 1 < trimmed.len) return trimmed[dot + 1 ..];
+    }
+    return trimmed;
+}
+
+test "pipeline run handles simple extraction pipeline" {
+    var s = try store.Store.openMemory(std.testing.allocator);
+    defer s.deinit();
+
+    var p = Pipeline.init(std.testing.allocator, "/tmp", .full);
+    defer p.deinit();
+    try p.run(&s);
+}

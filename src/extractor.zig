@@ -63,10 +63,10 @@ pub fn extractFile(
     const file_name = std.fs.path.basename(rel);
     const stem = std.fs.path.stem(file_name);
 
-    var symbols = std.ArrayList(ExtractedSymbol).init(allocator);
-    var unresolved_calls = std.ArrayList(UnresolvedCall).init(allocator);
-    var unresolved_imports = std.ArrayList(UnresolvedImport).init(allocator);
-    var semantic_hints = std.ArrayList(SemanticHint).init(allocator);
+    var symbols = std.ArrayList(ExtractedSymbol).empty;
+    var unresolved_calls = std.ArrayList(UnresolvedCall).empty;
+    var unresolved_imports = std.ArrayList(UnresolvedImport).empty;
+    var semantic_hints = std.ArrayList(SemanticHint).empty;
     errdefer freePendingExtractedSymbols(allocator, &symbols);
     errdefer freePendingUnresolvedCalls(allocator, &unresolved_calls);
     errdefer freePendingUnresolvedImports(allocator, &unresolved_imports);
@@ -181,7 +181,7 @@ pub fn extractFile(
                         return err;
                     },
                 };
-                try symbols.append(.{
+                try symbols.append(allocator, .{
                     .id = symbol_id,
                     .label = try allocator.dupe(u8, sym.label),
                     .name = try allocator.dupe(u8, sym.name),
@@ -204,7 +204,7 @@ pub fn extractFile(
 
         if (parseSemanticHint(file.language, clean_line)) |hint| {
             if (current_scope_id != 0) {
-                try semantic_hints.append(.{
+                try semantic_hints.append(allocator, .{
                     .child_id = current_scope_id,
                     .parent_name = try allocator.dupe(u8, hint.parent_name),
                     .file_path = try allocator.dupe(u8, rel),
@@ -215,14 +215,13 @@ pub fn extractFile(
 
         const callee_names = collectCalls(allocator, clean_line, file.language) catch |err| switch (err) {
             error.OutOfMemory => return err,
-            else => null,
         };
         if (callee_names) |names| {
             defer freeStringSlices(allocator, names);
             for (names) |callee| {
                 if (callee.len == 0) continue;
                 const caller_id = if (current_scope_id != 0) current_scope_id else module_id;
-                try unresolved_calls.append(.{
+                try unresolved_calls.append(allocator, .{
                     .caller_id = caller_id,
                     .callee_name = try allocator.dupe(u8, callee),
                     .file_path = try allocator.dupe(u8, rel),
@@ -278,7 +277,7 @@ fn parsePythonImports(
         if (import_kw != null) {
             const module = std.mem.trim(u8, after_from[0..import_kw.?], " \t");
             if (module.len > 0) {
-                try out.append(.{
+                try out.append(allocator, .{
                     .importer_id = importer_id,
                     .import_name = try allocator.dupe(u8, module),
                     .file_path = try allocator.dupe(u8, file_path),
@@ -287,7 +286,7 @@ fn parsePythonImports(
         }
     } else if (import_pos != null) {
         const after_import = std.mem.trim(u8, trimmed[import_pos.? + "import ".len ..], " \t");
-        var modules = std.mem.split(u8, after_import, ",");
+        var modules = std.mem.splitSequence(u8, after_import, ",");
         while (modules.next()) |raw| {
             const target = std.mem.trim(u8, raw, " \t");
             if (target.len == 0) continue;
@@ -296,7 +295,7 @@ fn parsePythonImports(
             else
                 target;
             if (name.len == 0) continue;
-            try out.append(.{
+            try out.append(allocator, .{
                 .importer_id = importer_id,
                 .import_name = try allocator.dupe(u8, name),
                 .file_path = try allocator.dupe(u8, file_path),
@@ -319,7 +318,7 @@ fn parseJsImports(
         const from_pos = std.mem.indexOf(u8, tail, " from ");
         if (from_pos != null) {
             if (extractQuotedString(tail[from_pos.? + " from ".len ..])) |spec| {
-                try out.append(.{
+                try out.append(allocator, .{
                     .importer_id = importer_id,
                     .import_name = try allocator.dupe(u8, spec),
                     .file_path = try allocator.dupe(u8, file_path),
@@ -329,7 +328,7 @@ fn parseJsImports(
         }
         if (std.mem.startsWith(u8, tail, "require(")) {
             if (extractQuotedString(tail["require(".len..])) |spec| {
-                try out.append(.{
+                try out.append(allocator, .{
                     .importer_id = importer_id,
                     .import_name = try allocator.dupe(u8, spec),
                     .file_path = try allocator.dupe(u8, file_path),
@@ -343,7 +342,7 @@ fn parseJsImports(
     if (std.mem.indexOf(u8, trimmed, "require(")) |req_pos| {
         const after = trimmed[req_pos + "require(".len ..];
         if (extractQuotedString(after)) |spec| {
-            try out.append(.{
+            try out.append(allocator, .{
                 .importer_id = importer_id,
                 .import_name = try allocator.dupe(u8, spec),
                 .file_path = try allocator.dupe(u8, file_path),
@@ -372,7 +371,7 @@ fn parseRustImports(
     const path = normalizeUsePath(path_raw);
     if (path.len == 0) return;
 
-    try out.append(.{
+            try out.append(allocator, .{
         .importer_id = importer_id,
         .import_name = try allocator.dupe(u8, path),
         .file_path = try allocator.dupe(u8, file_path),
@@ -390,7 +389,7 @@ fn parseZigImports(
     const after = line[import_pos + "@import(".len ..];
     const spec = extractQuotedString(after) orelse return;
     if (spec.len == 0) return;
-    try out.append(.{
+            try out.append(allocator, .{
         .importer_id = importer_id,
         .import_name = try allocator.dupe(u8, spec),
         .file_path = try allocator.dupe(u8, file_path),
@@ -692,16 +691,16 @@ fn finishExtraction(
 ) !FileExtraction {
     errdefer allocator.free(file_path);
 
-    const owned_symbols = try symbols.toOwnedSlice();
+    const owned_symbols = try symbols.toOwnedSlice(allocator);
     errdefer freeExtractedSymbols(allocator, owned_symbols);
 
-    const owned_calls = try unresolved_calls.toOwnedSlice();
+    const owned_calls = try unresolved_calls.toOwnedSlice(allocator);
     errdefer freeUnresolvedCalls(allocator, owned_calls);
 
-    const owned_imports = try unresolved_imports.toOwnedSlice();
+    const owned_imports = try unresolved_imports.toOwnedSlice(allocator);
     errdefer freeUnresolvedImports(allocator, owned_imports);
 
-    const owned_hints = try semantic_hints.toOwnedSlice();
+    const owned_hints = try semantic_hints.toOwnedSlice(allocator);
     errdefer freeSemanticHints(allocator, owned_hints);
 
     return .{
@@ -846,7 +845,7 @@ fn freePendingExtractedSymbols(allocator: std.mem.Allocator, symbols: *std.Array
         allocator.free(s.qualified_name);
         allocator.free(s.file_path);
     }
-    symbols.deinit();
+    symbols.deinit(allocator);
 }
 
 fn freePendingUnresolvedCalls(allocator: std.mem.Allocator, calls: *std.ArrayList(UnresolvedCall)) void {
@@ -854,7 +853,7 @@ fn freePendingUnresolvedCalls(allocator: std.mem.Allocator, calls: *std.ArrayLis
         allocator.free(c.callee_name);
         allocator.free(c.file_path);
     }
-    calls.deinit();
+    calls.deinit(allocator);
 }
 
 fn freePendingUnresolvedImports(allocator: std.mem.Allocator, imports: *std.ArrayList(UnresolvedImport)) void {
@@ -862,7 +861,7 @@ fn freePendingUnresolvedImports(allocator: std.mem.Allocator, imports: *std.Arra
         allocator.free(i.import_name);
         allocator.free(i.file_path);
     }
-    imports.deinit();
+    imports.deinit(allocator);
 }
 
 fn freePendingSemanticHints(allocator: std.mem.Allocator, hints: *std.ArrayList(SemanticHint)) void {
@@ -871,7 +870,7 @@ fn freePendingSemanticHints(allocator: std.mem.Allocator, hints: *std.ArrayList(
         allocator.free(h.file_path);
         allocator.free(h.relation);
     }
-    hints.deinit();
+    hints.deinit(allocator);
 }
 
 pub fn freeExtractedSymbols(allocator: std.mem.Allocator, symbols: []ExtractedSymbol) void {
