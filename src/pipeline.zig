@@ -9,7 +9,8 @@
 const std = @import("std");
 const discover = @import("discover.zig");
 const GraphBuffer = @import("graph_buffer.zig").GraphBuffer;
-const extractFile = @import("extractor.zig").extractFile;
+const extractor = @import("extractor.zig");
+const extractFile = extractor.extractFile;
 
 pub const IndexMode = enum {
     full, // read everything, build from scratch
@@ -80,9 +81,27 @@ pub const Pipeline = struct {
         defer gb.deinit();
 
         for (discovered_files) |file| {
-            extractFile(self.allocator, self.project_name, file, &gb) catch |err| {
+            const extraction = extractFile(self.allocator, self.project_name, file, &gb) catch |err| {
                 std.log.warn("extractor failed for {s}: {}", .{ file.rel_path, err });
+                continue;
             };
+            const symbol_count = extraction.symbols.len;
+            const unresolved_call_count = extraction.unresolved_calls.len;
+            const unresolved_import_count = extraction.unresolved_imports.len;
+            const semantic_hint_count = extraction.semantic_hints.len;
+
+            std.log.debug(
+                "file {s} extracted {d} symbols, {d} imports, {d} calls, {d} semantic hints",
+                .{
+                    extraction.file_path,
+                    symbol_count,
+                    unresolved_import_count,
+                    unresolved_call_count,
+                    semantic_hint_count,
+                },
+            );
+            extractor.freeFileExtraction(self.allocator, extraction);
+
             if (self.cancelled.load(.acquire)) {
                 return PipelineError.Cancelled;
             }
