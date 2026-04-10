@@ -16,9 +16,9 @@
   - `docs/gap-analysis.md`
 
 ### Next Phase
-- **Status:** in progress
+- **Status:** pending
 - Focus:
-  - Phase 2 is now underway, starting with shared breadth-first graph traversal in `Store` so later tools can reuse durable traversal/query behavior instead of keeping BFS logic inside MCP handlers.
+  - Phase 4 will raise indexing fidelity now that the low-risk MCP surface is available, starting with graph-quality gaps such as broader FQN handling, stronger resolution, and richer semantic/usage edges.
 
 ### Phase 2: Core Graph and Query Substrate
 - **Status:** in progress
@@ -28,7 +28,22 @@
   - Selected shared breadth-first edge traversal as the first Phase 2 chunk because it directly supports `trace_call_path` today and future connected-node, architecture, and analysis work later in the plan.
   - Added a shared breadth-first traversal API in `src/store.zig`, refactored `trace_call_path` in `src/mcp.zig` to use it, and added regression coverage for outbound, inbound, and bidirectional traversal behavior.
   - Verified the chunk with `zig build test` and `zig build`.
+  - Added shared project-status, suffix lookup, node cleanup, and node-degree helpers in `src/store.zig` so later MCP handlers could stay thin and reuse store-layer behavior.
+  - Verified the additional substrate helpers with `zig build test`.
 - Files modified:
+  - `docs/plans/in-progress/post-readiness-zig-port-execution-progress.md`
+  - `src/store.zig`
+  - `src/mcp.zig`
+
+### Phase 3: Low-Risk MCP Surface
+- **Status:** complete
+- Actions:
+  - Exposed `get_graph_schema`, `delete_project`, and `index_status` through `src/mcp.zig` using the shared store helpers rather than MCP-local query logic.
+  - Implemented `get_code_snippet` with exact qualified-name lookup, suffix fallback, ambiguity suggestions, safe file-path containment checks, source line reads, degree counts, property enrichment, and optional neighbor names.
+  - Deferred ADR work to a later productization phase rather than stretching this phase beyond the low-risk public-surface goal.
+  - Added direct regression coverage for the newly exposed MCP tools and re-ran `zig build test`.
+- Files modified:
+  - `docs/plans/in-progress/post-readiness-zig-port-execution-plan.md`
   - `docs/plans/in-progress/post-readiness-zig-port-execution-progress.md`
   - `src/store.zig`
   - `src/mcp.zig`

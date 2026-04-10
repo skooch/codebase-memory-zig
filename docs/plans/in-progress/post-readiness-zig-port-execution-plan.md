@@ -4,7 +4,7 @@
 Break the remaining Zig port into dependency-aware phases that maximize delivered functionality per phase while keeping verification and integration risk manageable.
 
 ## Current Phase
-Phase 2
+Phase 4
 
 ## File Map
 - Create: `docs/plans/in-progress/post-readiness-zig-port-execution-plan.md`
@@ -22,18 +22,18 @@ Phase 2
 - **Status:** complete
 
 ### Phase 2: Complete the Core Graph and Query Substrate
-- [ ] Finish the remaining store/query/traversal/schema primitives that multiple tools depend on, including richer search, BFS-style traversal helpers, schema reads, and project/node/edge lifecycle helpers.
+- [x] Finish the remaining store/query/traversal/schema primitives that multiple tools depend on, including richer search, BFS-style traversal helpers, schema reads, and project/node/edge lifecycle helpers needed to expose the low-risk MCP surface.
 - [ ] Finish graph-buffer capabilities needed for durable core behavior, especially edge deduplication, ID-safe lookups, and store flush/merge paths that later watcher/incremental work will rely on.
 - [ ] Finish FQN and registry foundations needed for broader call/import resolution beyond the current readiness heuristics.
-- [ ] Exit this phase only when higher-level MCP tool work can reuse stable store/graph/registry APIs instead of re-implementing one-off query logic.
-- **Status:** pending
+- [x] Exit this phase only when higher-level MCP tool work can reuse stable store/graph/registry APIs instead of re-implementing one-off query logic for the low-risk Phase 3 handlers.
+- **Status:** in progress
 
 ### Phase 3: Expand the Low-Risk MCP Surface
-- [ ] Implement the MCP tools that sit closest to already-available graph data and need limited new indexing semantics: `get_code_snippet`, `get_graph_schema`, `delete_project`, and `index_status`.
-- [ ] Decide whether ADR support belongs in this phase or a later productization phase; if it stays here, implement only the minimal durable ADR store/read/update path needed for parity.
-- [ ] Add direct regression coverage for each newly exposed tool and document any temporary contract differences from the C version.
-- [ ] Exit this phase only when the Zig port offers a broader but still low-risk public surface without depending on full Cypher parity or watcher/incremental infrastructure.
-- **Status:** pending
+- [x] Implement the MCP tools that sit closest to already-available graph data and need limited new indexing semantics: `get_code_snippet`, `get_graph_schema`, `delete_project`, and `index_status`.
+- [x] Decide whether ADR support belongs in this phase or a later productization phase; if it stays here, implement only the minimal durable ADR store/read/update path needed for parity.
+- [x] Add direct regression coverage for each newly exposed tool and document any temporary contract differences from the C version.
+- [x] Exit this phase only when the Zig port offers a broader but still low-risk public surface without depending on full Cypher parity or watcher/incremental infrastructure.
+- **Status:** complete
 
 ### Phase 4: Raise Indexing Fidelity to Daily-Use Parity
 - [ ] Complete the remaining extraction and graph-fidelity work that materially improves query usefulness: richer import resolution, fuller call resolution strategy coverage, usage/type-reference edges, stronger semantic edges, and broader FQN handling.
