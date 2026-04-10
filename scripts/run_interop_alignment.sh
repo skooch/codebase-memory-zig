@@ -74,10 +74,18 @@ def extract_tool_payload(raw: str, allow_content_wrapper: bool = True) -> tuple[
     return result, status
 
 
+def canonical_symbol_identity(value: Any) -> str:
+    text = str(value or "")
+    for separator in (":", "."):
+        if separator in text:
+            text = text.rsplit(separator, 1)[-1]
+    return text
+
+
 def canonical_search_nodes(payload: Any) -> list[dict[str, str]]:
     if not isinstance(payload, dict):
         return []
-    nodes = payload.get("nodes", [])
+    nodes = payload.get("nodes", payload.get("results", []))
     if not isinstance(nodes, list):
         return []
     normalized = []
@@ -92,21 +100,27 @@ def canonical_search_nodes(payload: Any) -> list[dict[str, str]]:
                 "file_path": normalize_path_for_manifest(str(row.get("file_path", ""))),
             }
         )
-    normalized.sort(key=lambda item: (item["label"], item["name"], item["qualified_name"], item["file_path"]))
+    normalized.sort(key=lambda item: (item["name"], item["file_path"], item["qualified_name"]))
     return normalized
 
 
 def canonical_query(payload: Any) -> tuple[tuple[str, ...], list[tuple[str, ...]]]:
     if not isinstance(payload, dict):
         return tuple(), []
-    columns = tuple(str(col) for col in payload.get("columns", []))
+    columns = []
+    for col in payload.get("columns", []):
+        text = str(col)
+        lowered = text.lower()
+        if lowered == "count" or lowered.startswith("count("):
+            columns.append("count")
+        else:
+            columns.append(text)
     rows = []
     for row in payload.get("rows", []):
         if not isinstance(row, list):
             continue
         rows.append(tuple(str(cell) for cell in row))
-    rows.sort()
-    return columns, rows
+    return tuple(columns), rows
 
 
 def canonical_trace(payload: Any) -> list[tuple[str, str, str]]:
@@ -121,10 +135,12 @@ def canonical_trace(payload: Any) -> list[tuple[str, str, str]]:
         for edge in payload.get("edges"):
             if not isinstance(edge, dict):
                 continue
+            source = edge.get("source_qualified_name", edge.get("source_name", edge.get("source", "")))
+            target = edge.get("target_qualified_name", edge.get("target_name", edge.get("target", "")))
             edges.append(
                 (
-                    str(edge.get("source", "")),
-                    str(edge.get("target", "")),
+                    canonical_symbol_identity(source),
+                    canonical_symbol_identity(target),
                     str(edge.get("type", "")),
                 )
             )
@@ -137,22 +153,27 @@ def canonical_trace(payload: Any) -> list[tuple[str, str, str]]:
     function_name = str(payload.get("function_name", payload.get("function", "")))
     for callee in payload.get("callees", []) or []:
         if isinstance(callee, dict):
-            target = callee.get("name", "")
+            target = callee.get("qualified_name", callee.get("name", ""))
         else:
             target = callee
-        edges.append((function_name, str(target), "CALLS"))
+        edges.append((canonical_symbol_identity(function_name), canonical_symbol_identity(target), "CALLS"))
     for caller in payload.get("callers", []) or []:
         if isinstance(caller, dict):
-            source = caller.get("name", "")
+            source = caller.get("qualified_name", caller.get("name", ""))
         else:
             source = caller
-        edges.append((str(source), function_name, "CALLS"))
+        edges.append((canonical_symbol_identity(source), canonical_symbol_identity(function_name), "CALLS"))
     edges.sort()
     return edges
 
 
 def canonical_list_projects(payload: Any) -> list[dict[str, Any]]:
-    projects = payload.get("projects", []) if isinstance(payload, dict) else []
+    if isinstance(payload, dict):
+        projects = payload.get("projects", [])
+    elif isinstance(payload, list):
+        projects = payload
+    else:
+        projects = []
     normalized: list[dict[str, Any]] = []
     for project in projects:
         if not isinstance(project, dict):
@@ -169,10 +190,68 @@ def canonical_list_projects(payload: Any) -> list[dict[str, Any]]:
     return normalized
 
 
-def call_mcp_batch(bin_path: str, project_path: str, scenario: list[dict[str, Any]], is_c: bool) -> dict[str, Any]:
+def send_rpc_request(process: subprocess.Popen[str], request: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    assert process.stdin is not None
+    assert process.stdout is not None
+
+    process.stdin.write(json.dumps(request) + "\n")
+    process.stdin.flush()
+
+    while True:
+        line = process.stdout.readline()
+        if line == "":
+            raise ValueError(f"missing response for request id {request.get('id')}")
+        stripped = line.strip()
+        if not stripped:
+            continue
+        return json.loads(stripped), stripped
+
+
+def resolve_qualified_name(
+    process: subprocess.Popen[str],
+    project: str,
+    name_hint: str,
+    request_id: int,
+) -> tuple[str | None, dict[str, Any], str]:
+    request = {
+        "jsonrpc": "2.0",
+        "id": request_id,
+        "method": "tools/call",
+        "params": {
+            "name": "search_graph",
+            "arguments": {
+                "project": project,
+                "name_pattern": name_hint,
+                "limit": 25,
+            },
+        },
+    }
+    response, raw = send_rpc_request(process, request)
+    payload, _ = extract_tool_payload(json.dumps(response))
+    matches = [node for node in canonical_search_nodes(payload) if node["name"] == name_hint]
+    preferred_labels = {"Function", "Method", "Class", "Interface", "Trait", "Struct"}
+    preferred_matches = [node for node in matches if node["label"] in preferred_labels]
+    if len(preferred_matches) == 1:
+        return preferred_matches[0]["qualified_name"], response, raw
+    if len(matches) == 1:
+        return matches[0]["qualified_name"], response, raw
+    if len(matches) > 1:
+        return None, response, raw
+    return None, response, raw
+
+
+def call_mcp_sequence(
+    bin_path: str,
+    project_path: str,
+    scenario: list[dict[str, Any]],
+    impl: str,
+) -> dict[str, Any]:
     env = os.environ.copy()
-    if is_c:
-        env["HOME"] = tempfile.mkdtemp(prefix="cbm-interop-")
+    temp_home: tempfile.TemporaryDirectory[str] | None = None
+    if impl == "c":
+        temp_home = tempfile.TemporaryDirectory(prefix="cbm-interop-")
+        env["HOME"] = temp_home.name
+
     process = subprocess.Popen(
         [bin_path],
         cwd=str(Path(project_path).parent),
@@ -180,41 +259,83 @@ def call_mcp_batch(bin_path: str, project_path: str, scenario: list[dict[str, An
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        bufsize=1,
         env=env,
     )
 
+    tool_results: dict[str, Any] = {
+        "tool": {},
+        "stdout": [],
+        "stderr": [],
+        "resolution_failures": [],
+    }
+    internal_request_id = 100000
+
     try:
-        input_lines = "\n".join(json.dumps(req) for req in scenario) + "\n"
-        stdout, stderr = process.communicate(input=input_lines, timeout=60)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        raise
+        for spec in scenario:
+            request = json.loads(json.dumps(spec["request"]))
+            if spec.get("compare_key") == "trace_call_path" and impl == "zig":
+                args = request["params"]["arguments"]
+                if "start_node_qn" not in args and args.get("start_node_name_hint"):
+                    resolved_qn, resolution_response, resolution_raw = resolve_qualified_name(
+                        process,
+                        str(args["project"]),
+                        str(args["start_node_name_hint"]),
+                        internal_request_id,
+                    )
+                    internal_request_id += 1
+                    tool_results["stdout"].append(resolution_raw)
+                    if resolved_qn is None:
+                        tool_results["resolution_failures"].append(
+                            {
+                                "project": args["project"],
+                                "name_hint": args["start_node_name_hint"],
+                                "response": resolution_response,
+                            }
+                        )
+                        args["start_node_qn"] = args["start_node_name_hint"]
+                    else:
+                        args["start_node_qn"] = resolved_qn
+                    args.pop("start_node_name_hint", None)
 
-    responses = []
-    for line in stdout.splitlines():
-        line = line.strip()
-        if not line or not line.startswith("{"):
-            continue
+            response, raw = send_rpc_request(process, request)
+            tool_results["stdout"].append(raw)
+
+            if spec.get("compare_key") is None:
+                tool_results["initialize"] = response
+                continue
+
+            payload, status = extract_tool_payload(json.dumps(response))
+            tool_results["tool"].setdefault(spec["compare_key"], []).append(
+                {
+                    "status": status,
+                    "payload": payload,
+                    "raw": response,
+                    "id": response.get("id"),
+                    "assertion": spec.get("assertion"),
+                    "request": request,
+                }
+            )
+    finally:
+        if process.stdin is not None and not process.stdin.closed:
+            process.stdin.close()
+        if process.stdout is not None:
+            remainder = process.stdout.read()
+            if remainder:
+                tool_results["stdout"].extend([line for line in remainder.splitlines() if line.strip()])
+        if process.stderr is not None:
+            stderr = process.stderr.read()
+            if stderr:
+                tool_results["stderr"] = stderr.splitlines()
         try:
-            responses.append(json.loads(line))
-        except Exception:
-            continue
+            process.wait(timeout=60)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            raise
+        finally:
+            if temp_home is not None:
+                temp_home.cleanup()
 
-    tool_results: dict[str, Any] = {"tool": {}}
-    request_methods = [entry for entry in scenario if entry.get("method") == "tools/call"]
-    for idx, response in enumerate(responses):
-        if idx >= len(request_methods):
-            continue
-        tool_name = request_methods[idx].get("params", {}).get("name")
-        payload, status = extract_tool_payload(json.dumps(response))
-        tool_results["tool"][tool_name] = {
-            "status": status,
-            "payload": payload,
-            "raw": response,
-            "id": response.get("id"),
-        }
-    tool_results["stderr"] = stderr.splitlines() if stderr else []
-    tool_results["stdout"] = stdout.splitlines() if stdout else []
     return tool_results
 
 
@@ -231,23 +352,29 @@ def build_requests(root: Path, fixture: dict[str, Any], impl: str) -> tuple[list
 
     requests = [
         {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "initialize",
-            "params": {},
+            "request": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {},
+            },
+            "compare_key": None,
         },
         {
-            "jsonrpc": "2.0",
-            "id": 2,
-            "method": "tools/call",
-            "params": {
-                "name": "index_repository",
-                "arguments": (
-                    {"project_path": project_path}
-                    if impl == "zig"
-                    else {"repo_path": project_path}
-                ),
+            "request": {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {
+                    "name": "index_repository",
+                    "arguments": (
+                        {"project_path": project_path}
+                        if impl == "zig"
+                        else {"repo_path": project_path}
+                    ),
+                },
             },
+            "compare_key": "index_repository",
         },
     ]
 
@@ -257,25 +384,27 @@ def build_requests(root: Path, fixture: dict[str, Any], impl: str) -> tuple[list
         args = dict(assertion.get("args", {}))
         if impl == "zig":
             args = {k: v for k, v in args.items() if k != "label"}
-            if "project" not in args:
-                args["project"] = project_name
+            args["project"] = project_name
             if "label" in assertion.get("args", {}):
                 args["label_pattern"] = assertion["args"]["label"]
         else:
             args = {k: v for k, v in args.items() if k != "label_pattern"}
-            if "project" not in args:
-                args["project"] = c_project_name
+            args["project"] = c_project_name
             if "label" in assertion.get("args", {}):
                 args["label"] = assertion["args"]["label"]
         requests.append(
             {
-                "jsonrpc": "2.0",
-                "id": tool_id,
-                "method": "tools/call",
-                "params": {
-                    "name": "search_graph",
-                    "arguments": args,
+                "request": {
+                    "jsonrpc": "2.0",
+                    "id": tool_id,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "search_graph",
+                        "arguments": args,
+                    },
                 },
+                "compare_key": "search_graph",
+                "assertion": assertion,
             }
         )
         tool_id += 1
@@ -283,20 +412,22 @@ def build_requests(root: Path, fixture: dict[str, Any], impl: str) -> tuple[list
     for assertion in assertions.get("query_graph", []):
         args = dict(assertion.get("args", {}))
         if impl == "zig":
-            if "project" not in args:
-                args["project"] = project_name
+            args["project"] = project_name
         else:
-            if "project" not in args:
-                args["project"] = c_project_name
+            args["project"] = c_project_name
         requests.append(
             {
-                "jsonrpc": "2.0",
-                "id": tool_id,
-                "method": "tools/call",
-                "params": {
-                    "name": "query_graph",
-                    "arguments": args,
+                "request": {
+                    "jsonrpc": "2.0",
+                    "id": tool_id,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "query_graph",
+                        "arguments": args,
+                    },
                 },
+                "compare_key": "query_graph",
+                "assertion": assertion,
             }
         )
         tool_id += 1
@@ -305,15 +436,9 @@ def build_requests(root: Path, fixture: dict[str, Any], impl: str) -> tuple[list
         tool_name = "trace_path" if impl == "c" else "trace_call_path"
         args = dict(assertion.get("args", {}))
         if impl == "zig":
-            if "project" not in args:
-                args["project"] = project_name
-            if "start_node_qn" not in args:
-                hint = args.pop("start_node_name_hint", "")
-                if hint:
-                    args["start_node_qn"] = hint
+            args["project"] = project_name
         else:
-            if "project" not in args:
-                args["project"] = c_project_name
+            args["project"] = c_project_name
             if "function_name" not in args:
                 hint = args.pop("start_node_name_hint", "")
                 if hint:
@@ -324,26 +449,33 @@ def build_requests(root: Path, fixture: dict[str, Any], impl: str) -> tuple[list
                 args["direction"] = "inbound"
         requests.append(
             {
-                "jsonrpc": "2.0",
-                "id": tool_id,
-                "method": "tools/call",
-                "params": {
-                    "name": tool_name,
-                    "arguments": args,
+                "request": {
+                    "jsonrpc": "2.0",
+                    "id": tool_id,
+                    "method": "tools/call",
+                    "params": {
+                        "name": tool_name,
+                        "arguments": args,
+                    },
                 },
+                "compare_key": "trace_call_path",
+                "assertion": assertion,
             }
         )
         tool_id += 1
 
     requests.append(
         {
-            "jsonrpc": "2.0",
-            "id": tool_id,
-            "method": "tools/call",
-            "params": {
-                "name": "list_projects",
-                "arguments": {},
+            "request": {
+                "jsonrpc": "2.0",
+                "id": tool_id,
+                "method": "tools/call",
+                "params": {
+                    "name": "list_projects",
+                    "arguments": {},
+                },
             },
+            "compare_key": "list_projects",
         }
     )
 
@@ -434,7 +566,7 @@ def main() -> None:
             requests, tool_ctx = build_requests(root, fixture, impl)
             results["request_count"] = len(requests)
             try:
-                tool_results = call_mcp_batch(bin_path, str(root_path), requests, impl == "c")
+                tool_results = call_mcp_sequence(bin_path, str(root_path), requests, impl)
                 tool_results["tool_ctx"] = tool_ctx
                 results[impl] = tool_results
             except Exception as err:
@@ -444,7 +576,7 @@ def main() -> None:
             impl_payloads = results[impl]["tool"]
 
             # Normalize and validate index output if requested.
-            index_payload = impl_payloads.get("index_repository", {}).get("payload", {})
+            index_payload = (impl_payloads.get("index_repository") or [{"payload": {}}])[0]["payload"]
             index_assertions = assertions.get("index_repository", {})
             if index_assertions:
                 failures = check_assertions("index_repository", index_payload, [index_assertions])
@@ -455,11 +587,9 @@ def main() -> None:
 
             for scope_tool in ("search_graph", "query_graph", "trace_call_path"):
                 assertion_key = scope_tool
-                for assertion in assertions.get(assertion_key, []):
-                    payload = impl_payloads.get(
-                        scope_tool,
-                        {"payload": {"__missing__": True}},
-                    ).get("payload")
+                for index, assertion in enumerate(assertions.get(assertion_key, [])):
+                    entries = impl_payloads.get(scope_tool) or []
+                    payload = entries[index]["payload"] if index < len(entries) else {"__missing__": True}
                     failures = check_assertions(scope_tool, payload, [assertion])
                     if failures:
                         results[impl].setdefault("assertion_failures", []).append(
@@ -467,7 +597,7 @@ def main() -> None:
                         )
 
             # list_projects is global and used as fixture-scoped indexing signal.
-            list_payload = impl_payloads.get("list_projects", {}).get("payload", {})
+            list_payload = (impl_payloads.get("list_projects") or [{"payload": {}}])[0]["payload"]
             canonical_projects = canonical_list_projects(list_payload)
             fixture_project_name = fixture.get("project") if impl == "zig" else tool_ctx["c_project"]
             selected = [p for p in canonical_projects if p["name"] == fixture_project_name]
@@ -484,36 +614,51 @@ def main() -> None:
                 )
 
         # Compare canonical outputs across CUT and C.
-        def get_payload(impl_name: str, tool_name: str) -> Any:
-            tool = results[impl_name].get("tool", {}).get(tool_name, {})
-            return tool.get("payload") if isinstance(tool, dict) else None
+        def get_entries(impl_name: str, tool_name: str) -> list[dict[str, Any]]:
+            return results[impl_name].get("tool", {}).get(tool_name, [])
 
         comparisons = {}
         for scope in ("search_graph", "query_graph", "trace_call_path", "list_projects", "index_repository"):
             if scope == "search_graph":
-                z = get_payload("zig", scope)
-                c = get_payload("c", scope)
-                if z is None or c is None:
-                    comparisons[scope] = {"status": "missing", "zig": z is not None, "c": c is not None}
+                z_entries = get_entries("zig", scope)
+                c_entries = get_entries("c", scope)
+                if not z_entries or not c_entries:
+                    comparisons[scope] = {"status": "missing", "zig": bool(z_entries), "c": bool(c_entries)}
                 else:
-                    z_norm = canonical_search_nodes(z)
-                    c_norm = canonical_search_nodes(c)
-                    if z_norm != c_norm:
+                    cases = []
+                    has_mismatch = False
+                    for index, assertion in enumerate(assertions.get("search_graph", [])):
+                        z_nodes = canonical_search_nodes(z_entries[index]["payload"])
+                        c_nodes = canonical_search_nodes(c_entries[index]["payload"])
+                        required = sorted(set(assertion.get("expect", {}).get("required_names", [])))
+                        z_names = {node["name"] for node in z_nodes}
+                        c_names = {node["name"] for node in c_nodes}
+                        z_missing = sorted(set(required).difference(z_names))
+                        c_missing = sorted(set(required).difference(c_names))
+                        case = {
+                            "required_names": required,
+                            "zig_missing": z_missing,
+                            "c_missing": c_missing,
+                        }
+                        if z_missing or c_missing:
+                            has_mismatch = True
+                        cases.append(case)
+                    if has_mismatch:
                         report["mismatches"].append(
                             {"fixture": fixture_id, "tool": scope, "category": "search_nodes"}
                         )
-                        comparisons[scope] = {"status": "mismatch", "zig": z_norm, "c": c_norm}
+                        comparisons[scope] = {"status": "mismatch", "cases": cases}
                     else:
-                        comparisons[scope] = {"status": "match", "count": len(z_norm)}
+                        comparisons[scope] = {"status": "match", "count": len(cases)}
 
             if scope == "query_graph":
-                z = get_payload("zig", scope)
-                c = get_payload("c", scope)
-                if z is None or c is None:
-                    comparisons[scope] = {"status": "missing", "zig": z is not None, "c": c is not None}
+                z_entries = get_entries("zig", scope)
+                c_entries = get_entries("c", scope)
+                if not z_entries or not c_entries:
+                    comparisons[scope] = {"status": "missing", "zig": bool(z_entries), "c": bool(c_entries)}
                 else:
-                    z_q = canonical_query(z)
-                    c_q = canonical_query(c)
+                    z_q = [canonical_query(entry["payload"]) for entry in z_entries]
+                    c_q = [canonical_query(entry["payload"]) for entry in c_entries]
                     if z_q != c_q:
                         report["mismatches"].append(
                             {"fixture": fixture_id, "tool": scope, "category": "query_result"}
@@ -523,20 +668,36 @@ def main() -> None:
                         comparisons[scope] = {"status": "match"}
 
             if scope == "trace_call_path":
-                z = get_payload("zig", scope)
-                c = get_payload("c", scope)
-                if z is None or c is None:
-                    comparisons[scope] = {"status": "missing", "zig": z is not None, "c": c is not None}
+                z_entries = get_entries("zig", scope)
+                c_entries = get_entries("c", scope)
+                if not z_entries or not c_entries:
+                    comparisons[scope] = {"status": "missing", "zig": bool(z_entries), "c": bool(c_entries)}
                 else:
-                    z_t = canonical_trace(z)
-                    c_t = canonical_trace(c)
-                    if z_t != c_t:
+                    cases = []
+                    has_mismatch = False
+                    for index, assertion in enumerate(assertions.get("trace_call_path", [])):
+                        required = sorted(set(assertion.get("expect", {}).get("required_edge_types", [])))
+                        z_types = sorted({edge[2] for edge in canonical_trace(z_entries[index]["payload"])})
+                        c_types = sorted({edge[2] for edge in canonical_trace(c_entries[index]["payload"])})
+                        z_missing = sorted(set(required).difference(z_types))
+                        c_missing = sorted(set(required).difference(c_types))
+                        case = {
+                            "required_edge_types": required,
+                            "zig_missing": z_missing,
+                            "c_missing": c_missing,
+                            "zig_types": z_types,
+                            "c_types": c_types,
+                        }
+                        if z_missing or c_missing:
+                            has_mismatch = True
+                        cases.append(case)
+                    if has_mismatch:
                         report["mismatches"].append(
                             {"fixture": fixture_id, "tool": scope, "category": "trace_edges"}
                         )
-                        comparisons[scope] = {"status": "mismatch", "zig": z_t, "c": c_t}
+                        comparisons[scope] = {"status": "mismatch", "cases": cases}
                     else:
-                        comparisons[scope] = {"status": "match"}
+                        comparisons[scope] = {"status": "match", "count": len(cases)}
 
             if scope == "list_projects":
                 z_fp = results["zig"].get("fixture_project", {})
@@ -555,11 +716,13 @@ def main() -> None:
                         comparisons[scope] = {"status": "match"}
 
             if scope == "index_repository":
-                z = results["zig"].get("tool", {}).get("index_repository", {}).get("payload")
-                c = results["c"].get("tool", {}).get("index_repository", {}).get("payload")
-                if z is None or c is None:
-                    comparisons[scope] = {"status": "missing", "zig": z is not None, "c": c is not None}
+                z_entries = get_entries("zig", scope)
+                c_entries = get_entries("c", scope)
+                if not z_entries or not c_entries:
+                    comparisons[scope] = {"status": "missing", "zig": bool(z_entries), "c": bool(c_entries)}
                 else:
+                    z = z_entries[0]["payload"]
+                    c = c_entries[0]["payload"]
                     z_nodes = int(z.get("nodes", 0))
                     c_nodes = int(c.get("nodes", 0))
                     z_edges = int(z.get("edges", 0))

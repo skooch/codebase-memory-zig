@@ -103,25 +103,42 @@
 - **Status:** complete
 - Actions:
   - Ran the interoperability harness: `bash scripts/run_interop_alignment.sh`.
-  - Harness executed both implementations against the `python-basic`, `javascript-basic`, `typescript-basic`, `rust-basic`, and `zig-basic` fixtures from `testdata/interop/manifest.json`.
+  - Fixed harness request/response correlation so MCP replies are matched by request ID instead of positional order.
+  - Fixed harness comparison logic so it follows the documented readiness contract rather than diffing raw result sets where extra rows or extra traversal edges are allowed.
+  - Fixed Zig MCP response ownership/flush behavior and trace-edge serialization bugs that were skewing the baseline run.
+  - Fixed `src/cypher.zig` quoted equality parsing so readiness count queries return filtered results.
+  - Re-ran the harness against `python-basic`, `javascript-basic`, `typescript-basic`, `rust-basic`, and `zig-basic` from `testdata/interop/manifest.json`.
   - Captured baseline artifacts in `.interop_reports/interop_alignment_report.json` and `.interop_reports/interop_alignment_report.md`.
   - Baseline mismatch summary:
     - Total fixtures: 5
     - Total comparisons: 25
-    - Matches: 12
-    - Mismatches: 3
-    - Grouped mismatches: `javascript-basic` (search_graph), `typescript-basic` (search_graph), `rust-basic` (search_graph).
+    - Matches: 8
+    - Mismatches: 17
+    - Remaining grouped mismatches:
+      - `python-basic`: `index_repository`, `list_projects`
+      - `javascript-basic`: `index_repository`, `list_projects`
+      - `typescript-basic`: `search_graph`, `trace_call_path`, `index_repository`, `list_projects`
+      - `rust-basic`: `search_graph`, `query_graph`, `trace_call_path`, `index_repository`, `list_projects`
+      - `zig-basic`: `search_graph`, `trace_call_path`, `index_repository`, `list_projects`
+  - Next-phase prep:
+    - The remaining baseline now reflects real parity gaps instead of harness/reporting bugs.
+    - The next implementation phase should focus on graph-model/count parity first, then TypeScript/Rust/Zig extraction and traversal deltas.
 - Files modified/created:
   - `scripts/run_interop_alignment.sh` (created earlier; now verified in phase execution).
+  - `src/mcp.zig`
+  - `src/cypher.zig`
+  - `docs/zig-port-plan.md`
+  - `docs/gap-analysis.md`
 - Checklist status:
   - [x] Add the alignment harness script.
   - [x] Normalize tool output before diffing.
   - [x] Emit grouped mismatch categories by fixture and tool.
   - [x] Run the harness on the full fixture corpus and record mismatch categories.
-  - [ ] Update `docs/zig-port-plan.md` and `docs/gap-analysis.md` based on baseline deltas if needed.
+  - [x] Update `docs/zig-port-plan.md` and `docs/gap-analysis.md` based on baseline deltas if needed.
   - [x] Keep a repeatable baseline run available for follow-up.
 
 ## Errors
 | Timestamp | Error | Attempt | Resolution |
 |-----------|-------|---------|------------|
-| 2026-04-10T20:00:00+11:00 | `zig build test` failed with `Segmentation fault` in `_ts_parser__lex` when parsing Python via tree-sitter. | Added vendored tree-sitter scanners/parsers and parse path for Rust/Python/JS/Zig. | Resolved by correcting the local `parser.h` compatibility shim so `TSLexMode` matches the linked tree-sitter runtime layout; follow-up leak cleanup restored a clean `zig build test`.
+| 2026-04-10T20:00:00+11:00 | `zig build test` failed with `Segmentation fault` in `_ts_parser__lex` when parsing Python via tree-sitter. | Added vendored tree-sitter scanners/parsers and parse path for Rust/Python/JS/Zig. | Resolved by correcting the local `parser.h` compatibility shim so `TSLexMode` matches the linked tree-sitter runtime layout; follow-up leak cleanup restored a clean `zig build test`. |
+| 2026-04-10T23:00:00+11:00 | `trace_call_path` review fixes crashed tests because borrowed edge memory was freed twice. | Phase 6 cleanup changed the trace serializer to retain traversal edges after store frees. | Resolved by storing owned trace-edge copies in `src/mcp.zig` before deferred store cleanup. |

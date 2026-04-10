@@ -140,7 +140,7 @@ fn extractEqualsValue(allocator: std.mem.Allocator, query: []const u8, key: []co
     }
     const quote = rhs[0];
     const end = std.mem.indexOfScalarPos(u8, rhs, 1, quote) orelse return null;
-    return rhs[1 .. end + 1];
+    return rhs[1..end];
 }
 
 test "cypher can return a count" {
@@ -169,4 +169,7 @@ test "cypher can return a count" {
         if (result.err) |e| std.testing.allocator.free(e);
     }
     try std.testing.expect(result.columns.len == 1);
+    try std.testing.expectEqualStrings("count", result.columns[0]);
+    try std.testing.expectEqual(@as(usize, 1), result.rows.len);
+    try std.testing.expectEqualStrings("1", result.rows[0][0]);
 }

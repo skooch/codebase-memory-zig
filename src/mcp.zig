@@ -104,8 +104,10 @@ pub const McpServer = struct {
 
             const response = try self.handleLine(line_text);
             if (response) |resp| {
+                defer self.allocator.free(resp);
                 try writer.writeAll(resp);
                 try writer.writeByte('\n');
+                try writer.flush();
             }
         }
     }
@@ -185,6 +187,7 @@ pub const McpServer = struct {
             "{{\"project\":\"{s}\",\"mode\":\"{s}\",\"nodes\":{d},\"edges\":{d}}}",
             .{ project_name, if (mode == .fast) "fast" else "full", node_count, edge_count },
         );
+        defer self.allocator.free(payload);
         return self.successResponse(request_id, payload);
     }
 
@@ -222,7 +225,9 @@ pub const McpServer = struct {
             );
         }
         try payload.appendSlice(self.allocator, "]}");
-        return self.successResponse(request_id, try payload.toOwnedSlice(self.allocator));
+        const owned_payload = try payload.toOwnedSlice(self.allocator);
+        defer self.allocator.free(owned_payload);
+        return self.successResponse(request_id, owned_payload);
     }
 
     fn handleQueryGraph(self: *McpServer, request_id: ?std.json.Value, args: std.json.Value) !?[]const u8 {
@@ -263,10 +268,19 @@ pub const McpServer = struct {
             try payload.appendSlice(self.allocator, "]");
         }
         try payload.appendSlice(self.allocator, "]}");
-        return self.successResponse(request_id, try payload.toOwnedSlice(self.allocator));
+        const owned_payload = try payload.toOwnedSlice(self.allocator);
+        defer self.allocator.free(owned_payload);
+        return self.successResponse(request_id, owned_payload);
     }
 
     fn handleTraceCallPath(self: *McpServer, request_id: ?std.json.Value, args: std.json.Value) !?[]const u8 {
+        const TraceEdge = struct {
+            id: i64,
+            source_id: i64,
+            target_id: i64,
+            edge_type: []u8,
+        };
+
         const project = stringArg(args, "project") orelse return self.errorResponse(request_id, -32602, "Missing project");
         const start_node_qn = stringArg(args, "start_node_qn") orelse return self.errorResponse(request_id, -32602, "Missing start_node_qn");
         const direction = stringArg(args, "direction") orelse "out";
@@ -274,20 +288,19 @@ pub const McpServer = struct {
 
         const start = try self.db.findNodeByQualifiedName(project, start_node_qn) orelse
             return self.errorResponse(request_id, -32602, "Unknown start_node_qn");
-        defer self.db.allocator.free(start.project);
-        defer self.db.allocator.free(start.label);
-        defer self.db.allocator.free(start.name);
-        defer self.db.allocator.free(start.qualified_name);
-        defer self.db.allocator.free(start.file_path);
-        defer self.db.allocator.free(start.properties_json);
+        defer freeOwnedNode(self.allocator, start);
 
         var frontier = std.ArrayList(struct { id: i64, depth: u32 }).empty;
         defer frontier.deinit(self.allocator);
         var visited = std.AutoHashMap(i64, void).init(self.allocator);
         defer visited.deinit();
-        var edges = std.ArrayList(store.Edge).empty;
-        defer self.db.freeEdges(edges.items);
-        defer edges.deinit(self.allocator);
+        var edges = std.ArrayList(TraceEdge).empty;
+        defer {
+            for (edges.items) |edge| self.allocator.free(edge.edge_type);
+            edges.deinit(self.allocator);
+        }
+        var seen_edges = std.AutoHashMap(i64, void).init(self.allocator);
+        defer seen_edges.deinit();
 
         try frontier.append(self.allocator, .{ .id = start.id, .depth = 0 });
         try visited.put(start.id, {});
@@ -301,10 +314,18 @@ pub const McpServer = struct {
                 const outgoing = try self.db.findEdgesBySource(project, next.id, null);
                 defer self.db.freeEdges(outgoing);
                 for (outgoing) |edge| {
+                    if (!seen_edges.contains(edge.id)) {
+                        try seen_edges.put(edge.id, {});
+                        try edges.append(self.allocator, .{
+                            .id = edge.id,
+                            .source_id = edge.source_id,
+                            .target_id = edge.target_id,
+                            .edge_type = try self.allocator.dupe(u8, edge.edge_type),
+                        });
+                    }
                     if (!visited.contains(edge.target_id)) {
                         try visited.put(edge.target_id, {});
                         try frontier.append(self.allocator, .{ .id = edge.target_id, .depth = next_depth });
-                        try edges.append(self.allocator, edge);
                     }
                 }
             }
@@ -313,10 +334,18 @@ pub const McpServer = struct {
                 const incoming = try self.db.findEdgesByTarget(project, next.id, null);
                 defer self.db.freeEdges(incoming);
                 for (incoming) |edge| {
+                    if (!seen_edges.contains(edge.id)) {
+                        try seen_edges.put(edge.id, {});
+                        try edges.append(self.allocator, .{
+                            .id = edge.id,
+                            .source_id = edge.source_id,
+                            .target_id = edge.target_id,
+                            .edge_type = try self.allocator.dupe(u8, edge.edge_type),
+                        });
+                    }
                     if (!visited.contains(edge.source_id)) {
                         try visited.put(edge.source_id, {});
                         try frontier.append(self.allocator, .{ .id = edge.source_id, .depth = next_depth });
-                        try edges.append(self.allocator, edge);
                     }
                 }
             }
@@ -326,13 +355,21 @@ pub const McpServer = struct {
         try payload.appendSlice(self.allocator, "{\"edges\":[");
         for (edges.items, 0..) |edge, idx| {
             if (idx > 0) try payload.append(self.allocator, ',');
+            const source = (try self.db.findNodeById(project, edge.source_id)) orelse
+                return self.errorResponse(request_id, -32603, "Trace edge source missing");
+            defer freeOwnedNode(self.allocator, source);
+            const target = (try self.db.findNodeById(project, edge.target_id)) orelse
+                return self.errorResponse(request_id, -32603, "Trace edge target missing");
+            defer freeOwnedNode(self.allocator, target);
             try payload.writer(self.allocator).print(
-                "{{\"source\":{d},\"target\":{d},\"type\":\"{s}\"}}",
-                .{ edge.source_id, edge.target_id, edge.edge_type },
+                "{{\"source\":\"{s}\",\"target\":\"{s}\",\"type\":\"{s}\"}}",
+                .{ source.qualified_name, target.qualified_name, edge.edge_type },
             );
         }
         try payload.appendSlice(self.allocator, "]}");
-        return self.successResponse(request_id, try payload.toOwnedSlice(self.allocator));
+        const owned_payload = try payload.toOwnedSlice(self.allocator);
+        defer self.allocator.free(owned_payload);
+        return self.successResponse(request_id, owned_payload);
     }
 
     fn handleListProjects(self: *McpServer, request_id: ?std.json.Value) !?[]const u8 {
@@ -340,7 +377,7 @@ pub const McpServer = struct {
         defer self.db.freeProjects(projects);
 
         var payload = std.ArrayList(u8).empty;
-        try payload.appendSlice(self.allocator, "[");
+        try payload.appendSlice(self.allocator, "{\"projects\":[");
         for (projects, 0..) |p, idx| {
             if (idx > 0) try payload.append(self.allocator, ',');
             const node_count = try self.db.countNodes(p.name);
@@ -353,13 +390,16 @@ pub const McpServer = struct {
             defer self.allocator.free(row);
             try payload.appendSlice(self.allocator, row);
         }
-        try payload.appendSlice(self.allocator, "]");
-        return self.successResponse(request_id, try payload.toOwnedSlice(self.allocator));
+        try payload.appendSlice(self.allocator, "]}");
+        const owned_payload = try payload.toOwnedSlice(self.allocator);
+        defer self.allocator.free(owned_payload);
+        return self.successResponse(request_id, owned_payload);
     }
 
     fn successResponse(self: *McpServer, request_id: ?std.json.Value, payload: []const u8) !?[]const u8 {
         if (request_id == null) return null;
         const id = try jsonValueToString(self.allocator, request_id.?);
+        defer self.allocator.free(id);
         var response = std.ArrayList(u8).empty;
         try response.appendSlice(self.allocator, "{\"jsonrpc\":\"2.0\",\"id\":");
         try response.appendSlice(self.allocator, id);
@@ -371,6 +411,7 @@ pub const McpServer = struct {
 
     fn errorResponse(self: *McpServer, request_id: ?std.json.Value, code: i64, message: []const u8) !?[]const u8 {
         const request_id_text = if (request_id) |idv| try jsonValueToString(self.allocator, idv) else "null";
+        defer if (request_id != null) self.allocator.free(request_id_text);
         const message_text = try jsonValueToString(self.allocator, .{ .string = message });
         defer self.allocator.free(message_text);
         var response = std.ArrayList(u8).empty;
@@ -384,6 +425,15 @@ pub const McpServer = struct {
         return try response.toOwnedSlice(self.allocator);
     }
 };
+
+fn freeOwnedNode(allocator: std.mem.Allocator, node: store.Node) void {
+    allocator.free(node.project);
+    allocator.free(node.label);
+    allocator.free(node.name);
+    allocator.free(node.qualified_name);
+    allocator.free(node.file_path);
+    allocator.free(node.properties_json);
+}
 
 fn SupportedToolFromString(name: []const u8) error{UnsupportedTool}!SupportedTool {
     if (std.mem.eql(u8, name, "index_repository")) return .index_repository;
@@ -447,4 +497,67 @@ test "mcp init/deinit" {
 test "tool enum coverage" {
     try std.testing.expectEqual(SupportedTool.index_repository, try SupportedToolFromString("index_repository"));
     try std.testing.expectError(error.UnsupportedTool, SupportedToolFromString("missing"));
+}
+
+test "list_projects returns projects wrapper" {
+    var s = try store.Store.openMemory(std.testing.allocator);
+    defer s.deinit();
+    try s.upsertProject("demo", "/tmp/demo");
+
+    var srv = McpServer.init(std.testing.allocator, &s);
+    defer srv.deinit();
+
+    const response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_projects","arguments":{}}}
+    )).?;
+    defer std.testing.allocator.free(response);
+
+    const parsed = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, response, .{});
+    defer parsed.deinit();
+
+    const projects = parsed.value.object.get("result").?.object.get("projects").?.array;
+    try std.testing.expectEqual(@as(usize, 1), projects.items.len);
+    try std.testing.expectEqualStrings("demo", projects.items[0].object.get("name").?.string);
+}
+
+test "trace_call_path returns qualified names" {
+    var s = try store.Store.openMemory(std.testing.allocator);
+    defer s.deinit();
+    try s.upsertProject("demo", "/tmp/demo");
+    const source_id = try s.upsertNode(.{
+        .project = "demo",
+        .label = "Function",
+        .name = "start",
+        .qualified_name = "demo:start",
+        .file_path = "main.py",
+    });
+    const target_id = try s.upsertNode(.{
+        .project = "demo",
+        .label = "Function",
+        .name = "finish",
+        .qualified_name = "demo:finish",
+        .file_path = "main.py",
+    });
+    _ = try s.upsertEdge(.{
+        .project = "demo",
+        .source_id = source_id,
+        .target_id = target_id,
+        .edge_type = "CALLS",
+    });
+
+    var srv = McpServer.init(std.testing.allocator, &s);
+    defer srv.deinit();
+
+    const response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"trace_call_path","arguments":{"project":"demo","start_node_qn":"demo:start","direction":"out","depth":2}}}
+    )).?;
+    defer std.testing.allocator.free(response);
+
+    const parsed = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, response, .{});
+    defer parsed.deinit();
+
+    const edges = parsed.value.object.get("result").?.object.get("edges").?.array;
+    try std.testing.expectEqual(@as(usize, 1), edges.items.len);
+    try std.testing.expectEqualStrings("demo:start", edges.items[0].object.get("source").?.string);
+    try std.testing.expectEqualStrings("demo:finish", edges.items[0].object.get("target").?.string);
 }

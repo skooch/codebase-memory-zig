@@ -36,7 +36,7 @@
         "query_graph": [
           {
             "args": {
-              "query": "MATCH (n) WHERE n.label = \"Function\" RETURN count(n)",
+              "query": "MATCH (n) WHERE n.label = \"Function\" RETURN count(n) AS count",
               "project": "python-basic",
               "max_rows": 20
             },
@@ -103,7 +103,7 @@
         "query_graph": [
           {
             "args": {
-              "query": "MATCH (n) WHERE n.label = \"Class\" RETURN count(n)",
+              "query": "MATCH (n) WHERE n.label = \"Class\" RETURN count(n) AS count",
               "project": "javascript-basic",
               "max_rows": 20
             },
@@ -170,7 +170,7 @@
         "query_graph": [
           {
             "args": {
-              "query": "MATCH (n) WHERE n.label = \"Function\" RETURN count(n)",
+              "query": "MATCH (n) WHERE n.label = \"Function\" RETURN count(n) AS count",
               "project": "typescript-basic",
               "max_rows": 20
             },
@@ -237,7 +237,7 @@
         "query_graph": [
           {
             "args": {
-              "query": "MATCH (n) WHERE n.label = \"Class\" RETURN count(n)",
+              "query": "MATCH (n) WHERE n.label = \"Class\" RETURN count(n) AS count",
               "project": "rust-basic",
               "max_rows": 20
             },
@@ -313,7 +313,7 @@
         "query_graph": [
           {
             "args": {
-              "query": "MATCH (n) WHERE n.label = \"Function\" RETURN count(n)",
+              "query": "MATCH (n) WHERE n.label = \"Function\" RETURN count(n) AS count",
               "project": "zig-basic",
               "max_rows": 20
             },

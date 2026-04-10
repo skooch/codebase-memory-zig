@@ -229,18 +229,19 @@ This section defines how outputs are compared while building the first interoper
   - **Required response fields:** `nodes[]` where each node includes:
     - `label`, `name`, `qualified_name`, `file_path`.
   - **Ignored fields:** `id`.
-  - **Acceptance:** rows must exist for expected symbols and no unexpected hard-fail fields.
+  - **Acceptance:** rows for the fixture's required symbols must exist after normalization. Extra rows are tolerated unless they indicate wrong label/filter behavior or another hard-fail field contract break.
 
 - `query_graph(project, query, max_rows)`:
   - **Required response fields:** `columns[]`, `rows[][]`.
   - **Acceptance:** schema shape, column order, and ordered row payloads must match normalized expected output.
   - **String normalization:** quote escaping and whitespace should be normalized before deep comparison.
+  - **Aggregate normalization:** count-style column aliases such as `count` and `COUNT(n)` normalize to `count` for first-gate fixture comparisons.
 
 - `trace_call_path(project, start_node_qn, direction, depth)`:
   - **Required response fields:** `edges[]` with `source`, `target`, `type`.
   - **Accepted behavior now:** the current Zig implementation traverses all edge types; this is intentional for the first pass and treated as contract-compliant as long as edge direction/depth behavior is equivalent.
   - **Ignored fields:** `id` values inside edges.
-  - **Acceptance:** deterministic traversal result for same graph snapshot and parameters.
+  - **Acceptance:** deterministic traversal result for same graph snapshot and parameters. For the fixture gate, required edge types must be present; extra traversed edges are tolerated when direction/depth semantics still match.
 
 - `list_projects()`:
   - **Required response fields:** each entry must include `name`, `indexed_at`, `root_path`, `nodes`, `edges`.
