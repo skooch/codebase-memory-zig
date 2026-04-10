@@ -104,7 +104,7 @@ pub const Pipeline = struct {
             for (extraction.unresolved_imports) |imp| {
                 const alias = normalizeImportAlias(imp.import_name);
                 if (alias.len == 0) continue;
-                try reg.addImportBinding(imp.importer_id, alias, imp.import_name);
+                try reg.addImportBinding(imp.importer_id, alias, imp.import_name, imp.file_path);
             }
 
             const unresolved_import_count = extraction.unresolved_imports.len;
@@ -188,8 +188,24 @@ fn extractFile(
 fn normalizeImportAlias(raw: []const u8) []const u8 {
     const trimmed = std.mem.trim(u8, raw, " \t\"'");
     if (trimmed.len == 0) return "";
-    if (std.mem.lastIndexOfAny(u8, trimmed, "/\\")) |idx| {
-        return trimmed[idx + 1 ..];
+    var start: usize = 0;
+    var i: usize = 0;
+    while (i < trimmed.len) : (i += 1) {
+        if (trimmed[i] == '/' or trimmed[i] == '\\' or trimmed[i] == '.') {
+            start = i + 1;
+            continue;
+        }
+        if (trimmed[i] == ':') {
+            if (i + 1 < trimmed.len and trimmed[i + 1] == ':') {
+                start = i + 2;
+                i += 1;
+            } else {
+                start = i + 1;
+            }
+        }
+    }
+    if (start < trimmed.len) {
+        return trimmed[start..];
     }
     if (std.mem.lastIndexOf(u8, trimmed, ".")) |dot| {
         if (dot + 1 < trimmed.len) return trimmed[dot + 1 ..];
@@ -467,6 +483,77 @@ test "pipeline retains parser-backed definitions and expected edges for all read
     const py_contains = try db.findEdgesBySource(project_name, python_file, "CONTAINS");
     defer db.freeEdges(py_contains);
     try std.testing.expect(py_contains.len > 0);
+}
+
+test "pipeline resolves rust use aliases across files" {
+    const allocator = std.testing.allocator;
+
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(
+        allocator,
+        "/tmp/cbm-pipeline-rust-use-{x}",
+        .{project_id},
+    );
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    {
+        var dir = try std.fs.cwd().openDir(project_dir, .{});
+        defer dir.close();
+
+        try dir.makePath("src");
+
+        var util = try dir.createFile("src/util.rs", .{});
+        try util.writeAll(
+            \\pub fn helper() {}
+            \\
+        );
+        util.close();
+
+        var other = try dir.createFile("src/other.rs", .{});
+        try other.writeAll(
+            \\pub fn helper() {}
+            \\
+        );
+        other.close();
+
+        var main = try dir.createFile("src/main.rs", .{});
+        try main.writeAll(
+            \\use crate::util::helper;
+            \\fn run() {
+            \\    helper();
+            \\}
+            \\
+        );
+        main.close();
+    }
+
+    var db = try store.Store.openMemory(allocator);
+    defer db.deinit();
+
+    var pipeline = Pipeline.init(allocator, project_dir, .full);
+    defer pipeline.deinit();
+    try pipeline.run(&db);
+
+    const project_name = std.fs.path.basename(project_dir);
+    const run_nodes = try db.searchNodes(.{
+        .project = project_name,
+        .name_pattern = "run",
+        .label_pattern = "Function",
+        .limit = 10,
+    });
+    defer db.freeNodes(run_nodes);
+    try std.testing.expectEqual(@as(usize, 1), run_nodes.len);
+
+    const call_edges = try db.findEdgesBySource(project_name, run_nodes[0].id, "CALLS");
+    defer db.freeEdges(call_edges);
+    try std.testing.expectEqual(@as(usize, 1), call_edges.len);
+
+    const target = (try db.findNodeById(project_name, call_edges[0].target_id)).?;
+    defer db.freeNode(target);
+    try std.testing.expectEqualStrings("src/util.rs", target.file_path);
+    try std.testing.expectEqualStrings("helper", target.name);
 }
 
 fn findSingleNodeByNameInFile(

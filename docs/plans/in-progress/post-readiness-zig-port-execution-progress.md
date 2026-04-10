@@ -16,9 +16,9 @@
   - `docs/gap-analysis.md`
 
 ### Next Phase
-- **Status:** pending
+- **Status:** in progress
 - Focus:
-  - Phase 4 will raise indexing fidelity now that the low-risk MCP surface is available, starting with graph-quality gaps such as broader FQN handling, stronger resolution, and richer semantic/usage edges.
+  - Phase 4 is underway, starting with broader FQN and namespace-aware resolution so cross-file imports, calls, and semantic edges pick better targets before we add richer usage/type-reference extraction.
 
 ### Phase 2: Core Graph and Query Substrate
 - **Status:** in progress
@@ -47,6 +47,19 @@
   - `docs/plans/in-progress/post-readiness-zig-port-execution-progress.md`
   - `src/store.zig`
   - `src/mcp.zig`
+
+### Phase 4: Indexing Fidelity
+- **Status:** in progress
+- Actions:
+  - Re-read the extractor, pipeline, and registry resolution paths to find the highest-leverage fidelity gap that would improve imports, calls, and semantic edge resolution together.
+  - Expanded namespace parsing in `src/registry.zig` so the resolver understands Rust-style `::`, dotted suffixes, and path-like names rather than only bare identifiers and slash-separated strings.
+  - Added file-scoped import bindings alongside scope-ID bindings in `src/registry.zig` so module-level imports remain visible when resolution happens from function scopes inside the same file.
+  - Updated `normalizeImportAlias()` in `src/pipeline.zig` to normalize Rust-style import paths into the expected alias key, and added end-to-end regression coverage proving cross-file Rust `use crate::util::helper;` calls resolve to the intended target instead of a duplicate symbol in another file.
+  - Verified the chunk with `zig build test` and `zig build`.
+- Files modified:
+  - `docs/plans/in-progress/post-readiness-zig-port-execution-progress.md`
+  - `src/registry.zig`
+  - `src/pipeline.zig`
 
 ## Errors
 | Timestamp | Error | Attempt | Resolution |
