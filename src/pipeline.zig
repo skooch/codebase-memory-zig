@@ -112,14 +112,16 @@ pub const Pipeline = struct {
 
             const unresolved_import_count = extraction.unresolved_imports.len;
             const unresolved_call_count = extraction.unresolved_calls.len;
+            const unresolved_usage_count = extraction.unresolved_usages.len;
             const semantic_hint_count = extraction.semantic_hints.len;
             std.log.debug(
-                "file {s} extracted {d} symbols, {d} imports, {d} calls, {d} semantic hints",
+                "file {s} extracted {d} symbols, {d} imports, {d} calls, {d} usages, {d} semantic hints",
                 .{
                     extraction.file_path,
                     extraction.symbols.len,
                     unresolved_import_count,
                     unresolved_call_count,
+                    unresolved_usage_count,
                     semantic_hint_count,
                 },
             );
@@ -149,9 +151,20 @@ pub const Pipeline = struct {
                 }
             }
 
+            for (extraction.unresolved_usages) |usage| {
+                const user_node = gb.findNodeById(usage.user_id) orelse continue;
+                if (reg.resolve(usage.ref_name, usage.user_id, user_node.file_path, null)) |res| {
+                    if (gb.findNodeByQualifiedName(res.qualified_name)) |target| {
+                        if (target.id != usage.user_id) {
+                            _ = gb.insertEdge(usage.user_id, target.id, "USAGE") catch {};
+                        }
+                    }
+                }
+            }
+
             for (extraction.semantic_hints) |hint| {
                 const child_node = gb.findNodeById(hint.child_id) orelse continue;
-                if (reg.resolve(hint.parent_name, hint.child_id, child_node.file_path, null)) |res| {
+                if (resolveSemanticTarget(&reg, hint, child_node.file_path)) |res| {
                     if (gb.findNodeByQualifiedName(res.qualified_name)) |target| {
                         _ = gb.insertEdge(hint.child_id, target.id, hint.relation) catch {};
                     }
@@ -214,6 +227,28 @@ fn normalizeImportAlias(raw: []const u8) []const u8 {
         if (dot + 1 < trimmed.len) return trimmed[dot + 1 ..];
     }
     return trimmed;
+}
+
+fn resolveSemanticTarget(
+    reg: *const Registry,
+    hint: extractor.SemanticHint,
+    file_path: []const u8,
+) ?@import("registry.zig").Resolution {
+    if (std.mem.eql(u8, hint.relation, "IMPLEMENTS")) {
+        return reg.resolve(hint.parent_name, hint.child_id, file_path, "Trait") orelse
+            reg.resolve(hint.parent_name, hint.child_id, file_path, "Interface") orelse
+            reg.resolve(hint.parent_name, hint.child_id, file_path, null);
+    }
+    if (std.mem.eql(u8, hint.relation, "INHERITS")) {
+        return reg.resolve(hint.parent_name, hint.child_id, file_path, "Class") orelse
+            reg.resolve(hint.parent_name, hint.child_id, file_path, "Interface") orelse
+            reg.resolve(hint.parent_name, hint.child_id, file_path, null);
+    }
+    if (std.mem.eql(u8, hint.relation, "DECORATES")) {
+        return reg.resolve(hint.parent_name, hint.child_id, file_path, "Function") orelse
+            reg.resolve(hint.parent_name, hint.child_id, file_path, null);
+    }
+    return reg.resolve(hint.parent_name, hint.child_id, file_path, null);
 }
 
 test "pipeline run handles simple extraction pipeline" {
@@ -630,6 +665,153 @@ test "pipeline resolves rust use aliases across files" {
     try std.testing.expectEqualStrings("helper", target.name);
 }
 
+test "pipeline creates usage edges without duplicating direct calls" {
+    const allocator = std.testing.allocator;
+
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(
+        allocator,
+        "/tmp/cbm-pipeline-usage-{x}",
+        .{project_id},
+    );
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    {
+        var dir = try std.fs.cwd().openDir(project_dir, .{});
+        defer dir.close();
+
+        var util = try dir.createFile("util.py", .{});
+        defer util.close();
+        try util.writeAll(
+            \\def helper():
+            \\    return 1
+            \\
+        );
+
+        var app = try dir.createFile("app.py", .{});
+        defer app.close();
+        try app.writeAll(
+            \\from util import helper
+            \\def main():
+            \\    callback = helper
+            \\    return helper()
+            \\
+        );
+    }
+
+    var db = try store.Store.openMemory(allocator);
+    defer db.deinit();
+
+    var pipeline = Pipeline.init(allocator, project_dir, .full);
+    defer pipeline.deinit();
+    try pipeline.run(&db);
+
+    const project_name = std.fs.path.basename(project_dir);
+    const main_id = try findSingleNodeByNameInFile(&db, project_name, "Function", "main", "app.py");
+    const helper_id = try findSingleNodeByNameInFile(&db, project_name, "Function", "helper", "util.py");
+
+    const calls = try db.findEdgesBySource(project_name, main_id, "CALLS");
+    defer db.freeEdges(calls);
+    try std.testing.expectEqual(@as(usize, 1), calls.len);
+    try std.testing.expectEqual(helper_id, calls[0].target_id);
+
+    const usages = try db.findEdgesBySource(project_name, main_id, "USAGE");
+    defer db.freeEdges(usages);
+    try std.testing.expectEqual(@as(usize, 1), usages.len);
+    try std.testing.expectEqual(helper_id, usages[0].target_id);
+}
+
+test "pipeline emits decorator and multi-target semantic edges" {
+    const allocator = std.testing.allocator;
+
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(
+        allocator,
+        "/tmp/cbm-pipeline-semantic-{x}",
+        .{project_id},
+    );
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    {
+        var dir = try std.fs.cwd().openDir(project_dir, .{});
+        defer dir.close();
+
+        var py = try dir.createFile("python_semantics.py", .{});
+        defer py.close();
+        try py.writeAll(
+            \\def trace(fn):
+            \\    return fn
+            \\
+            \\class Base:
+            \\    pass
+            \\
+            \\class Mixin:
+            \\    pass
+            \\
+            \\@trace
+            \\def run():
+            \\    return 1
+            \\
+            \\class Worker(Base, Mixin):
+            \\    pass
+            \\
+        );
+
+        var ts = try dir.createFile("types.ts", .{});
+        defer ts.close();
+        try ts.writeAll(
+            \\interface BasePort {}
+            \\interface ExtraPort {}
+            \\interface WorkerPort extends BasePort, ExtraPort {}
+            \\class Worker implements WorkerPort, BasePort {}
+            \\
+        );
+    }
+
+    var db = try store.Store.openMemory(allocator);
+    defer db.deinit();
+
+    var pipeline = Pipeline.init(allocator, project_dir, .full);
+    defer pipeline.deinit();
+    try pipeline.run(&db);
+
+    const project_name = std.fs.path.basename(project_dir);
+
+    const run_id = try findSingleNodeByNameInFile(&db, project_name, "Function", "run", "python_semantics.py");
+    const trace_id = try findSingleNodeByNameInFile(&db, project_name, "Function", "trace", "python_semantics.py");
+    const run_decorators = try db.findEdgesBySource(project_name, run_id, "DECORATES");
+    defer db.freeEdges(run_decorators);
+    try std.testing.expectEqual(@as(usize, 1), run_decorators.len);
+    try std.testing.expectEqual(trace_id, run_decorators[0].target_id);
+
+    const worker_py_id = try findSingleNodeByNameInFile(&db, project_name, "Class", "Worker", "python_semantics.py");
+    const base_id = try findSingleNodeByNameInFile(&db, project_name, "Class", "Base", "python_semantics.py");
+    const mixin_id = try findSingleNodeByNameInFile(&db, project_name, "Class", "Mixin", "python_semantics.py");
+    const py_inherits = try db.findEdgesBySource(project_name, worker_py_id, "INHERITS");
+    defer db.freeEdges(py_inherits);
+    try std.testing.expect(edgeTargetsContain(py_inherits, base_id));
+    try std.testing.expect(edgeTargetsContain(py_inherits, mixin_id));
+
+    const worker_ts_id = try findSingleNodeByNameInFile(&db, project_name, "Class", "Worker", "types.ts");
+    const worker_port_id = try findSingleNodeByNameInFile(&db, project_name, "Interface", "WorkerPort", "types.ts");
+    const base_port_id = try findSingleNodeByNameInFile(&db, project_name, "Interface", "BasePort", "types.ts");
+    const extra_port_id = try findSingleNodeByNameInFile(&db, project_name, "Interface", "ExtraPort", "types.ts");
+
+    const ts_implements = try db.findEdgesBySource(project_name, worker_ts_id, "IMPLEMENTS");
+    defer db.freeEdges(ts_implements);
+    try std.testing.expect(edgeTargetsContain(ts_implements, worker_port_id));
+    try std.testing.expect(edgeTargetsContain(ts_implements, base_port_id));
+
+    const worker_port_inherits = try db.findEdgesBySource(project_name, worker_port_id, "INHERITS");
+    defer db.freeEdges(worker_port_inherits);
+    try std.testing.expect(edgeTargetsContain(worker_port_inherits, base_port_id));
+    try std.testing.expect(edgeTargetsContain(worker_port_inherits, extra_port_id));
+}
+
 fn findSingleNodeByNameInFile(
     db: *store.Store,
     project_name: []const u8,
@@ -647,4 +829,11 @@ fn findSingleNodeByNameInFile(
     defer db.freeNodes(nodes);
     if (nodes.len == 0) return error.TestUnexpectedResult;
     return nodes[0].id;
+}
+
+fn edgeTargetsContain(edges: []const store.Edge, target_id: i64) bool {
+    for (edges) |edge| {
+        if (edge.target_id == target_id) return true;
+    }
+    return false;
 }

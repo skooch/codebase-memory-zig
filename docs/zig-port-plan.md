@@ -27,7 +27,7 @@ Completed now:
 Still to implement after the readiness gate:
 - Full MCP surface beyond the five readiness-scope tools.
 - Full Cypher parser/executor parity beyond the constrained readiness query subset.
-- Usage/type-ref parity and broader extraction semantics.
+- Deeper usage/type-ref parity and broader extraction semantics beyond the current daily-use slice for Python, JS/TS/TSX, Rust, and Zig.
 - Watcher-driven reindexing, incremental indexing, and broader CLI parity.
 - Parallel indexing, MinHash/LSH, and the deferred enrichment/history features.
 
@@ -478,10 +478,10 @@ Checked means complete relative to this plan's stated goal. Unchecked means stil
 - [x] Port `discover/` (file walk, language detection, gitignore)
 - [x] Port extraction layer: tree-sitter parsing, definition extraction
 - [x] Port `pipeline/` orchestrator with `pass_definitions` + `registry`
-- [ ] Port `pass_calls`, `pass_usages`, `pass_semantic`
+- [x] Port the current daily-use slice of `pass_calls`, `pass_usages`, and `pass_semantic` for Python, JS/TS/TSX, Rust, and Zig
 - [x] Single-threaded first
 - [x] Exit criterion: can index a small repo and produce a populated graph DB
-Current state: the end-to-end vertical slice is working with parser-backed definitions plus persisted call/import/semantic edges for readiness-scope languages, but full `pass_usages` parity and broader extraction parity remain outstanding.
+Current state: the end-to-end vertical slice is working with parser-backed definitions plus persisted call/import/usage/semantic edges for the target daily-use languages, but deeper local-dataflow usage inference and broader cross-language parity remain outstanding.
 
 ### M2 Checklist
 

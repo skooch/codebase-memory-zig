@@ -4,7 +4,7 @@
 Break the remaining Zig port into dependency-aware phases that maximize delivered functionality per phase while keeping verification and integration risk manageable.
 
 ## Current Phase
-Phase 4
+Phase 5
 
 ## File Map
 - Create: `docs/plans/in-progress/post-readiness-zig-port-execution-plan.md`
@@ -23,10 +23,10 @@ Phase 4
 
 ### Phase 2: Complete the Core Graph and Query Substrate
 - [x] Finish the remaining store/query/traversal/schema primitives that multiple tools depend on, including richer search, BFS-style traversal helpers, schema reads, and project/node/edge lifecycle helpers needed to expose the low-risk MCP surface.
-- [ ] Finish graph-buffer capabilities needed for durable core behavior, especially edge deduplication, ID-safe lookups, and store flush/merge paths that later watcher/incremental work will rely on.
-- [ ] Finish FQN and registry foundations needed for broader call/import resolution beyond the current readiness heuristics.
+- [x] Finish graph-buffer capabilities needed for durable core behavior, especially edge deduplication, ID-safe lookups, and store flush/merge paths that later watcher/incremental work will rely on.
+- [x] Finish FQN and registry foundations needed for broader call/import resolution beyond the current readiness heuristics.
 - [x] Exit this phase only when higher-level MCP tool work can reuse stable store/graph/registry APIs instead of re-implementing one-off query logic for the low-risk Phase 3 handlers.
-- **Status:** in progress
+- **Status:** complete
 
 ### Phase 3: Expand the Low-Risk MCP Surface
 - [x] Implement the MCP tools that sit closest to already-available graph data and need limited new indexing semantics: `get_code_snippet`, `get_graph_schema`, `delete_project`, and `index_status`.
@@ -36,11 +36,11 @@ Phase 4
 - **Status:** complete
 
 ### Phase 4: Raise Indexing Fidelity to Daily-Use Parity
-- [ ] Complete the remaining extraction and graph-fidelity work that materially improves query usefulness: richer import resolution, fuller call resolution strategy coverage, usage/type-reference edges, stronger semantic edges, and broader FQN handling.
-- [ ] Promote readiness-scope heuristics that are still known weak points into explicit implementation work or explicit deferrals with rationale.
-- [ ] Add fixture and regression coverage that proves the graph gets more useful without regressing the now-stable readiness baseline.
-- [ ] Exit this phase only when the graph model is reliable enough that advanced tools will be limited mainly by query/runtime gaps rather than missing graph facts.
-- **Status:** pending
+- [x] Complete the remaining extraction and graph-fidelity work that materially improves query usefulness: richer import resolution, fuller call resolution strategy coverage, usage/type-reference edges, stronger semantic edges, and broader FQN handling.
+- [x] Promote readiness-scope heuristics that are still known weak points into explicit implementation work or explicit deferrals with rationale.
+- [x] Add fixture and regression coverage that proves the graph gets more useful without regressing the now-stable readiness baseline.
+- [x] Exit this phase only when the graph model is reliable enough that advanced tools will be limited mainly by query/runtime gaps rather than missing graph facts.
+- **Status:** complete
 
 ### Phase 5: Implement the Heavy Query and Analysis Surface
 - [ ] Expand `search_graph` toward fuller parity, including richer filters, sorting, pagination, relationship/degree-aware queries, and connected-node options where they remain in-scope.
@@ -70,6 +70,7 @@ Phase 4
 | Finish shared graph/store/registry substrate before expanding the full public surface | This avoids building multiple MCP handlers on ad-hoc query paths that would later need to be reworked. |
 | Delay watcher/incremental/parallel work until after single-threaded correctness and graph invariants are stronger | Concurrency and lifecycle work multiplies debugging cost if the underlying indexing semantics are still moving. |
 | Treat CLI/productization as a late phase | Installer/config UX is cheaper to finalize once the runtime/tool contracts are more stable. |
+| Treat deeper local-dataflow usage inference, override inference, and non-target-language semantic parity as explicit post-Phase-4 work | The current daily-use slice now has durable call/import/usage/semantic coverage for Python, JS/TS/TSX, Rust, and Zig, while the remaining fidelity gaps are broader parity work rather than blockers for Phase 5 query expansion. |
 
 ## Errors
 | Error | Attempt | Resolution |

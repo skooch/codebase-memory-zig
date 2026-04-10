@@ -43,6 +43,12 @@ pub const UnresolvedImport = struct {
     file_path: []const u8,
 };
 
+pub const UnresolvedUsage = struct {
+    user_id: i64,
+    ref_name: []const u8,
+    file_path: []const u8,
+};
+
 pub const SemanticHint = struct {
     child_id: i64,
     parent_name: []const u8,
@@ -58,6 +64,7 @@ pub const FileExtraction = struct {
     symbols: []ExtractedSymbol,
     unresolved_calls: []UnresolvedCall,
     unresolved_imports: []UnresolvedImport,
+    unresolved_usages: []UnresolvedUsage,
     semantic_hints: []SemanticHint,
 };
 
@@ -80,13 +87,17 @@ pub fn extractFile(
     var tree_sitter_defs = std.ArrayList(TsDefinition).empty;
     var unresolved_calls = std.ArrayList(UnresolvedCall).empty;
     var unresolved_imports = std.ArrayList(UnresolvedImport).empty;
+    var unresolved_usages = std.ArrayList(UnresolvedUsage).empty;
     var semantic_hints = std.ArrayList(SemanticHint).empty;
     var scope_markers = std.ArrayList(TsSymbol).empty;
+    var pending_decorators = std.ArrayList([]const u8).empty;
     errdefer freePendingExtractedSymbols(allocator, &symbols);
     defer freePendingTsDefinitions(allocator, &tree_sitter_defs);
     errdefer freePendingUnresolvedCalls(allocator, &unresolved_calls);
     errdefer freePendingUnresolvedImports(allocator, &unresolved_imports);
+    errdefer freePendingUnresolvedUsages(allocator, &unresolved_usages);
     errdefer freePendingSemanticHints(allocator, &semantic_hints);
+    defer freePendingStringSlices(allocator, &pending_decorators);
     defer scope_markers.deinit(allocator);
 
     const qn_base = try normalizePath(allocator, rel);
@@ -117,6 +128,7 @@ pub fn extractFile(
             &symbols,
             &unresolved_calls,
             &unresolved_imports,
+            &unresolved_usages,
             &semantic_hints,
         );
     }
@@ -160,6 +172,7 @@ pub fn extractFile(
                 &symbols,
                 &unresolved_calls,
                 &unresolved_imports,
+                &unresolved_usages,
                 &semantic_hints,
             );
         },
@@ -229,6 +242,11 @@ pub fn extractFile(
         const clean_line = stripComments(file.language, line);
         if (clean_line.len == 0) continue;
 
+        if (parseDecoratorReference(clean_line)) |decorator_name| {
+            try pending_decorators.append(allocator, try allocator.dupe(u8, decorator_name));
+            continue;
+        }
+
         while (scope_index < scope_markers.items.len and scope_markers.items[scope_index].line_no == line_no) {
             current_scope_id = scope_markers.items[scope_index].symbol_id;
             scope_index += 1;
@@ -261,6 +279,16 @@ pub fn extractFile(
             if (sym.label.len > 0 and isDeclarationLabel(sym.label)) {
                 if (gb.findNodeByQualifiedName(symbol_qn)) |decl_node| {
                     current_scope_id = decl_node.id;
+                    for (pending_decorators.items) |decorator_name| {
+                        try semantic_hints.append(allocator, .{
+                            .child_id = decl_node.id,
+                            .parent_name = try allocator.dupe(u8, decorator_name),
+                            .file_path = try allocator.dupe(u8, rel),
+                            .relation = try allocator.dupe(u8, "DECORATES"),
+                        });
+                    }
+                    for (pending_decorators.items) |decorator_name| allocator.free(decorator_name);
+                    pending_decorators.clearRetainingCapacity();
                 }
             }
         }
@@ -273,16 +301,14 @@ pub fn extractFile(
             &unresolved_imports,
         );
 
-        if (parseSemanticHint(file.language, clean_line)) |hint| {
-            if (current_scope_id != 0) {
-                try semantic_hints.append(allocator, .{
-                    .child_id = current_scope_id,
-                    .parent_name = try allocator.dupe(u8, hint.parent_name),
-                    .file_path = try allocator.dupe(u8, rel),
-                    .relation = try allocator.dupe(u8, hint.relation),
-                });
-            }
-        }
+        try appendSemanticHints(
+            allocator,
+            file.language,
+            clean_line,
+            current_scope_id,
+            rel,
+            &semantic_hints,
+        );
 
         const callee_names = collectCalls(
             allocator,
@@ -306,6 +332,29 @@ pub fn extractFile(
                 });
             }
         }
+
+        const usage_names = collectUsages(
+            allocator,
+            clean_line,
+            file.language,
+            parsed_symbol,
+            current_scope_id,
+            module_id,
+        ) catch |err| switch (err) {
+            error.OutOfMemory => return err,
+        };
+        if (usage_names) |names| {
+            defer freeStringSlices(allocator, names);
+            for (names) |ref_name| {
+                if (ref_name.len == 0) continue;
+                const user_id = if (current_scope_id != 0) current_scope_id else module_id;
+                try unresolved_usages.append(allocator, .{
+                    .user_id = user_id,
+                    .ref_name = try allocator.dupe(u8, ref_name),
+                    .file_path = try allocator.dupe(u8, rel),
+                });
+            }
+        }
     }
 
     return finishExtraction(
@@ -317,6 +366,7 @@ pub fn extractFile(
         &symbols,
         &unresolved_calls,
         &unresolved_imports,
+        &unresolved_usages,
         &semantic_hints,
     );
 }
@@ -666,19 +716,51 @@ fn parseZigImportAlias(line: []const u8) []const u8 {
     return "";
 }
 
-fn parseSemanticHint(language: discover.Language, line: []const u8) ?struct {
-    parent_name: []const u8,
-    relation: []const u8,
-} {
-    return switch (language) {
-        .python => if (parsePythonInheritance(line)) |parent_name| .{ .parent_name = parent_name, .relation = "INHERITS" } else null,
-        .javascript, .typescript, .tsx => if (parseJsInheritance(line)) |parent_name| .{ .parent_name = parent_name, .relation = "INHERITS" } else null,
-        .rust => if (parseRustSemanticHint(line)) |hint| .{
-            .parent_name = hint.trait_name,
-            .relation = hint.relation,
-        } else null,
-        else => null,
-    };
+fn appendSemanticHints(
+    allocator: std.mem.Allocator,
+    language: discover.Language,
+    line: []const u8,
+    child_id: i64,
+    file_path: []const u8,
+    out: *std.ArrayList(SemanticHint),
+) !void {
+    if (child_id == 0) return;
+
+    switch (language) {
+        .python => try appendDelimitedSemanticHints(
+            allocator,
+            child_id,
+            file_path,
+            parsePythonInheritanceList(line),
+            "INHERITS",
+            out,
+        ),
+        .javascript, .typescript, .tsx => {
+            if (parseJsInheritance(line)) |parent_name| {
+                try appendSemanticHint(allocator, child_id, file_path, parent_name, "INHERITS", out);
+            }
+            try appendDelimitedSemanticHints(
+                allocator,
+                child_id,
+                file_path,
+                parseTypeScriptImplements(line),
+                "IMPLEMENTS",
+                out,
+            );
+            try appendDelimitedSemanticHints(
+                allocator,
+                child_id,
+                file_path,
+                parseTypeScriptInterfaceExtends(line),
+                "INHERITS",
+                out,
+            );
+        },
+        .rust => if (parseRustSemanticHint(line)) |hint| {
+            try appendSemanticHint(allocator, child_id, file_path, hint.trait_name, hint.relation, out);
+        },
+        else => {},
+    }
 }
 
 fn parseRustSemanticHint(line: []const u8) ?struct {
@@ -688,6 +770,76 @@ fn parseRustSemanticHint(line: []const u8) ?struct {
     const parts = parseRustImplParts(line) orelse return null;
     const trait_name = parts.trait_name orelse return null;
     return .{ .relation = "IMPLEMENTS", .trait_name = trait_name };
+}
+
+fn appendSemanticHint(
+    allocator: std.mem.Allocator,
+    child_id: i64,
+    file_path: []const u8,
+    parent_name: []const u8,
+    relation: []const u8,
+    out: *std.ArrayList(SemanticHint),
+) !void {
+    if (parent_name.len == 0) return;
+    try out.append(allocator, .{
+        .child_id = child_id,
+        .parent_name = try allocator.dupe(u8, parent_name),
+        .file_path = try allocator.dupe(u8, file_path),
+        .relation = try allocator.dupe(u8, relation),
+    });
+}
+
+fn appendDelimitedSemanticHints(
+    allocator: std.mem.Allocator,
+    child_id: i64,
+    file_path: []const u8,
+    raw_names: ?[]const u8,
+    relation: []const u8,
+    out: *std.ArrayList(SemanticHint),
+) !void {
+    const names = raw_names orelse return;
+    var iter = std.mem.splitSequence(u8, names, ",");
+    while (iter.next()) |raw_name| {
+        if (normalizeReferenceName(raw_name)) |name| {
+            try appendSemanticHint(allocator, child_id, file_path, name, relation, out);
+        }
+    }
+}
+
+fn collectUsages(
+    allocator: std.mem.Allocator,
+    line: []const u8,
+    language: discover.Language,
+    parsed_symbol: ?ParsedSymbol,
+    current_scope_id: i64,
+    module_id: i64,
+) !?[]const []const u8 {
+    _ = current_scope_id;
+    _ = module_id;
+    if (line.len == 0) return null;
+    if (isImportLine(language, line)) return null;
+
+    var names: std.ArrayList([]const u8) = .empty;
+    errdefer freePendingStringSlices(allocator, &names);
+
+    if (parsed_symbol != null) {
+        try appendTypeUsageCandidates(allocator, language, line, &names);
+    }
+    if (parsed_symbol) |sym| {
+        if (!isDeclarationLabel(sym.label)) {
+            try appendBareUsageCandidates(allocator, line, &names);
+        } else {
+            if (names.items.len == 0) return null;
+            dedupeStringArray(allocator, &names);
+            return try names.toOwnedSlice(allocator);
+        }
+    } else {
+        try appendBareUsageCandidates(allocator, line, &names);
+    }
+
+    if (names.items.len == 0) return null;
+    dedupeStringArray(allocator, &names);
+    return try names.toOwnedSlice(allocator);
 }
 
 fn collectCalls(
@@ -1123,7 +1275,7 @@ fn parseJsInheritance(line: []const u8) ?[]const u8 {
     const extends_pos = std.mem.indexOf(u8, after_class, " extends ");
     if (extends_pos == null) return null;
     const parent_raw = std.mem.trim(u8, after_class[extends_pos.? + " extends ".len ..], " \t{");
-    return firstIdentifier(parent_raw);
+    return normalizeReferenceName(parent_raw);
 }
 
 fn parsePythonInheritance(line: []const u8) ?[]const u8 {
@@ -1209,6 +1361,278 @@ fn normalizeUsePath(spec: []const u8) []const u8 {
     return std.mem.trim(u8, path, " \t;");
 }
 
+fn parseDecoratorReference(line: []const u8) ?[]const u8 {
+    const trimmed = std.mem.trim(u8, line, " \t");
+    if (!std.mem.startsWith(u8, trimmed, "@")) return null;
+    return normalizeReferenceName(trimmed[1..]);
+}
+
+fn parsePythonInheritanceList(line: []const u8) ?[]const u8 {
+    const class_pos = std.mem.indexOf(u8, line, "class ");
+    if (class_pos == null) return null;
+    const after_class = std.mem.trim(u8, line[class_pos.? + "class ".len ..], " \t");
+    const open_paren = std.mem.indexOfScalar(u8, after_class, '(') orelse return null;
+    const close_paren = std.mem.indexOfScalarPos(u8, after_class, open_paren + 1, ')') orelse return null;
+    if (close_paren <= open_paren + 1) return null;
+    const bases = std.mem.trim(u8, after_class[open_paren + 1 .. close_paren], " \t");
+    if (bases.len == 0) return null;
+    return bases;
+}
+
+fn parseTypeScriptImplements(line: []const u8) ?[]const u8 {
+    const class_pos = std.mem.indexOf(u8, line, "class ");
+    if (class_pos == null) return null;
+    const after_class = std.mem.trim(u8, line[class_pos.? + "class ".len ..], " \t");
+    const implements_pos = std.mem.indexOf(u8, after_class, " implements ") orelse return null;
+    const raw = std.mem.trim(u8, after_class[implements_pos + " implements ".len ..], " \t{");
+    if (raw.len == 0) return null;
+    return raw;
+}
+
+fn parseTypeScriptInterfaceExtends(line: []const u8) ?[]const u8 {
+    const interface_pos = std.mem.indexOf(u8, line, "interface ");
+    if (interface_pos == null) return null;
+    const after_interface = std.mem.trim(u8, line[interface_pos.? + "interface ".len ..], " \t");
+    const extends_pos = std.mem.indexOf(u8, after_interface, " extends ") orelse return null;
+    const raw = std.mem.trim(u8, after_interface[extends_pos + " extends ".len ..], " \t{");
+    if (raw.len == 0) return null;
+    return raw;
+}
+
+fn normalizeReferenceName(text: []const u8) ?[]const u8 {
+    const trimmed = std.mem.trim(u8, text, " \t");
+    if (trimmed.len == 0) return null;
+
+    var end = trimmed.len;
+    for (trimmed, 0..) |ch, idx| {
+        if (std.ascii.isWhitespace(ch) or ch == '<' or ch == '(' or ch == '{' or ch == '[' or ch == ';' or
+            (ch == ':' and !isDoubleColonAt(trimmed, idx)))
+        {
+            end = idx;
+            break;
+        }
+    }
+
+    const candidate = std.mem.trim(u8, trimmed[0..end], " \t,)}]");
+    if (candidate.len == 0) return null;
+    return candidate;
+}
+
+fn isImportLine(language: discover.Language, line: []const u8) bool {
+    const trimmed = std.mem.trim(u8, line, " \t");
+    return switch (language) {
+        .python => std.mem.startsWith(u8, trimmed, "import ") or std.mem.startsWith(u8, trimmed, "from "),
+        .javascript, .typescript, .tsx => std.mem.startsWith(u8, trimmed, "import ") or std.mem.indexOf(u8, trimmed, "require(") != null,
+        .rust => std.mem.startsWith(u8, trimmed, "use ") or std.mem.startsWith(u8, trimmed, "pub use "),
+        .zig => std.mem.indexOf(u8, trimmed, "@import(") != null,
+        else => false,
+    };
+}
+
+fn appendTypeUsageCandidates(
+    allocator: std.mem.Allocator,
+    language: discover.Language,
+    line: []const u8,
+    out: *std.ArrayList([]const u8),
+) !void {
+    switch (language) {
+        .python, .javascript, .typescript, .tsx, .zig => {
+            try appendReferencesAfterMarker(allocator, line, ":", out);
+            try appendReferencesAfterMarker(allocator, line, "->", out);
+        },
+        .rust => {
+            try appendReferencesAfterMarker(allocator, line, ":", out);
+            try appendReferencesAfterMarker(allocator, line, "impl ", out);
+            try appendReferencesAfterMarker(allocator, line, "->", out);
+        },
+        else => {},
+    }
+}
+
+fn appendReferencesAfterMarker(
+    allocator: std.mem.Allocator,
+    line: []const u8,
+    marker: []const u8,
+    out: *std.ArrayList([]const u8),
+) !void {
+    var search_start: usize = 0;
+    while (std.mem.indexOfPos(u8, line, search_start, marker)) |marker_pos| {
+        var start = marker_pos + marker.len;
+        while (start < line.len and (std.ascii.isWhitespace(line[start]) or line[start] == '&' or line[start] == '?')) : (start += 1) {}
+        if (start >= line.len) break;
+        if (std.mem.startsWith(u8, line[start..], "mut ")) {
+            start += "mut ".len;
+        }
+        if (normalizeReferenceName(line[start..])) |name| {
+            if (!isKeywordCandidate(lastImportSegment(name))) {
+                try out.append(allocator, try allocator.dupe(u8, name));
+            }
+        }
+        search_start = marker_pos + marker.len;
+    }
+}
+
+fn appendBareUsageCandidates(
+    allocator: std.mem.Allocator,
+    line: []const u8,
+    out: *std.ArrayList([]const u8),
+) !void {
+    if (assignmentRhs(line)) |rhs| {
+        try appendReferenceCandidatesFromExpr(allocator, rhs, out);
+    }
+    if (std.mem.indexOf(u8, line, "return ")) |return_pos| {
+        try appendReferenceCandidatesFromExpr(allocator, line[return_pos + "return ".len ..], out);
+    }
+    try appendArgumentReferenceCandidates(allocator, line, out);
+}
+
+fn assignmentRhs(line: []const u8) ?[]const u8 {
+    var i: usize = 0;
+    while (i < line.len) : (i += 1) {
+        if (line[i] != '=') continue;
+        if (i > 0 and (line[i - 1] == '=' or line[i - 1] == '!' or line[i - 1] == '<' or line[i - 1] == '>')) continue;
+        if (i + 1 < line.len and (line[i + 1] == '=' or line[i + 1] == '>')) continue;
+        return line[i + 1 ..];
+    }
+    return null;
+}
+
+fn appendArgumentReferenceCandidates(
+    allocator: std.mem.Allocator,
+    line: []const u8,
+    out: *std.ArrayList([]const u8),
+) !void {
+    var depth: usize = 0;
+    var segment_start: ?usize = null;
+    for (line, 0..) |ch, idx| {
+        if (ch == '(') {
+            if (depth == 0) {
+                segment_start = idx + 1;
+            }
+            depth += 1;
+            continue;
+        }
+        if (ch == ')' and depth > 0) {
+            depth -= 1;
+            if (depth == 0) {
+                if (segment_start) |start| {
+                    try appendReferenceCandidatesFromExpr(allocator, line[start..idx], out);
+                    segment_start = null;
+                }
+            }
+        }
+    }
+}
+
+fn appendReferenceCandidatesFromExpr(
+    allocator: std.mem.Allocator,
+    expr: []const u8,
+    out: *std.ArrayList([]const u8),
+) !void {
+    var i: usize = 0;
+    while (i < expr.len) {
+        if (expr[i] == '"' or expr[i] == '\'' or expr[i] == '`') {
+            const quote = expr[i];
+            i += 1;
+            while (i < expr.len and expr[i] != quote) {
+                if (expr[i] == '\\' and i + 1 < expr.len) {
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+            if (i < expr.len) i += 1;
+            continue;
+        }
+        if (!isIdentifierStart(expr[i])) {
+            i += 1;
+            continue;
+        }
+
+        const start = i;
+        if (previousNonWhitespace(expr, start)) |prev_idx| {
+            if (expr[prev_idx] == '.') {
+                while (i < expr.len and isIdentifierChar(expr[i])) : (i += 1) {}
+                continue;
+            }
+        }
+        var end = i + 1;
+        while (end < expr.len and isIdentifierChar(expr[end])) : (end += 1) {}
+
+        var cursor = end;
+        while (cursor < expr.len) {
+            const maybe_sep = referenceSeparatorLength(expr, cursor);
+            if (maybe_sep == 0) break;
+            var part_start = cursor + maybe_sep;
+            while (part_start < expr.len and std.ascii.isWhitespace(expr[part_start])) : (part_start += 1) {}
+            if (part_start >= expr.len or !isIdentifierStart(expr[part_start])) break;
+            var part_end = part_start + 1;
+            while (part_end < expr.len and isIdentifierChar(expr[part_end])) : (part_end += 1) {}
+            cursor = part_end;
+            end = part_end;
+        }
+
+        const next = skipWhitespace(expr, end);
+        const candidate = expr[start..end];
+        if (candidate.len > 0 and (next >= expr.len or expr[next] != '(')) {
+            const tail = lastImportSegment(candidate);
+            if (!isKeywordCandidate(tail)) {
+                try out.append(allocator, try allocator.dupe(u8, candidate));
+            }
+        }
+        i = if (end > i) end else i + 1;
+    }
+}
+
+fn referenceSeparatorLength(text: []const u8, idx: usize) usize {
+    var cursor = idx;
+    while (cursor < text.len and std.ascii.isWhitespace(text[cursor])) : (cursor += 1) {}
+    if (cursor >= text.len) return 0;
+    if (text[cursor] == '.') return cursor - idx + 1;
+    if (text[cursor] == ':' and cursor + 1 < text.len and text[cursor + 1] == ':') {
+        return cursor - idx + 2;
+    }
+    return 0;
+}
+
+fn skipWhitespace(text: []const u8, start: usize) usize {
+    var idx = start;
+    while (idx < text.len and std.ascii.isWhitespace(text[idx])) : (idx += 1) {}
+    return idx;
+}
+
+fn previousNonWhitespace(text: []const u8, start: usize) ?usize {
+    if (start == 0) return null;
+    var idx = start;
+    while (idx > 0) {
+        idx -= 1;
+        if (!std.ascii.isWhitespace(text[idx])) return idx;
+    }
+    return null;
+}
+
+fn isDoubleColonAt(text: []const u8, idx: usize) bool {
+    if (text[idx] != ':') return false;
+    if (idx + 1 < text.len and text[idx + 1] == ':') return true;
+    if (idx > 0 and text[idx - 1] == ':') return true;
+    return false;
+}
+
+fn dedupeStringArray(allocator: std.mem.Allocator, names: *std.ArrayList([]const u8)) void {
+    var i: usize = 0;
+    while (i < names.items.len) : (i += 1) {
+        var j = i + 1;
+        while (j < names.items.len) {
+            if (std.mem.eql(u8, names.items[i], names.items[j])) {
+                const dup = names.swapRemove(j);
+                allocator.free(dup);
+                continue;
+            }
+            j += 1;
+        }
+    }
+}
+
 fn finishExtraction(
     allocator: std.mem.Allocator,
     file_path: []const u8,
@@ -1218,6 +1642,7 @@ fn finishExtraction(
     symbols: *std.ArrayList(ExtractedSymbol),
     unresolved_calls: *std.ArrayList(UnresolvedCall),
     unresolved_imports: *std.ArrayList(UnresolvedImport),
+    unresolved_usages: *std.ArrayList(UnresolvedUsage),
     semantic_hints: *std.ArrayList(SemanticHint),
 ) !FileExtraction {
     errdefer allocator.free(file_path);
@@ -1231,6 +1656,9 @@ fn finishExtraction(
     const owned_imports = try unresolved_imports.toOwnedSlice(allocator);
     errdefer freeUnresolvedImports(allocator, owned_imports);
 
+    const owned_usages = try unresolved_usages.toOwnedSlice(allocator);
+    errdefer freeUnresolvedUsages(allocator, owned_usages);
+
     const owned_hints = try semantic_hints.toOwnedSlice(allocator);
     errdefer freeSemanticHints(allocator, owned_hints);
 
@@ -1242,6 +1670,7 @@ fn finishExtraction(
         .symbols = owned_symbols,
         .unresolved_calls = owned_calls,
         .unresolved_imports = owned_imports,
+        .unresolved_usages = owned_usages,
         .semantic_hints = owned_hints,
     };
 }
@@ -1428,6 +1857,14 @@ fn freePendingUnresolvedImports(allocator: std.mem.Allocator, imports: *std.Arra
     imports.deinit(allocator);
 }
 
+fn freePendingUnresolvedUsages(allocator: std.mem.Allocator, usages: *std.ArrayList(UnresolvedUsage)) void {
+    for (usages.items) |usage| {
+        allocator.free(usage.ref_name);
+        allocator.free(usage.file_path);
+    }
+    usages.deinit(allocator);
+}
+
 fn freePendingSemanticHints(allocator: std.mem.Allocator, hints: *std.ArrayList(SemanticHint)) void {
     for (hints.items) |h| {
         allocator.free(h.parent_name);
@@ -1464,6 +1901,14 @@ pub fn freeUnresolvedImports(allocator: std.mem.Allocator, imports: []Unresolved
     allocator.free(imports);
 }
 
+pub fn freeUnresolvedUsages(allocator: std.mem.Allocator, usages: []UnresolvedUsage) void {
+    for (usages) |usage| {
+        allocator.free(usage.ref_name);
+        allocator.free(usage.file_path);
+    }
+    allocator.free(usages);
+}
+
 pub fn freeSemanticHints(allocator: std.mem.Allocator, hints: []SemanticHint) void {
     for (hints) |h| {
         allocator.free(h.parent_name);
@@ -1478,6 +1923,7 @@ pub fn freeFileExtraction(allocator: std.mem.Allocator, extraction: FileExtracti
     freeExtractedSymbols(allocator, extraction.symbols);
     freeUnresolvedCalls(allocator, extraction.unresolved_calls);
     freeUnresolvedImports(allocator, extraction.unresolved_imports);
+    freeUnresolvedUsages(allocator, extraction.unresolved_usages);
     freeSemanticHints(allocator, extraction.semantic_hints);
 }
 
@@ -1719,14 +2165,23 @@ test "line parser captures Rust top-level funcs despite traits" {
     ;
     var lines = std.mem.splitAny(u8, source, "\n\r");
     var line_no: u32 = 1;
+    var found_emit = false;
+    var found_build = false;
     while (lines.next()) |line_raw| : (line_no += 1) {
         const line = std.mem.trim(u8, line_raw, " \t");
         if (line.len == 0) continue;
         const symbol = parseSymbol(.rust, line);
         if (symbol) |sym| {
-            std.debug.print("line {}: {s} {s}\n", .{ line_no, sym.label, sym.name });
+            if (std.mem.eql(u8, sym.label, "Function") and std.mem.eql(u8, sym.name, "emit")) {
+                found_emit = true;
+            }
+            if (std.mem.eql(u8, sym.label, "Function") and std.mem.eql(u8, sym.name, "build")) {
+                found_build = true;
+            }
         }
     }
+    try std.testing.expect(found_emit);
+    try std.testing.expect(found_build);
 }
 
 test "tree-sitter extracts zig definitions with labels and line numbers" {
@@ -1808,4 +2263,51 @@ test "call collection skips declaration lines" {
     defer freeStringSlices(std.testing.allocator, const_calls);
     try std.testing.expectEqual(@as(usize, 1), const_calls.len);
     try std.testing.expectEqualStrings("add", const_calls[0]);
+}
+
+test "usage collection captures callback refs and type references without direct call noise" {
+    const callback_usages = (try collectUsages(
+        std.testing.allocator,
+        "register(helper, other.value)",
+        .python,
+        null,
+        2,
+        1,
+    )) orelse return error.TestUnexpectedResult;
+    defer freeStringSlices(std.testing.allocator, callback_usages);
+    try std.testing.expectEqual(@as(usize, 2), callback_usages.len);
+    try std.testing.expectEqualStrings("helper", callback_usages[0]);
+    try std.testing.expectEqualStrings("other.value", callback_usages[1]);
+
+    try std.testing.expect((try collectUsages(
+        std.testing.allocator,
+        "return helper()",
+        .python,
+        null,
+        2,
+        1,
+    )) == null);
+
+    const rust_decl = parseSymbol(.rust, "pub fn build(counter: &mut Counter, notifier: &impl Notifier) -> ResultType {") orelse return error.TestUnexpectedResult;
+    const type_usages = (try collectUsages(
+        std.testing.allocator,
+        "pub fn build(counter: &mut Counter, notifier: &impl Notifier) -> ResultType {",
+        .rust,
+        rust_decl,
+        2,
+        1,
+    )) orelse return error.TestUnexpectedResult;
+    defer freeStringSlices(std.testing.allocator, type_usages);
+    try std.testing.expectEqual(@as(usize, 3), type_usages.len);
+    try std.testing.expectEqualStrings("Counter", type_usages[0]);
+    try std.testing.expectEqualStrings("Notifier", type_usages[1]);
+    try std.testing.expectEqualStrings("ResultType", type_usages[2]);
+}
+
+test "semantic helpers capture decorators and multi-parent relationships" {
+    try std.testing.expectEqualStrings("trace", parseDecoratorReference("@trace") orelse return error.TestUnexpectedResult);
+    try std.testing.expectEqualStrings("pkg.trace", parseDecoratorReference("@pkg.trace(arg)") orelse return error.TestUnexpectedResult);
+    try std.testing.expectEqualStrings("Base, Mixin", parsePythonInheritanceList("class Worker(Base, Mixin):") orelse return error.TestUnexpectedResult);
+    try std.testing.expectEqualStrings("Port, Disposable", parseTypeScriptImplements("class Worker implements Port, Disposable {") orelse return error.TestUnexpectedResult);
+    try std.testing.expectEqualStrings("BasePort, ExtraPort", parseTypeScriptInterfaceExtends("interface WorkerPort extends BasePort, ExtraPort {") orelse return error.TestUnexpectedResult);
 }

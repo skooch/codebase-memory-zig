@@ -29,7 +29,7 @@ Completed now:
 Still to implement after the readiness gate:
 - The remaining MCP tools outside the five-tool readiness slice.
 - Full Cypher parity beyond the constrained readiness query subset.
-- Usage/type-reference extraction parity and broader cross-language semantics.
+- Deeper usage/type-reference extraction parity and broader cross-language semantics beyond the current target daily-use slice.
 - Watcher, incremental indexing, CLI parity, parallelism, and MinHash/LSH.
 - Deferred history/enrichment/route/config-link features.
 
@@ -55,7 +55,7 @@ Open slices:
   - richer search filters/sorting/degree filtering
   - impact/risk summaries and broader traversal parity
 - Indexing/runtime expansion:
-  - usage/type-ref extraction
+  - deeper usage/type-ref extraction parity beyond the current daily-use slice
   - watcher-driven auto-index
   - incremental indexing
   - parallel extraction
@@ -335,10 +335,10 @@ The Zig store has the schema (tables + indexes + pragmas) and opens in-memory DB
 
 | Pass | C LOC | Zig Status | Purpose |
 |------|-------|------------|---------|
-| `pass_definitions` | ~3,158 (extract_defs.c) | MISSING | Tree-sitter → definition nodes |
-| `pass_calls` | 571 | MISSING | Call resolution via registry |
-| `pass_usages` | 170 | MISSING | Usage/type_ref edges |
-| `pass_semantic` | 468 | MISSING | Inherits/implements/decorates |
+| `pass_definitions` | ~3,158 (extract_defs.c) | PARTIAL | Tree-sitter → definition nodes for the current target language slice |
+| `pass_calls` | 571 | PARTIAL | Call resolution via registry for the current target language slice |
+| `pass_usages` | 170 | PARTIAL | Usage/type_ref edges for callback refs and declaration-level type refs in the current target language slice |
+| `pass_semantic` | 468 | PARTIAL | Inherits/implements/decorates for the current target language slice |
 | `pass_parallel` | 1,427 | MISSING | Thread pool orchestration |
 | `pass_similarity` | 505 (minhash.c) | MISSING | MinHash near-clone detection |
 | `pass_gitdiff` | ~200 | MISSING | Git diff → changed files/hunks |
@@ -353,12 +353,12 @@ The Zig store has the schema (tables + indexes + pragmas) and opens in-memory DB
 
 | Component | C LOC | Zig Status |
 |-----------|-------|------------|
-| `extract_defs.c` (definition extraction) | 3,158 | MISSING |
-| `extract_calls.c` (call site extraction) | 635 | MISSING |
-| `extract_imports.c` (import extraction) | 872 | MISSING |
-| `extract_usages.c` (usage extraction) | 170 | MISSING |
-| `extract_semantic.c` (inherits/decorates) | 234 | MISSING |
-| `extract_unified.c` (single-pass dispatcher) | 744 | MISSING |
+| `extract_defs.c` (definition extraction) | 3,158 | PARTIAL |
+| `extract_calls.c` (call site extraction) | 635 | PARTIAL |
+| `extract_imports.c` (import extraction) | 872 | PARTIAL |
+| `extract_usages.c` (usage extraction) | 170 | PARTIAL |
+| `extract_semantic.c` (inherits/decorates) | 234 | PARTIAL |
+| `extract_unified.c` (single-pass dispatcher) | 744 | PARTIAL |
 | `extract_type_refs.c` | 361 | MISSING |
 | `extract_type_assigns.c` | 197 | MISSING |
 | `extract_env_accesses.c` | 215 | MISSING |

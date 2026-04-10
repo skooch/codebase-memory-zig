@@ -18,7 +18,7 @@
 ### Next Phase
 - **Status:** in progress
 - Focus:
-  - Phase 4 is underway, starting with broader FQN and namespace-aware resolution so cross-file imports, calls, and semantic edges pick better targets before we add richer usage/type-reference extraction.
+  - Phase 5 is next, starting with heavier query and analysis surfaces now that Phase 4 has raised the graph fidelity floor for the target daily-use languages.
 
 ### Phase 2: Core Graph and Query Substrate
 - **Status:** in progress
@@ -49,7 +49,7 @@
   - `src/mcp.zig`
 
 ### Phase 4: Indexing Fidelity
-- **Status:** in progress
+- **Status:** complete
 - Actions:
   - Re-read the extractor, pipeline, and registry resolution paths to find the highest-leverage fidelity gap that would improve imports, calls, and semantic edge resolution together.
   - Expanded namespace parsing in `src/registry.zig` so the resolver understands Rust-style `::`, dotted suffixes, and path-like names rather than only bare identifiers and slash-separated strings.
@@ -58,7 +58,12 @@
   - Extended `src/extractor.zig` so unresolved imports now preserve binding aliases instead of forcing the pipeline to reconstruct them from the namespace string after the fact.
   - Added alias-aware import parsing for Python `from ... import ... as ...`, JS/TS named imports and default imports, Rust grouped and aliased `use` statements, and Zig `const foo = @import(...)` bindings.
   - Updated `src/pipeline.zig` and `src/registry.zig` to use the preserved alias field during resolution, and added regression coverage for aliased Python imports and multi-form extractor import parsing.
-  - Verified the chunk with `zig build test` and `zig build`.
+  - Added `UnresolvedUsage` extraction and pipeline resolution so callback references and declaration-level type references now survive into persisted `USAGE` edges for the target daily-use languages instead of being thrown away after parsing.
+  - Added decorator-aware and multi-target semantic extraction in `src/extractor.zig`, including Python decorators, Python multi-base inheritance, TypeScript `implements`, and TypeScript interface `extends`.
+  - Tightened semantic-edge resolution preferences in `src/pipeline.zig` so `DECORATES`, `IMPLEMENTS`, and `INHERITS` edges prefer the most relevant symbol labels before falling back to broader heuristics.
+  - Added end-to-end regression coverage for `USAGE`, `DECORATES`, multi-target `INHERITS`, and multi-target `IMPLEMENTS` emission in the indexing pipeline, plus extractor-level tests for callback/type-reference usage collection and semantic helper parsing.
+  - Verified the completed phase with `zig build test`, `zig build`, and `bash scripts/run_interop_alignment.sh`.
+  - Recorded the remaining explicit deferrals after Phase 4: deeper local-dataflow usage inference, override/compatibility inference, and broader non-target-language parity remain later fidelity work rather than blockers for Phase 5.
 - Files modified:
   - `docs/plans/in-progress/post-readiness-zig-port-execution-progress.md`
   - `src/extractor.zig`
