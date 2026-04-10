@@ -39,6 +39,7 @@ pub const UnresolvedCall = struct {
 pub const UnresolvedImport = struct {
     importer_id: i64,
     import_name: []const u8,
+    binding_alias: []const u8,
     file_path: []const u8,
 };
 
@@ -357,24 +358,35 @@ fn parsePythonImports(
                 try out.append(allocator, .{
                     .importer_id = importer_id,
                     .import_name = try allocator.dupe(u8, module),
+                    .binding_alias = try allocator.dupe(u8, ""),
                     .file_path = try allocator.dupe(u8, file_path),
                 });
+                const imported = std.mem.trim(u8, after_from[import_kw.? + " import ".len ..], " \t");
+                var imported_names = std.mem.splitSequence(u8, imported, ",");
+                while (imported_names.next()) |raw_name| {
+                    const parsed = parseImportBinding(raw_name);
+                    if (parsed.target.len == 0) continue;
+                    const namespace = try joinImportNamespace(allocator, module, parsed.target, '.');
+                    defer allocator.free(namespace);
+                    try out.append(allocator, .{
+                        .importer_id = importer_id,
+                        .import_name = try allocator.dupe(u8, namespace),
+                        .binding_alias = try allocator.dupe(u8, importAliasOrDefault(parsed.target, parsed.alias)),
+                        .file_path = try allocator.dupe(u8, file_path),
+                    });
+                }
             }
         }
     } else if (import_pos != null) {
         const after_import = std.mem.trim(u8, trimmed[import_pos.? + "import ".len ..], " \t");
         var modules = std.mem.splitSequence(u8, after_import, ",");
         while (modules.next()) |raw| {
-            const target = std.mem.trim(u8, raw, " \t");
-            if (target.len == 0) continue;
-            const name = if (std.mem.indexOf(u8, target, " as ")) |as_pos|
-                std.mem.trim(u8, target[0..as_pos], " \t")
-            else
-                target;
-            if (name.len == 0) continue;
+            const parsed = parseImportBinding(raw);
+            if (parsed.target.len == 0) continue;
             try out.append(allocator, .{
                 .importer_id = importer_id,
-                .import_name = try allocator.dupe(u8, name),
+                .import_name = try allocator.dupe(u8, parsed.target),
+                .binding_alias = try allocator.dupe(u8, importAliasOrDefault(parsed.target, parsed.alias)),
                 .file_path = try allocator.dupe(u8, file_path),
             });
         }
@@ -394,12 +406,9 @@ fn parseJsImports(
         const tail = trimmed[import_pos.? + "import ".len ..];
         const from_pos = std.mem.indexOf(u8, tail, " from ");
         if (from_pos != null) {
+            const bindings = std.mem.trim(u8, tail[0..from_pos.?], " \t");
             if (extractQuotedString(tail[from_pos.? + " from ".len ..])) |spec| {
-                try out.append(allocator, .{
-                    .importer_id = importer_id,
-                    .import_name = try allocator.dupe(u8, spec),
-                    .file_path = try allocator.dupe(u8, file_path),
-                });
+                try appendJsImportBindings(allocator, importer_id, file_path, spec, bindings, out);
             }
             return;
         }
@@ -408,6 +417,7 @@ fn parseJsImports(
                 try out.append(allocator, .{
                     .importer_id = importer_id,
                     .import_name = try allocator.dupe(u8, spec),
+                    .binding_alias = try allocator.dupe(u8, ""),
                     .file_path = try allocator.dupe(u8, file_path),
                 });
             }
@@ -419,9 +429,11 @@ fn parseJsImports(
     if (std.mem.indexOf(u8, trimmed, "require(")) |req_pos| {
         const after = trimmed[req_pos + "require(".len ..];
         if (extractQuotedString(after)) |spec| {
+            const alias = parseRequireAlias(trimmed[0..req_pos]);
             try out.append(allocator, .{
                 .importer_id = importer_id,
                 .import_name = try allocator.dupe(u8, spec),
+                .binding_alias = try allocator.dupe(u8, alias),
                 .file_path = try allocator.dupe(u8, file_path),
             });
         }
@@ -448,11 +460,7 @@ fn parseRustImports(
     const path = normalizeUsePath(path_raw);
     if (path.len == 0) return;
 
-    try out.append(allocator, .{
-        .importer_id = importer_id,
-        .import_name = try allocator.dupe(u8, path),
-        .file_path = try allocator.dupe(u8, file_path),
-    });
+    try appendRustImportBindings(allocator, importer_id, file_path, path_raw, path, out);
 }
 
 fn parseZigImports(
@@ -466,11 +474,196 @@ fn parseZigImports(
     const after = line[import_pos + "@import(".len ..];
     const spec = extractQuotedString(after) orelse return;
     if (spec.len == 0) return;
+    const alias = parseZigImportAlias(line);
     try out.append(allocator, .{
         .importer_id = importer_id,
         .import_name = try allocator.dupe(u8, spec),
+        .binding_alias = try allocator.dupe(u8, alias),
         .file_path = try allocator.dupe(u8, file_path),
     });
+}
+
+const ImportBindingParts = struct {
+    target: []const u8,
+    alias: []const u8,
+};
+
+fn parseImportBinding(raw: []const u8) ImportBindingParts {
+    const trimmed = std.mem.trim(u8, raw, " \t{};");
+    if (trimmed.len == 0) return .{ .target = "", .alias = "" };
+    if (std.mem.indexOf(u8, trimmed, " as ")) |as_pos| {
+        const target = std.mem.trim(u8, trimmed[0..as_pos], " \t");
+        const alias = std.mem.trim(u8, trimmed[as_pos + " as ".len ..], " \t");
+        return .{ .target = target, .alias = if (alias.len > 0) alias else target };
+    }
+    if (std.mem.indexOf(u8, trimmed, "::") == null) {
+        if (std.mem.indexOfScalar(u8, trimmed, ':')) |colon| {
+            const left = std.mem.trim(u8, trimmed[0..colon], " \t");
+            const right = std.mem.trim(u8, trimmed[colon + 1 ..], " \t");
+            if (left.len > 0 and right.len > 0) {
+                return .{ .target = left, .alias = right };
+            }
+        }
+    }
+    return .{ .target = trimmed, .alias = "" };
+}
+
+fn importAliasOrDefault(target: []const u8, explicit_alias: []const u8) []const u8 {
+    if (explicit_alias.len > 0) return explicit_alias;
+    return lastImportSegment(target);
+}
+
+fn lastImportSegment(target: []const u8) []const u8 {
+    if (target.len == 0) return "";
+    var start: usize = 0;
+    var i: usize = 0;
+    while (i < target.len) : (i += 1) {
+        if (target[i] == '/' or target[i] == '\\' or target[i] == '.') {
+            start = i + 1;
+            continue;
+        }
+        if (target[i] == ':') {
+            if (i + 1 < target.len and target[i + 1] == ':') {
+                start = i + 2;
+                i += 1;
+            } else {
+                start = i + 1;
+            }
+        }
+    }
+    return target[start..];
+}
+
+fn joinImportNamespace(
+    allocator: std.mem.Allocator,
+    namespace: []const u8,
+    target: []const u8,
+    sep: u8,
+) ![]u8 {
+    if (namespace.len == 0) return allocator.dupe(u8, target);
+    if (target.len == 0) return allocator.dupe(u8, namespace);
+    return std.fmt.allocPrint(allocator, "{s}{c}{s}", .{ namespace, sep, target });
+}
+
+fn appendJsImportBindings(
+    allocator: std.mem.Allocator,
+    importer_id: i64,
+    file_path: []const u8,
+    spec: []const u8,
+    bindings: []const u8,
+    out: *std.ArrayList(UnresolvedImport),
+) !void {
+    const trimmed = std.mem.trim(u8, bindings, " \t");
+    if (trimmed.len == 0) return;
+
+    if (std.mem.startsWith(u8, trimmed, "* as ")) {
+        const alias = std.mem.trim(u8, trimmed["* as ".len..], " \t");
+        if (alias.len == 0) return;
+        try out.append(allocator, .{
+            .importer_id = importer_id,
+            .import_name = try allocator.dupe(u8, spec),
+            .binding_alias = try allocator.dupe(u8, alias),
+            .file_path = try allocator.dupe(u8, file_path),
+        });
+        return;
+    }
+
+    const brace_open = std.mem.indexOfScalar(u8, trimmed, '{');
+    const brace_close = std.mem.indexOfScalar(u8, trimmed, '}');
+    if (brace_open != null and brace_close != null and brace_open.? < brace_close.?) {
+        const before = std.mem.trim(u8, trimmed[0..brace_open.?], " \t,");
+        if (before.len > 0) {
+            try out.append(allocator, .{
+                .importer_id = importer_id,
+                .import_name = try allocator.dupe(u8, spec),
+                .binding_alias = try allocator.dupe(u8, before),
+                .file_path = try allocator.dupe(u8, file_path),
+            });
+        }
+
+        const members = trimmed[brace_open.? + 1 .. brace_close.?];
+        var iter = std.mem.splitSequence(u8, members, ",");
+        while (iter.next()) |raw_member| {
+            const parsed = parseImportBinding(raw_member);
+            if (parsed.target.len == 0) continue;
+            const namespace = try joinImportNamespace(allocator, spec, parsed.target, '.');
+            defer allocator.free(namespace);
+            try out.append(allocator, .{
+                .importer_id = importer_id,
+                .import_name = try allocator.dupe(u8, namespace),
+                .binding_alias = try allocator.dupe(u8, importAliasOrDefault(parsed.target, parsed.alias)),
+                .file_path = try allocator.dupe(u8, file_path),
+            });
+        }
+        return;
+    }
+
+    try out.append(allocator, .{
+        .importer_id = importer_id,
+        .import_name = try allocator.dupe(u8, spec),
+        .binding_alias = try allocator.dupe(u8, trimmed),
+        .file_path = try allocator.dupe(u8, file_path),
+    });
+}
+
+fn appendRustImportBindings(
+    allocator: std.mem.Allocator,
+    importer_id: i64,
+    file_path: []const u8,
+    path_raw: []const u8,
+    normalized_path: []const u8,
+    out: *std.ArrayList(UnresolvedImport),
+) !void {
+    if (std.mem.indexOf(u8, path_raw, "::{")) |group_pos| {
+        const base = std.mem.trim(u8, path_raw[0..group_pos], " \t");
+        const open_brace = std.mem.indexOfScalarPos(u8, path_raw, group_pos, '{') orelse return;
+        const close_brace = std.mem.lastIndexOfScalar(u8, path_raw, '}') orelse return;
+        if (close_brace <= open_brace) return;
+        var iter = std.mem.splitSequence(u8, path_raw[open_brace + 1 .. close_brace], ",");
+        while (iter.next()) |raw_member| {
+            const parsed = parseImportBinding(raw_member);
+            if (parsed.target.len == 0) continue;
+            const namespace = try std.fmt.allocPrint(allocator, "{s}::{s}", .{ std.mem.trim(u8, base, " \t"), parsed.target });
+            defer allocator.free(namespace);
+            try out.append(allocator, .{
+                .importer_id = importer_id,
+                .import_name = try allocator.dupe(u8, namespace),
+                .binding_alias = try allocator.dupe(u8, importAliasOrDefault(parsed.target, parsed.alias)),
+                .file_path = try allocator.dupe(u8, file_path),
+            });
+        }
+        return;
+    }
+
+    _ = normalized_path;
+    const parsed = parseImportBinding(path_raw);
+    if (parsed.target.len == 0) return;
+    try out.append(allocator, .{
+        .importer_id = importer_id,
+        .import_name = try allocator.dupe(u8, parsed.target),
+        .binding_alias = try allocator.dupe(u8, importAliasOrDefault(parsed.target, parsed.alias)),
+        .file_path = try allocator.dupe(u8, file_path),
+    });
+}
+
+fn parseRequireAlias(prefix: []const u8) []const u8 {
+    const trimmed = std.mem.trim(u8, prefix, " \t=");
+    if (trimmed.len == 0) return "";
+    if (std.mem.startsWith(u8, trimmed, "const ")) return std.mem.trim(u8, trimmed["const ".len..], " \t");
+    if (std.mem.startsWith(u8, trimmed, "let ")) return std.mem.trim(u8, trimmed["let ".len..], " \t");
+    if (std.mem.startsWith(u8, trimmed, "var ")) return std.mem.trim(u8, trimmed["var ".len..], " \t");
+    return "";
+}
+
+fn parseZigImportAlias(line: []const u8) []const u8 {
+    const trimmed = std.mem.trim(u8, line, " \t");
+    if (std.mem.startsWith(u8, trimmed, "pub const ")) {
+        return extractPrefixName(trimmed, "pub const ") orelse "";
+    }
+    if (std.mem.startsWith(u8, trimmed, "const ")) {
+        return extractPrefixName(trimmed, "const ") orelse "";
+    }
+    return "";
 }
 
 fn parseSemanticHint(language: discover.Language, line: []const u8) ?struct {
@@ -1229,6 +1422,7 @@ fn freePendingUnresolvedCalls(allocator: std.mem.Allocator, calls: *std.ArrayLis
 fn freePendingUnresolvedImports(allocator: std.mem.Allocator, imports: *std.ArrayList(UnresolvedImport)) void {
     for (imports.items) |i| {
         allocator.free(i.import_name);
+        allocator.free(i.binding_alias);
         allocator.free(i.file_path);
     }
     imports.deinit(allocator);
@@ -1264,6 +1458,7 @@ pub fn freeUnresolvedCalls(allocator: std.mem.Allocator, calls: []UnresolvedCall
 pub fn freeUnresolvedImports(allocator: std.mem.Allocator, imports: []UnresolvedImport) void {
     for (imports) |i| {
         allocator.free(i.import_name);
+        allocator.free(i.binding_alias);
         allocator.free(i.file_path);
     }
     allocator.free(imports);
@@ -1300,6 +1495,44 @@ test "extractor parses definitions for core languages" {
 test "extractor parseSymbol captures top-level rust functions" {
     try std.testing.expect(parseSymbol(.rust, "pub fn emit(notifier: &impl Notifier, msg: &str) {") != null);
     try std.testing.expect(parseSymbol(.rust, "pub fn build(counter: &mut Counter) {") != null);
+}
+
+test "extractor preserves import aliases across language forms" {
+    var imports = std.ArrayList(UnresolvedImport).empty;
+    defer freePendingUnresolvedImports(std.testing.allocator, &imports);
+
+    try parsePythonImports(std.testing.allocator, "from util import helper as renamed, other", 1, "app.py", &imports);
+    try std.testing.expectEqual(@as(usize, 3), imports.items.len);
+    try std.testing.expectEqualStrings("util.helper", imports.items[1].import_name);
+    try std.testing.expectEqualStrings("renamed", imports.items[1].binding_alias);
+    try std.testing.expectEqualStrings("util.other", imports.items[2].import_name);
+    try std.testing.expectEqualStrings("other", imports.items[2].binding_alias);
+    for (imports.items) |imp| {
+        std.testing.allocator.free(imp.import_name);
+        std.testing.allocator.free(imp.binding_alias);
+        std.testing.allocator.free(imp.file_path);
+    }
+    imports.clearRetainingCapacity();
+
+    try parseJsImports(std.testing.allocator, "import defaultThing, { helper as renamed, other } from \"./util\";", 1, "index.js", &imports);
+    try std.testing.expectEqual(@as(usize, 3), imports.items.len);
+    try std.testing.expectEqualStrings("./util", imports.items[0].import_name);
+    try std.testing.expectEqualStrings("defaultThing", imports.items[0].binding_alias);
+    try std.testing.expectEqualStrings("./util.helper", imports.items[1].import_name);
+    try std.testing.expectEqualStrings("renamed", imports.items[1].binding_alias);
+    for (imports.items) |imp| {
+        std.testing.allocator.free(imp.import_name);
+        std.testing.allocator.free(imp.binding_alias);
+        std.testing.allocator.free(imp.file_path);
+    }
+    imports.clearRetainingCapacity();
+
+    try parseRustImports(std.testing.allocator, "use crate::util::{helper as renamed, other};", 1, "main.rs", &imports);
+    try std.testing.expectEqual(@as(usize, 2), imports.items.len);
+    try std.testing.expectEqualStrings("crate::util::helper", imports.items[0].import_name);
+    try std.testing.expectEqualStrings("renamed", imports.items[0].binding_alias);
+    try std.testing.expectEqualStrings("crate::util::other", imports.items[1].import_name);
+    try std.testing.expectEqualStrings("other", imports.items[1].binding_alias);
 }
 
 test "tree-sitter extracts python definitions with labels and line numbers" {

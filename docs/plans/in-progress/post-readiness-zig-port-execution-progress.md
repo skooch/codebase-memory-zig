@@ -55,9 +55,13 @@
   - Expanded namespace parsing in `src/registry.zig` so the resolver understands Rust-style `::`, dotted suffixes, and path-like names rather than only bare identifiers and slash-separated strings.
   - Added file-scoped import bindings alongside scope-ID bindings in `src/registry.zig` so module-level imports remain visible when resolution happens from function scopes inside the same file.
   - Updated `normalizeImportAlias()` in `src/pipeline.zig` to normalize Rust-style import paths into the expected alias key, and added end-to-end regression coverage proving cross-file Rust `use crate::util::helper;` calls resolve to the intended target instead of a duplicate symbol in another file.
+  - Extended `src/extractor.zig` so unresolved imports now preserve binding aliases instead of forcing the pipeline to reconstruct them from the namespace string after the fact.
+  - Added alias-aware import parsing for Python `from ... import ... as ...`, JS/TS named imports and default imports, Rust grouped and aliased `use` statements, and Zig `const foo = @import(...)` bindings.
+  - Updated `src/pipeline.zig` and `src/registry.zig` to use the preserved alias field during resolution, and added regression coverage for aliased Python imports and multi-form extractor import parsing.
   - Verified the chunk with `zig build test` and `zig build`.
 - Files modified:
   - `docs/plans/in-progress/post-readiness-zig-port-execution-progress.md`
+  - `src/extractor.zig`
   - `src/registry.zig`
   - `src/pipeline.zig`
 

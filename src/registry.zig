@@ -278,7 +278,9 @@ pub const Registry = struct {
             if (std.mem.eql(u8, binding.alias, effective_name) or
                 std.mem.eql(u8, binding.alias, callee_name))
             {
-                const candidates = self.by_name.get(effective_name) orelse
+                const imported_name = lastPathPart(binding.namespace_hint);
+                const candidates = self.by_name.get(imported_name) orelse
+                    self.by_name.get(effective_name) orelse
                     self.by_name.get(callee_name) orelse
                     return null;
                 if (self.bestByNamespace(candidates.items, binding.namespace_hint)) |best| {

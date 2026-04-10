@@ -102,7 +102,10 @@ pub const Pipeline = struct {
                 );
             }
             for (extraction.unresolved_imports) |imp| {
-                const alias = normalizeImportAlias(imp.import_name);
+                const alias = if (imp.binding_alias.len > 0)
+                    imp.binding_alias
+                else
+                    normalizeImportAlias(imp.import_name);
                 if (alias.len == 0) continue;
                 try reg.addImportBinding(imp.importer_id, alias, imp.import_name, imp.file_path);
             }
@@ -298,6 +301,77 @@ test "pipeline retention enables call-edge emission across files" {
         );
         return error.TestUnexpectedResult;
     }
+}
+
+test "pipeline resolves aliased imports across files" {
+    const allocator = std.testing.allocator;
+
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(
+        allocator,
+        "/tmp/cbm-pipeline-alias-test-{x}",
+        .{project_id},
+    );
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    {
+        var dir = try std.fs.cwd().openDir(project_dir, .{});
+        defer dir.close();
+
+        var util = try dir.createFile("util.py", .{});
+        try util.writeAll(
+            \\def helper(x):
+            \\    return x
+            \\
+        );
+        util.close();
+
+        var other = try dir.createFile("other.py", .{});
+        try other.writeAll(
+            \\def renamed(x):
+            \\    return x + 1
+            \\
+        );
+        other.close();
+
+        var app = try dir.createFile("app.py", .{});
+        try app.writeAll(
+            \\from util import helper as renamed
+            \\def main():
+            \\    return renamed(1)
+            \\
+        );
+        app.close();
+    }
+
+    var db = try store.Store.openMemory(allocator);
+    defer db.deinit();
+
+    var pipeline = Pipeline.init(allocator, project_dir, .full);
+    defer pipeline.deinit();
+    try pipeline.run(&db);
+
+    const project_name = std.fs.path.basename(project_dir);
+
+    const main_nodes = try db.searchNodes(.{
+        .project = project_name,
+        .name_pattern = "main",
+        .label_pattern = "Function",
+        .limit = 10,
+    });
+    defer db.freeNodes(main_nodes);
+    try std.testing.expectEqual(@as(usize, 1), main_nodes.len);
+
+    const call_edges = try db.findEdgesBySource(project_name, main_nodes[0].id, "CALLS");
+    defer db.freeEdges(call_edges);
+    try std.testing.expectEqual(@as(usize, 1), call_edges.len);
+
+    const target = (try db.findNodeById(project_name, call_edges[0].target_id)).?;
+    defer db.freeNode(target);
+    try std.testing.expectEqualStrings("helper", target.name);
+    try std.testing.expectEqualStrings("util.py", target.file_path);
 }
 
 test "pipeline retains parser-backed definitions and expected edges for all readiness languages" {
