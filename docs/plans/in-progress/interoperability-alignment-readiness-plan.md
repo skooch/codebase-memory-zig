@@ -4,7 +4,7 @@
 Define and complete the minimum Zig-port work needed before an alignment test suite can usefully compare this implementation against the original `codebase-memory-mcp`.
 
 ## Current Phase
-Phase 5
+Phase 6
 
 ## File Map
 - Modify: `docs/plans/in-progress/interoperability-alignment-readiness-plan.md`
@@ -72,12 +72,12 @@ Phase 5
 - [x] **Status:** complete
 
 ### Phase 6: Automate the Alignment Diff and Record the Baseline
-- [ ] Create `scripts/run_interop_alignment.sh` to run the Zig port and the original `codebase-memory-mcp` against the same fixture corpus using the readiness-scope tools.
-- [ ] Make the harness normalize outputs according to the documented comparison contract before diffing, rather than comparing raw JSON directly.
-- [ ] Make the harness emit grouped mismatch categories by fixture and tool so failures are actionable instead of noisy.
-- [ ] Run the harness on the full fixture corpus and record the initial mismatch categories in `docs/plans/in-progress/interoperability-alignment-readiness-progress.md`.
+- [x] Create `scripts/run_interop_alignment.sh` to run the Zig port and the original `codebase-memory-mcp` against the same fixture corpus using the readiness-scope tools.
+- [x] Make the harness normalize outputs according to the documented comparison contract before diffing, rather than comparing raw JSON directly.
+- [x] Make the harness emit grouped mismatch categories by fixture and tool so failures are actionable instead of noisy.
+- [x] Run the harness on the full fixture corpus and record the initial mismatch categories in `docs/plans/in-progress/interoperability-alignment-readiness-progress.md`.
 - [ ] Update `docs/zig-port-plan.md` and `docs/gap-analysis.md` if the first baseline reveals contract gaps or previously unknown tolerated drift categories.
-- [ ] Exit this phase only when there is a repeatable baseline run that distinguishes “contract-compliant difference” from “real interoperability defect.”
+- [x] Exit this phase only when there is a repeatable baseline run that distinguishes “contract-compliant difference” from “real interoperability defect.”
 - **Status:** pending
 
 ## Decisions
@@ -92,7 +92,7 @@ Phase 5
 - **Phase 3 (done):** Command entrypoints and MCP tools are callable for readiness-level alignment smoke checks.
 - **Phase 4 (complete):** Comparison rules are detailed enough that a harness can score pass/fail without hand-written interpretation.
 - **Phase 5 (complete):** A committed cross-language fixture corpus exists with a manifest that states what each fixture proves.
-- **Phase 6 (pending):** A repeatable harness run exists and the first mismatch categories have been recorded.
+- **Phase 6 (complete):** A repeatable harness run exists and the first mismatch categories have been recorded.
 
 ## Plan Checklist
 - [x] **Phase 1 complete** — interoperability scope, exclusions, and deterministic comparison rules are documented.
@@ -103,7 +103,7 @@ Phase 5
 - [x] **Phase 3 complete** — the five readiness-scope MCP tools and automation entrypoints are available.
 - [x] **Phase 4 contract complete** — per-tool comparison rules and tolerated drift are documented at harness-ready fidelity.
 - [x] **Phase 5 fixtures complete** — the first cross-language fixture corpus and manifest are committed.
-- [ ] **Phase 6 baseline complete** — the alignment harness runs both implementations and records the initial mismatch categories.
+- [x] **Phase 6 baseline complete** — the alignment harness runs both implementations and records the initial mismatch categories.
 - [x] **Runtime stability checkpoint** — the tree-sitter header/runtime compatibility crash is fixed and the current Zig test suite passes again.
 
 ## Errors

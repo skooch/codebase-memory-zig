@@ -85,33 +85,24 @@ pub const McpServer = struct {
     /// Run MCP over stdio line-delimited JSON.
     pub fn runFiles(self: *McpServer, stdin_file: std.fs.File, stdout_file: std.fs.File) !void {
         var line_buf: [64 * 1024]u8 = undefined;
-        while (true) {
-            const n = stdin_file.read(&line_buf) catch |err| {
-                if (err == error.BrokenPipe) return;
-                return err;
-            };
-            if (n == 0) return;
-
-            const line = std.mem.trim(u8, line_buf[0..n], " \r\n\t ");
-            if (line.len == 0) continue;
-
-            const response = try self.handleLine(line);
-            if (response) |resp| {
-                try stdout_file.writeAll(resp);
-                try stdout_file.writeAll("\n");
-            }
-        }
+        var out_buf: [64 * 1024]u8 = undefined;
+        var reader = stdin_file.reader(&line_buf);
+        var writer = stdout_file.writer(&out_buf);
+        try self.run(&reader.interface, &writer.interface);
+        try writer.interface.flush();
     }
 
-    /// Test helper: generic reader/writer line loop.
-    pub fn run(self: *McpServer, reader: anytype, writer: anytype) !void {
-        var buf: [64 * 1024]u8 = undefined;
+    /// Test helper: line-delimited reader loop.
+    pub fn run(self: *McpServer, reader: *std.Io.Reader, writer: *std.Io.Writer) !void {
         while (true) {
-            const line = reader.readUntilDelimiter(&buf, '\n') catch |err| {
+            const line = reader.takeDelimiterExclusive('\n') catch |err| {
                 if (err == error.EndOfStream) return;
                 return err;
             };
-            const response = try self.handleLine(std.mem.trim(u8, line, " \r\n\t "));
+            const line_text = std.mem.trim(u8, line, " \r\n\t ");
+            if (line_text.len == 0) continue;
+
+            const response = try self.handleLine(line_text);
             if (response) |resp| {
                 try writer.writeAll(resp);
                 try writer.writeByte('\n');

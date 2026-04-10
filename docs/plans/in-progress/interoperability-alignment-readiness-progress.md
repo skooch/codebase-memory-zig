@@ -100,14 +100,26 @@
   - [x] Ensure every target language is represented by at least one committed fixture repo.
 
 ### Phase 6: Automate the Alignment Diff and Record the Baseline
-- **Status:** not_started
+- **Status:** complete
 - Actions:
-  - No cross-implementation harness script exists yet.
-  - No baseline mismatch report has been captured yet.
+  - Ran the interoperability harness: `bash scripts/run_interop_alignment.sh`.
+  - Harness executed both implementations against the `python-basic`, `javascript-basic`, `typescript-basic`, `rust-basic`, and `zig-basic` fixtures from `testdata/interop/manifest.json`.
+  - Captured baseline artifacts in `.interop_reports/interop_alignment_report.json` and `.interop_reports/interop_alignment_report.md`.
+  - Baseline mismatch summary:
+    - Total fixtures: 5
+    - Total comparisons: 25
+    - Matches: 12
+    - Mismatches: 3
+    - Grouped mismatches: `javascript-basic` (search_graph), `typescript-basic` (search_graph), `rust-basic` (search_graph).
+- Files modified/created:
+  - `scripts/run_interop_alignment.sh` (created earlier; now verified in phase execution).
 - Checklist status:
-  - [ ] Add the alignment harness script.
-  - [ ] Normalize tool output before diffing.
-  - [ ] Run and record the first mismatch baseline.
+  - [x] Add the alignment harness script.
+  - [x] Normalize tool output before diffing.
+  - [x] Emit grouped mismatch categories by fixture and tool.
+  - [x] Run the harness on the full fixture corpus and record mismatch categories.
+  - [ ] Update `docs/zig-port-plan.md` and `docs/gap-analysis.md` based on baseline deltas if needed.
+  - [x] Keep a repeatable baseline run available for follow-up.
 
 ## Errors
 | Timestamp | Error | Attempt | Resolution |
