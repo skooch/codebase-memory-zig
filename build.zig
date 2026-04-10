@@ -15,6 +15,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    const tree_sitter_mod = ts_dep.module("tree_sitter");
 
     // -- SQLite C flags -------------------------------------------------------
 
@@ -33,10 +34,61 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .imports = &.{
-            .{ .name = "tree_sitter", .module = ts_dep.module("tree_sitter") },
+            .{ .name = "tree_sitter", .module = tree_sitter_mod },
         },
     });
     mod.addIncludePath(b.path("vendored/sqlite3"));
+    mod.addIncludePath(b.path("vendored/tree_sitter"));
+    mod.addIncludePath(b.path("vendored/grammars/rust"));
+    mod.addIncludePath(b.path("vendored/grammars/python"));
+    mod.addIncludePath(b.path("vendored/grammars/javascript"));
+    mod.addIncludePath(b.path("vendored/grammars/typescript"));
+    mod.addIncludePath(b.path("vendored/grammars/tsx"));
+    mod.addIncludePath(b.path("vendored/grammars/zig"));
+    mod.addCSourceFile(.{
+        .file = b.path("vendored/grammars/rust/parser.c"),
+        .flags = &.{},
+    });
+    mod.addCSourceFile(.{
+        .file = b.path("vendored/grammars/rust/scanner.c"),
+        .flags = &.{},
+    });
+    mod.addCSourceFile(.{
+        .file = b.path("vendored/grammars/python/parser.c"),
+        .flags = &.{},
+    });
+    mod.addCSourceFile(.{
+        .file = b.path("vendored/grammars/python/scanner.c"),
+        .flags = &.{},
+    });
+    mod.addCSourceFile(.{
+        .file = b.path("vendored/grammars/javascript/parser.c"),
+        .flags = &.{},
+    });
+    mod.addCSourceFile(.{
+        .file = b.path("vendored/grammars/javascript/scanner.c"),
+        .flags = &.{},
+    });
+    mod.addCSourceFile(.{
+        .file = b.path("vendored/grammars/typescript/parser.c"),
+        .flags = &.{},
+    });
+    mod.addCSourceFile(.{
+        .file = b.path("vendored/grammars/typescript/scanner.c"),
+        .flags = &.{},
+    });
+    mod.addCSourceFile(.{
+        .file = b.path("vendored/grammars/tsx/parser.c"),
+        .flags = &.{},
+    });
+    mod.addCSourceFile(.{
+        .file = b.path("vendored/grammars/tsx/scanner.c"),
+        .flags = &.{},
+    });
+    mod.addCSourceFile(.{
+        .file = b.path("vendored/grammars/zig/parser.c"),
+        .flags = &.{},
+    });
     mod.addCSourceFile(.{
         .file = b.path("vendored/sqlite3/sqlite3.c"),
         .flags = sqlite_flags,

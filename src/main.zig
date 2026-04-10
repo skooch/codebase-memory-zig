@@ -136,7 +136,7 @@ fn runCliToolCall(allocator: std.mem.Allocator) !void {
 
     var request_bytes = std.ArrayList(u8).empty;
     defer request_bytes.deinit(allocator);
-    try std.json.stringify(request, .{}, request_bytes.writer(allocator));
+    try request_bytes.writer(allocator).print("{f}", .{std.json.fmt(request, .{})});
     const request_payload = try request_bytes.toOwnedSlice(allocator);
     defer allocator.free(request_payload);
 
@@ -148,6 +148,6 @@ fn runCliToolCall(allocator: std.mem.Allocator) !void {
     if (try server.handleRequest(request_payload)) |resp| {
         defer allocator.free(resp);
         try stdout_file.writeAll(resp);
-        try stdout_file.writeByte('\n');
+        try stdout_file.writeAll("\n");
     }
 }

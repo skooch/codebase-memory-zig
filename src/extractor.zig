@@ -9,6 +9,13 @@
 const std = @import("std");
 const discover = @import("discover.zig");
 const graph_buffer = @import("graph_buffer.zig");
+const ts = @import("tree_sitter");
+
+const TsDefinition = struct {
+    label: []const u8,
+    name: []const u8,
+    start_line: i32,
+};
 
 const ParsedSymbol = struct {
     label: []const u8,
@@ -53,6 +60,11 @@ pub const FileExtraction = struct {
     semantic_hints: []SemanticHint,
 };
 
+const TsSymbol = struct {
+    symbol_id: i64,
+    line_no: i32,
+};
+
 pub fn extractFile(
     allocator: std.mem.Allocator,
     project_name: []const u8,
@@ -64,13 +76,17 @@ pub fn extractFile(
     const stem = std.fs.path.stem(file_name);
 
     var symbols = std.ArrayList(ExtractedSymbol).empty;
+    var tree_sitter_defs = std.ArrayList(TsDefinition).empty;
     var unresolved_calls = std.ArrayList(UnresolvedCall).empty;
     var unresolved_imports = std.ArrayList(UnresolvedImport).empty;
     var semantic_hints = std.ArrayList(SemanticHint).empty;
+    var scope_markers = std.ArrayList(TsSymbol).empty;
     errdefer freePendingExtractedSymbols(allocator, &symbols);
+    defer freePendingTsDefinitions(allocator, &tree_sitter_defs);
     errdefer freePendingUnresolvedCalls(allocator, &unresolved_calls);
     errdefer freePendingUnresolvedImports(allocator, &unresolved_imports);
     errdefer freePendingSemanticHints(allocator, &semantic_hints);
+    defer scope_markers.deinit(allocator);
 
     const qn_base = try normalizePath(allocator, rel);
     defer allocator.free(qn_base);
@@ -150,8 +166,59 @@ pub fn extractFile(
     };
     defer allocator.free(bytes);
 
+    if (supportsTreeSitterDefs(file.language)) {
+        collectDefinitionsWithTreeSitter(allocator, bytes, file.language, &tree_sitter_defs) catch |err| {
+            switch (err) {
+                error.OutOfMemory => return err,
+                else => {},
+            }
+        };
+    }
+
+    for (tree_sitter_defs.items) |def| {
+        const symbol_qn = try std.fmt.allocPrint(
+            allocator,
+            "{s}:{s}:{s}:symbol:{s}:{s}",
+            .{ project_name, qn_base, @tagName(file.language), @tagName(file.language), def.name },
+        );
+        const symbol_id = try gb.upsertNode(
+            def.label,
+            def.name,
+            symbol_qn,
+            rel,
+            def.start_line,
+            def.start_line,
+        );
+        if (symbol_id > 0 and gb.findNodeById(module_id) != null) {
+            _ = gb.insertEdge(module_id, symbol_id, "CONTAINS") catch |err| switch (err) {
+                graph_buffer.GraphBufferError.DuplicateEdge => {},
+                else => {
+                    allocator.free(symbol_qn);
+                    return err;
+                },
+            };
+            try symbols.append(allocator, .{
+                .id = symbol_id,
+                .label = try allocator.dupe(u8, def.label),
+                .name = try allocator.dupe(u8, def.name),
+                .qualified_name = try allocator.dupe(u8, symbol_qn),
+                .file_path = try allocator.dupe(u8, rel),
+            });
+            try scope_markers.append(allocator, .{
+                .symbol_id = symbol_id,
+                .line_no = def.start_line,
+            });
+        }
+        allocator.free(symbol_qn);
+    }
+
+    if (scope_markers.items.len > 1) {
+        std.sort.pdq(TsSymbol, scope_markers.items, {}, tsSymbolLessThan);
+    }
+
     var lines = std.mem.splitAny(u8, bytes, "\n\r");
     var line_no: i32 = 1;
+    var scope_index: usize = 0;
     while (lines.next()) |line_raw| : (line_no += 1) {
         const line = std.mem.trim(u8, line_raw, " \t");
         if (line.len == 0) continue;
@@ -159,40 +226,46 @@ pub fn extractFile(
         const clean_line = stripComments(file.language, line);
         if (clean_line.len == 0) continue;
 
-        if (parseSymbol(file.language, clean_line)) |sym| {
-            const symbol_qn = try std.fmt.allocPrint(
-                allocator,
-                "{s}:{s}:{s}:symbol:{s}:{s}",
-                .{ project_name, qn_base, @tagName(file.language), @tagName(file.language), sym.name },
-            );
-            const symbol_id = try gb.upsertNode(
-                sym.label,
-                sym.name,
-                symbol_qn,
-                rel,
-                line_no,
-                line_no,
-            );
-            if (symbol_id > 0 and gb.findNodeById(module_id) != null) {
-                _ = gb.insertEdge(module_id, symbol_id, "CONTAINS") catch |err| switch (err) {
-                    graph_buffer.GraphBufferError.DuplicateEdge => {},
-                    else => {
-                        allocator.free(symbol_qn);
-                        return err;
-                    },
-                };
-                try symbols.append(allocator, .{
-                    .id = symbol_id,
-                    .label = try allocator.dupe(u8, sym.label),
-                    .name = try allocator.dupe(u8, sym.name),
-                    .qualified_name = try allocator.dupe(u8, symbol_qn),
-                    .file_path = try allocator.dupe(u8, rel),
-                });
-                current_scope_id = symbol_id;
-            }
-            allocator.free(symbol_qn);
+        while (scope_index < scope_markers.items.len and scope_markers.items[scope_index].line_no == line_no) {
+            current_scope_id = scope_markers.items[scope_index].symbol_id;
+            scope_index += 1;
         }
 
+        if (!supportsTreeSitterDefs(file.language)) {
+            if (parseSymbol(file.language, clean_line)) |sym| {
+                const symbol_qn = try std.fmt.allocPrint(
+                    allocator,
+                    "{s}:{s}:{s}:symbol:{s}:{s}",
+                    .{ project_name, qn_base, @tagName(file.language), @tagName(file.language), sym.name },
+                );
+                const symbol_id = try gb.upsertNode(
+                    sym.label,
+                    sym.name,
+                    symbol_qn,
+                    rel,
+                    line_no,
+                    line_no,
+                );
+                if (symbol_id > 0 and gb.findNodeById(module_id) != null) {
+                    _ = gb.insertEdge(module_id, symbol_id, "CONTAINS") catch |err| switch (err) {
+                        graph_buffer.GraphBufferError.DuplicateEdge => {},
+                        else => {
+                            allocator.free(symbol_qn);
+                            return err;
+                        },
+                    };
+                    try symbols.append(allocator, .{
+                        .id = symbol_id,
+                        .label = try allocator.dupe(u8, sym.label),
+                        .name = try allocator.dupe(u8, sym.name),
+                        .qualified_name = try allocator.dupe(u8, symbol_qn),
+                        .file_path = try allocator.dupe(u8, rel),
+                    });
+                    current_scope_id = symbol_id;
+                }
+                allocator.free(symbol_qn);
+            }
+        }
         try parseImports(
             allocator,
             file.language,
@@ -487,6 +560,200 @@ fn parseSymbol(language: discover.Language, line: []const u8) ?ParsedSymbol {
         .zig => parseZigDefs(line),
         else => null,
     };
+}
+
+fn supportsTreeSitterDefs(language: discover.Language) bool {
+    return switch (language) {
+        .python, .javascript, .typescript, .tsx, .rust, .zig => true,
+        else => false,
+    };
+}
+
+fn collectDefinitionsWithTreeSitter(
+    allocator: std.mem.Allocator,
+    bytes: []const u8,
+    language: discover.Language,
+    out: *std.ArrayList(TsDefinition),
+) !void {
+    const language_fn: *const fn () *const ts.Language = switch (language) {
+        .python => treeSitterLanguagePython,
+        .javascript => treeSitterLanguageJavascript,
+        .typescript => treeSitterLanguageTypescript,
+        .tsx => treeSitterLanguageTsx,
+        .rust => treeSitterLanguageRust,
+        .zig => treeSitterLanguageZig,
+        else => return,
+    };
+
+    var parser = ts.Parser.create();
+    defer parser.destroy();
+    try parser.setLanguage(language_fn());
+    const parsed_tree = parser.parseString(bytes, null) orelse return;
+    defer parsed_tree.destroy();
+    try collectTsDefinitions(allocator, language, bytes, parsed_tree.rootNode(), out);
+}
+
+fn collectTsDefinitions(
+    allocator: std.mem.Allocator,
+    language: discover.Language,
+    bytes: []const u8,
+    node: ts.Node,
+    out: *std.ArrayList(TsDefinition),
+) !void {
+    if (tsNodeLabel(language, node.kind())) |label| {
+        if (try extractTsName(allocator, language, bytes, node)) |name| {
+            try out.append(allocator, .{
+                .label = try allocator.dupe(u8, label),
+                .name = name,
+                .start_line = @as(i32, @intCast(node.startPoint().row)) + 1,
+            });
+        }
+    }
+
+    const child_count = node.namedChildCount();
+    var i: u32 = 0;
+    while (i < child_count) : (i += 1) {
+        if (node.namedChild(i)) |child| {
+            try collectTsDefinitions(allocator, language, bytes, child, out);
+        }
+    }
+}
+
+fn tsNodeLabel(language: discover.Language, kind: []const u8) ?[]const u8 {
+    return switch (language) {
+        .python => if (std.mem.eql(u8, kind, "function_definition"))
+            "Function"
+        else if (std.mem.eql(u8, kind, "class_definition"))
+            "Class"
+        else
+            null,
+        .javascript, .typescript, .tsx => if (std.mem.eql(u8, kind, "function_declaration") or
+            std.mem.eql(u8, kind, "generator_function_declaration") or
+            std.mem.eql(u8, kind, "function_expression") or
+            std.mem.eql(u8, kind, "arrow_function") or
+            std.mem.eql(u8, kind, "method_definition"))
+            "Function"
+        else if (std.mem.eql(u8, kind, "class_declaration") or
+            std.mem.eql(u8, kind, "class"))
+            "Class"
+        else if (std.mem.eql(u8, kind, "abstract_class_declaration") or
+            std.mem.eql(u8, kind, "enum_declaration") or
+            std.mem.eql(u8, kind, "interface_declaration") or
+            std.mem.eql(u8, kind, "type_alias_declaration") or
+            std.mem.eql(u8, kind, "internal_module"))
+            "Class"
+        else
+            null,
+        .rust => if (std.mem.eql(u8, kind, "function_item") or
+            std.mem.eql(u8, kind, "function_signature_item") or
+            std.mem.eql(u8, kind, "closure_expression"))
+            "Function"
+        else if (std.mem.eql(u8, kind, "struct_item") or
+            std.mem.eql(u8, kind, "enum_item") or
+            std.mem.eql(u8, kind, "union_item") or
+            std.mem.eql(u8, kind, "trait_item") or
+            std.mem.eql(u8, kind, "type_item") or
+            std.mem.eql(u8, kind, "impl_item"))
+            "Class"
+        else
+            null,
+        .zig => if (std.mem.eql(u8, kind, "function_declaration") or
+            std.mem.eql(u8, kind, "test_declaration"))
+            "Function"
+        else if (std.mem.eql(u8, kind, "struct_declaration") or
+            std.mem.eql(u8, kind, "enum_declaration") or
+            std.mem.eql(u8, kind, "union_declaration"))
+            "Class"
+        else if (std.mem.eql(u8, kind, "variable_declaration"))
+            "Constant"
+        else
+            null,
+        else => null,
+    };
+}
+
+fn extractTsName(
+    allocator: std.mem.Allocator,
+    language: discover.Language,
+    bytes: []const u8,
+    node: ts.Node,
+) !?[]const u8 {
+    if (language == .rust and std.mem.eql(u8, node.kind(), "impl_item")) {
+        const start = @as(usize, @intCast(node.startByte()));
+        const end = @as(usize, @intCast(node.endByte()));
+        if (start >= bytes.len or end > bytes.len or start >= end) return null;
+        const src = bytes[start..end];
+        const impl_target = extractRustImplFromText(src) orelse return null;
+        return try allocator.dupe(u8, impl_target);
+    }
+
+    const name_node = node.childByFieldName("name") orelse {
+        if (language == .zig and std.mem.eql(u8, node.kind(), "variable_declaration")) {
+            const start = @as(usize, @intCast(node.startByte()));
+            const end = @as(usize, @intCast(node.endByte()));
+            if (start >= bytes.len or end > bytes.len or start >= end) return null;
+            const src = std.mem.trim(u8, bytes[start..end], " \t\r\n");
+            if (extractPrefixName(src, "const ")) |name| return try allocator.dupe(u8, name);
+            if (extractPrefixName(src, "var ")) |name| return try allocator.dupe(u8, name);
+        }
+        return null;
+    };
+
+    const start = @as(usize, @intCast(name_node.startByte()));
+    const end = @as(usize, @intCast(name_node.endByte()));
+    if (start >= bytes.len or end > bytes.len or start >= end) return null;
+    return try allocator.dupe(u8, bytes[start..end]);
+}
+
+fn extractRustImplFromText(bytes: []const u8) ?[]const u8 {
+    const trimmed = std.mem.trim(u8, bytes, " \t\r\n");
+    const parts = parseRustImplParts(trimmed) orelse return null;
+    return parts.target_name;
+}
+
+fn tsSymbolLessThan(_: void, lhs: TsSymbol, rhs: TsSymbol) bool {
+    if (lhs.line_no < rhs.line_no) return true;
+    if (lhs.line_no > rhs.line_no) return false;
+    return lhs.symbol_id < rhs.symbol_id;
+}
+
+fn freePendingTsDefinitions(allocator: std.mem.Allocator, definitions: *std.ArrayList(TsDefinition)) void {
+    for (definitions.items) |d| {
+        allocator.free(d.label);
+        allocator.free(d.name);
+    }
+    definitions.deinit(allocator);
+}
+
+extern "c" fn tree_sitter_python() *const ts.Language;
+extern "c" fn tree_sitter_javascript() *const ts.Language;
+extern "c" fn tree_sitter_typescript() *const ts.Language;
+extern "c" fn tree_sitter_tsx() *const ts.Language;
+extern "c" fn tree_sitter_rust() *const ts.Language;
+extern "c" fn tree_sitter_zig() *const ts.Language;
+
+fn treeSitterLanguagePython() *const ts.Language {
+    return tree_sitter_python();
+}
+
+fn treeSitterLanguageJavascript() *const ts.Language {
+    return tree_sitter_javascript();
+}
+
+fn treeSitterLanguageTypescript() *const ts.Language {
+    return tree_sitter_typescript();
+}
+
+fn treeSitterLanguageTsx() *const ts.Language {
+    return tree_sitter_tsx();
+}
+
+fn treeSitterLanguageRust() *const ts.Language {
+    return tree_sitter_rust();
+}
+
+fn treeSitterLanguageZig() *const ts.Language {
+    return tree_sitter_zig();
 }
 
 fn parsePythonDefs(line: []const u8) ?ParsedSymbol {
@@ -925,6 +1192,191 @@ test "extractor parses definitions for core languages" {
     try std.testing.expect(parseSymbol(.javascript, "const run = async () => {}") != null);
     try std.testing.expect(parseSymbol(.javascript, "class Service extends Base") != null);
     try std.testing.expect(parseSymbol(.rust, "impl Display for Foo") != null);
+}
+
+test "tree-sitter extracts python definitions with labels and line numbers" {
+    var defs = std.ArrayList(TsDefinition).empty;
+    defer freePendingTsDefinitions(std.testing.allocator, &defs);
+
+    try collectDefinitionsWithTreeSitter(
+        std.testing.allocator,
+        \\def helper(value):
+        \\    return value
+        \\
+        \\class Worker:
+        \\    pass
+        \\
+        \\def main():
+        \\    return helper(1)
+        \\
+    ,
+        .python,
+        &defs,
+    );
+
+    try std.testing.expect(definitionPresent(defs.items, "Function", "helper", 1));
+    try std.testing.expect(definitionPresent(defs.items, "Class", "Worker", 4));
+    try std.testing.expect(definitionPresent(defs.items, "Function", "main", 7));
+}
+
+test "tree-sitter extracts javascript definitions with labels and line numbers" {
+    var defs = std.ArrayList(TsDefinition).empty;
+    defer freePendingTsDefinitions(std.testing.allocator, &defs);
+
+    try collectDefinitionsWithTreeSitter(
+        std.testing.allocator,
+        \\export function helper(input) {
+        \\    return input;
+        \\}
+        \\
+        \\class Service extends Base {
+        \\    constructor(value) {
+        \\        this.value = value;
+        \\    }
+        \\}
+        \\
+        \\function main() {
+        \\    return helper(3);
+        \\}
+        \\
+    ,
+        .javascript,
+        &defs,
+    );
+
+    try std.testing.expect(definitionPresent(defs.items, "Function", "helper", 1));
+    try std.testing.expect(definitionPresent(defs.items, "Class", "Service", 5));
+    try std.testing.expect(definitionPresent(defs.items, "Function", "main", 11));
+}
+
+test "tree-sitter extracts typescript definitions with labels and line numbers" {
+    var defs = std.ArrayList(TsDefinition).empty;
+    defer freePendingTsDefinitions(std.testing.allocator, &defs);
+
+    try collectDefinitionsWithTreeSitter(
+        std.testing.allocator,
+        \\interface ServicePort {
+        \\  read(value: string): void;
+        \\}
+        \\
+        \\function helper(value: string) {
+        \\  return value;
+        \\}
+        \\
+        \\class Service implements ServicePort {
+        \\  read(value: string): void {}
+        \\}
+        \\
+    ,
+        .typescript,
+        &defs,
+    );
+
+    try std.testing.expect(definitionPresent(defs.items, "Class", "ServicePort", 1));
+    try std.testing.expect(definitionPresent(defs.items, "Function", "helper", 5));
+    try std.testing.expect(definitionPresent(defs.items, "Class", "Service", 9));
+}
+
+test "tree-sitter extracts tsx definitions with labels and line numbers" {
+    var defs = std.ArrayList(TsDefinition).empty;
+    defer freePendingTsDefinitions(std.testing.allocator, &defs);
+
+    try collectDefinitionsWithTreeSitter(
+        std.testing.allocator,
+        \\import { useState } from "react";
+        \\
+        \\type Props = { label: string };
+        \\
+        \\function View(props: Props) {
+        \\  const [count] = useState(0);
+        \\  return <span>{props.label}</span>;
+        \\}
+        \\
+        \\
+    ,
+        .tsx,
+        &defs,
+    );
+
+    try std.testing.expect(definitionPresent(defs.items, "Class", "Props", 3));
+    try std.testing.expect(definitionPresent(defs.items, "Function", "View", 5));
+}
+
+test "tree-sitter extracts rust definitions with labels and line numbers" {
+    var defs = std.ArrayList(TsDefinition).empty;
+    defer freePendingTsDefinitions(std.testing.allocator, &defs);
+
+    try collectDefinitionsWithTreeSitter(
+        std.testing.allocator,
+        \\struct Service {
+        \\    id: u64
+        \\}
+        \\
+        \\trait Handler {}
+        \\
+        \\fn helper(value: u64) -> u64 {
+        \\    value + 1
+        \\}
+        \\
+        \\fn main() {
+        \\    let _ = helper(5);
+        \\}
+        \\
+        \\impl Handler for Service {
+        \\    fn run(&self) {}
+        \\}
+        \\
+    ,
+        .rust,
+        &defs,
+    );
+
+    try std.testing.expect(definitionPresent(defs.items, "Class", "Service", 1));
+    try std.testing.expect(definitionPresent(defs.items, "Class", "Handler", 5));
+    try std.testing.expect(definitionPresent(defs.items, "Function", "helper", 7));
+    try std.testing.expect(definitionPresent(defs.items, "Function", "main", 11));
+    try std.testing.expect(definitionPresent(defs.items, "Class", "Service", 15));
+}
+
+test "tree-sitter extracts zig definitions with labels and line numbers" {
+    var defs = std.ArrayList(TsDefinition).empty;
+    defer freePendingTsDefinitions(std.testing.allocator, &defs);
+
+    try collectDefinitionsWithTreeSitter(
+        std.testing.allocator,
+        \\const max_items = 5;
+        \\
+        \\fn helper() u8 {
+        \\    return 1;
+        \\}
+        \\
+        \\fn main() void {
+        \\    _ = helper();
+        \\}
+        \\
+    ,
+        .zig,
+        &defs,
+    );
+
+    try std.testing.expect(definitionPresent(defs.items, "Constant", "max_items", 1));
+    try std.testing.expect(definitionPresent(defs.items, "Function", "helper", 3));
+    try std.testing.expect(definitionPresent(defs.items, "Function", "main", 7));
+}
+
+fn definitionPresent(
+    defs: []const TsDefinition,
+    expected_label: []const u8,
+    expected_name: []const u8,
+    expected_line: i32,
+) bool {
+    for (defs) |def| {
+        if (def.start_line != expected_line) continue;
+        if (!std.mem.eql(u8, def.label, expected_label)) continue;
+        if (!std.mem.eql(u8, def.name, expected_name)) continue;
+        return true;
+    }
+    return false;
 }
 
 test "rust impl parsing keeps target and trait roles straight" {

@@ -255,9 +255,9 @@ pub const McpServer = struct {
         try payload.appendSlice(self.allocator, "{\"columns\":[");
         for (result.columns, 0..) |col, idx| {
             if (idx > 0) try payload.append(self.allocator, ',');
-            try payload.appendSlice("\"");
-            try payload.appendSlice(col);
-            try payload.appendSlice("\"");
+            try payload.appendSlice(self.allocator, "\"");
+            try payload.appendSlice(self.allocator, col);
+            try payload.appendSlice(self.allocator, "\"");
         }
         try payload.appendSlice(self.allocator, "],\"rows\":[");
         for (result.rows, 0..) |row, row_idx| {
@@ -265,9 +265,9 @@ pub const McpServer = struct {
             try payload.appendSlice(self.allocator, "[");
             for (row, 0..) |cell, cell_idx| {
                 if (cell_idx > 0) try payload.append(self.allocator, ',');
-                try payload.appendSlice("\"");
-                try payload.appendSlice(cell);
-                try payload.appendSlice("\"");
+                try payload.appendSlice(self.allocator, "\"");
+                try payload.appendSlice(self.allocator, cell);
+                try payload.appendSlice(self.allocator, "\"");
             }
             try payload.appendSlice(self.allocator, "]");
         }
@@ -369,20 +369,28 @@ pub const McpServer = struct {
     fn successResponse(self: *McpServer, request_id: ?std.json.Value, payload: []const u8) !?[]const u8 {
         if (request_id == null) return null;
         const id = try jsonValueToString(self.allocator, request_id.?);
-        return std.fmt.allocPrint(
-            self.allocator,
-            "{{\"jsonrpc\":\"2.0\",\"id\":{s},\"result\":{s}}}",
-            .{ id, payload },
-        );
+        var response = std.ArrayList(u8).empty;
+        try response.appendSlice(self.allocator, "{\"jsonrpc\":\"2.0\",\"id\":");
+        try response.appendSlice(self.allocator, id);
+        try response.appendSlice(self.allocator, ",\"result\":");
+        try response.appendSlice(self.allocator, payload);
+        try response.appendSlice(self.allocator, "}");
+        return try response.toOwnedSlice(self.allocator);
     }
 
     fn errorResponse(self: *McpServer, request_id: ?std.json.Value, code: i64, message: []const u8) !?[]const u8 {
         const request_id_text = if (request_id) |idv| try jsonValueToString(self.allocator, idv) else "null";
-        return std.fmt.allocPrint(
-            self.allocator,
-            "{{\"jsonrpc\":\"2.0\",\"id\":{s},\"error\":{{\"code\":{d},\"message\":\"{s}\"}}}",
-            .{ request_id_text, code, message },
-        );
+        const message_text = try jsonValueToString(self.allocator, .{ .string = message });
+        defer self.allocator.free(message_text);
+        var response = std.ArrayList(u8).empty;
+        try response.appendSlice(self.allocator, "{\"jsonrpc\":\"2.0\",\"id\":");
+        try response.appendSlice(self.allocator, request_id_text);
+        try response.appendSlice(self.allocator, ",\"error\":{\"code\":");
+        try response.writer(self.allocator).print("{d}", .{code});
+        try response.appendSlice(self.allocator, ",\"message\":");
+        try response.appendSlice(self.allocator, message_text);
+        try response.appendSlice(self.allocator, "}}");
+        return try response.toOwnedSlice(self.allocator);
     }
 };
 
@@ -434,7 +442,7 @@ fn jsonValueToString(allocator: std.mem.Allocator, value: std.json.Value) ![]u8 
     if (value == .bool) return try allocator.dupe(u8, if (value.bool) "true" else "false");
 
     var out = std.ArrayList(u8).empty;
-    try std.json.stringify(value, .{}, out.writer(allocator));
+    try out.writer(allocator).print("{f}", .{std.json.fmt(value, .{})});
     return out.toOwnedSlice(allocator);
 }
 

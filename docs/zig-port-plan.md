@@ -199,9 +199,24 @@ For the first alignment milestone, we scope parity checks to:
 - Language extraction slice: Rust, Zig, Python, JavaScript/TypeScript.
 - Graph comparison scope: `nodes`, `edges`, and traversal around `CALLS`/`CONTAINS`/`IMPLEMENTS`/`INHERITS`.
 - Deterministic behavior:
-  - Stable ordering in query/list responses.
-  - Path normalization to `/` in serialized output.
-  - No requirement for internal IDs or deferred feature-specific metadata.
+- Stable ordering in query/list responses.
+- Path normalization to `/` in serialized output.
+- No requirement for internal IDs or deferred feature-specific metadata.
+
+### 4.8 Parser Definition Extraction Status
+
+- For readiness scope languages, definitions come from tree-sitter by default:
+  - `.python`
+  - `.javascript`
+  - `.typescript`
+  - `.tsx`
+  - `.rust`
+  - `.zig`
+- For all other languages, the extractor continues to use existing heuristic parsing for symbol extraction only.
+- Current intentional parser limitations (accepted as deferred for phase-2 scope):
+  - member-call and generic edge inference remain best effort; call candidates are still collected textually after definition extraction.
+  - import normalization is still heuristic and may not infer package-local aliasing exactly as original.
+  - semantic edges rely on name matching and are expected to be incomplete for complex inheritance/trait patterns.
 
 ### Exclusions in scope
 

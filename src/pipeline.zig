@@ -283,3 +283,207 @@ test "pipeline retention enables call-edge emission across files" {
         return error.TestUnexpectedResult;
     }
 }
+
+test "pipeline retains parser-backed definitions and expected edges for all readiness languages" {
+    const allocator = std.testing.allocator;
+
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(
+        allocator,
+        "/tmp/cbm-pipeline-language-matrix-{x}",
+        .{project_id},
+    );
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    {
+        var dir = try std.fs.cwd().openDir(project_dir, .{});
+        defer dir.close();
+
+        try dir.makePath("python");
+        var python = try dir.createFile("python/main.py", .{});
+        defer python.close();
+        try python.writeAll(
+            \\class Parent:
+            \\    pass
+            \\
+            \\class Child(Parent):
+            \\    pass
+            \\
+            \\def helper():
+            \\    return 1
+            \\
+            \\def main():
+            \\    return helper()
+            \\
+        );
+
+        try dir.makePath("javascript");
+        var js = try dir.createFile("javascript/index.js", .{});
+        defer js.close();
+        try js.writeAll(
+            \\function helper(value) {
+            \\  return value + 1;
+            \\}
+            \\
+            \\function main() {
+            \\  return helper(7);
+            \\}
+            \\
+        );
+
+        try dir.makePath("typescript");
+        var ts = try dir.createFile("typescript/index.ts", .{});
+        defer ts.close();
+        try ts.writeAll(
+            \\interface ServicePort {
+            \\  label: string;
+            \\}
+            \\
+            \\class Worker implements ServicePort {
+            \\  label: string;
+            \\}
+            \\
+            \\function helper(value: number) {
+            \\  return value + 1;
+            \\}
+            \\
+            \\function main() {
+            \\  return helper(1);
+            \\}
+            \\
+        );
+
+        try dir.makePath("tsx");
+        var tsx = try dir.createFile("tsx/App.tsx", .{});
+        defer tsx.close();
+        try tsx.writeAll(
+            \\type ViewProps = { title: string };
+            \\
+            \\function render(props: ViewProps) {
+            \\  return <span>{props.title}</span>;
+            \\}
+            \\
+            \\function main() {
+            \\  return render({ title: "ok" });
+            \\}
+            \\
+        );
+
+        try dir.makePath("rust");
+        var rs = try dir.createFile("rust/lib.rs", .{});
+        defer rs.close();
+        try rs.writeAll(
+            \\struct Service {
+            \\  id: u64
+            \\}
+            \\
+            \\trait Speaker {}
+            \\
+            \\fn helper() {}
+            \\
+            \\fn main() {
+            \\  helper();
+            \\}
+            \\
+            \\impl Speaker for Service {
+            \\  fn speak(self) {}
+            \\}
+            \\
+        );
+
+        try dir.makePath("zig");
+        var zf = try dir.createFile("zig/main.zig", .{});
+        defer zf.close();
+        try zf.writeAll(
+            \\const std = @import("std");
+            \\
+            \\fn helper() u8 {
+            \\  return 1;
+            \\}
+            \\
+            \\fn main() void {
+            \\  _ = helper();
+            \\}
+            \\
+        );
+    }
+
+    var db = try store.Store.openMemory(allocator);
+    defer db.deinit();
+
+    var pipeline = Pipeline.init(allocator, project_dir, .full);
+    defer pipeline.deinit();
+    try pipeline.run(&db);
+
+    const project_name = std.fs.path.basename(project_dir);
+
+    const python_child = try findSingleNodeByNameInFile(&db, project_name, "Class", "Child", "python/main.py");
+    const python_parent = try findSingleNodeByNameInFile(&db, project_name, "Class", "Parent", "python/main.py");
+    const python_main = try findSingleNodeByNameInFile(&db, project_name, "Function", "main", "python/main.py");
+    const py_helper = try findSingleNodeByNameInFile(&db, project_name, "Function", "helper", "python/main.py");
+    const py_calls = try db.findEdgesBySource(project_name, python_main, "CALLS");
+    defer db.freeEdges(py_calls);
+    try std.testing.expectEqual(@as(usize, 1), py_calls.len);
+    try std.testing.expectEqual(py_helper, py_calls[0].target_id);
+    const py_inherits = try db.findEdgesBySource(project_name, python_child, "INHERITS");
+    defer db.freeEdges(py_inherits);
+    try std.testing.expectEqual(@as(usize, 1), py_inherits.len);
+    try std.testing.expectEqual(python_parent, py_inherits[0].target_id);
+
+    const js_main = try findSingleNodeByNameInFile(&db, project_name, "Function", "main", "javascript/index.js");
+    const js_calls = try db.findEdgesBySource(project_name, js_main, "CALLS");
+    defer db.freeEdges(js_calls);
+    try std.testing.expectEqual(@as(usize, 1), js_calls.len);
+
+    const ts_main = try findSingleNodeByNameInFile(&db, project_name, "Function", "main", "typescript/index.ts");
+    const ts_calls = try db.findEdgesBySource(project_name, ts_main, "CALLS");
+    defer db.freeEdges(ts_calls);
+    try std.testing.expectEqual(@as(usize, 1), ts_calls.len);
+
+    const tsx_main = try findSingleNodeByNameInFile(&db, project_name, "Function", "main", "tsx/App.tsx");
+    const tsx_calls = try db.findEdgesBySource(project_name, tsx_main, "CALLS");
+    defer db.freeEdges(tsx_calls);
+    try std.testing.expectEqual(@as(usize, 1), tsx_calls.len);
+
+    const rust_main = try findSingleNodeByNameInFile(&db, project_name, "Function", "main", "rust/lib.rs");
+    const rust_calls = try db.findEdgesBySource(project_name, rust_main, "CALLS");
+    defer db.freeEdges(rust_calls);
+    try std.testing.expectEqual(@as(usize, 1), rust_calls.len);
+    const rust_child = try findSingleNodeByNameInFile(&db, project_name, "Class", "Service", "rust/lib.rs");
+    const rust_trait = try findSingleNodeByNameInFile(&db, project_name, "Class", "Speaker", "rust/lib.rs");
+    const rust_impls = try db.findEdgesBySource(project_name, rust_child, "IMPLEMENTS");
+    defer db.freeEdges(rust_impls);
+    try std.testing.expectEqual(@as(usize, 1), rust_impls.len);
+    try std.testing.expectEqual(rust_trait, rust_impls[0].target_id);
+
+    const zig_main = try findSingleNodeByNameInFile(&db, project_name, "Function", "main", "zig/main.zig");
+    const zig_calls = try db.findEdgesBySource(project_name, zig_main, "CALLS");
+    defer db.freeEdges(zig_calls);
+    try std.testing.expectEqual(@as(usize, 1), zig_calls.len);
+
+    const python_file = try findSingleNodeByNameInFile(&db, project_name, "File", "main.py", "python/main.py");
+    const py_contains = try db.findEdgesBySource(project_name, python_file, "CONTAINS");
+    defer db.freeEdges(py_contains);
+    try std.testing.expect(py_contains.len > 0);
+}
+
+fn findSingleNodeByNameInFile(
+    db: *store.Store,
+    project_name: []const u8,
+    label: []const u8,
+    name: []const u8,
+    file_path: []const u8,
+) !i64 {
+    const nodes = try db.searchNodes(.{
+        .project = project_name,
+        .label_pattern = label,
+        .name_pattern = name,
+        .file_pattern = file_path,
+        .limit = 1,
+    });
+    defer db.freeNodes(nodes);
+    if (nodes.len == 0) return error.TestUnexpectedResult;
+    return nodes[0].id;
+}

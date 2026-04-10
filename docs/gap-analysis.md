@@ -16,6 +16,22 @@ For the first interoperability pass, we evaluate only this subset:
 - `trace_call_path`
 - `list_projects`
 
+Parser-backed extraction behavior for this gate:
+
+- `extractor` uses tree-sitter for:
+  - Python
+  - JavaScript
+  - TypeScript
+  - TSX
+  - Rust
+  - Zig
+- Heuristic symbol extraction remains only for languages where tree-sitter support is not yet wired.
+- Deferred or intentionally partial parser parity for the first gate:
+  - member function/class method call target inference
+  - deep import/namespace resolution across mixed project-relative paths
+  - some advanced trait/impl edge cases
+  - non-target language feature extraction
+
 Comparator assumptions for this scope:
 
 - Path values are normalized to `/`.
