@@ -1,14 +1,17 @@
 # Plan: Interoperability Alignment Readiness
 
+## Status
+Implemented on 2026-04-10. This plan is complete and now lives in `docs/plans/implemented/`.
+
 ## Goal
 Define and complete the minimum Zig-port work needed before an alignment test suite can usefully compare this implementation against the original `codebase-memory-mcp`.
 
 ## Current Phase
-Phase 7 complete
+All phases complete
 
 ## File Map
-- Modify: `docs/plans/in-progress/interoperability-alignment-readiness-plan.md`
-- Modify: `docs/plans/in-progress/interoperability-alignment-readiness-progress.md`
+- Modify: `docs/plans/implemented/interoperability-alignment-readiness-plan.md`
+- Modify: `docs/plans/implemented/interoperability-alignment-readiness-progress.md`
 - Modify: `docs/zig-port-plan.md`
 - Modify: `docs/gap-analysis.md`
 - Modify: `src/extractor.zig`
@@ -80,7 +83,7 @@ Phase 7 complete
 - [x] Create `scripts/run_interop_alignment.sh` to run the Zig port and the original `codebase-memory-mcp` against the same fixture corpus using the readiness-scope tools.
 - [x] Make the harness normalize outputs according to the documented comparison contract before diffing, rather than comparing raw JSON directly.
 - [x] Make the harness emit grouped mismatch categories by fixture and tool so failures are actionable instead of noisy.
-- [x] Run the harness on the full fixture corpus and record the initial mismatch categories in `docs/plans/in-progress/interoperability-alignment-readiness-progress.md`.
+- [x] Run the harness on the full fixture corpus and record the initial mismatch categories in `docs/plans/implemented/interoperability-alignment-readiness-progress.md`.
 - [x] Update `docs/zig-port-plan.md` and `docs/gap-analysis.md` if the first baseline reveals contract gaps or previously unknown tolerated drift categories.
 - [x] Exit this phase only when there is a repeatable baseline run that distinguishes “contract-compliant difference” from “real interoperability defect.”
 - **Status:** complete
@@ -89,7 +92,7 @@ Phase 7 complete
 - [x] Reconcile `testdata/interop/manifest.json` with the observed reference baseline so fixture assertions only require behavior the original implementation actually exposes in first-gate mode.
 - [x] Reclassify `index_repository` and `list_projects` summary counts as diagnostic-only baseline data in the first-gate contract so the gate focuses on behavioral parity instead of numeric drift.
 - [x] Fix the Zig `trace_call_path` source-node attribution bug so `run` retains its outbound `CALLS` edge instead of attributing the call to the local declaration line.
-- [x] Re-run `bash scripts/run_interop_alignment.sh`, update the baseline summary in `docs/plans/in-progress/interoperability-alignment-readiness-progress.md`, and refresh `docs/zig-port-plan.md` / `docs/gap-analysis.md` to match the final first-gate contract.
+- [x] Re-run `bash scripts/run_interop_alignment.sh`, update the baseline summary in `docs/plans/implemented/interoperability-alignment-readiness-progress.md`, and refresh `docs/zig-port-plan.md` / `docs/gap-analysis.md` to match the final first-gate contract.
 - [x] Exit this phase only when the current baseline mismatches are either eliminated or explicitly documented as tolerated first-gate drift with no undocumented gaps left.
 - **Status:** complete
 
@@ -120,6 +123,17 @@ Phase 7 complete
 - [x] **Phase 6 baseline complete** — the alignment harness runs both implementations and records the initial mismatch categories.
 - [x] **Phase 7 parity cleanup complete** — the remaining baseline mismatches are eliminated or explicitly accepted by the documented first-gate contract.
 - [x] **Runtime stability checkpoint** — the tree-sitter header/runtime compatibility crash is fixed and the current Zig test suite passes again.
+
+## Completion Summary
+- The first-gate interoperability contract is documented and automated.
+- Parser-backed extraction is the default path for readiness-scope languages.
+- The readiness-scope MCP tools are implemented and exercised by the harness.
+- The fixture corpus and manifest are committed.
+- The harness baseline is now stable at:
+  - `Strict matches: 20`
+  - `Diagnostic-only comparisons: 5`
+  - `Mismatches: 0`
+- Remaining work now belongs to the broader Zig-port backlog rather than this readiness plan.
 
 ## Errors
 | Error | Attempt | Resolution |

@@ -3,6 +3,7 @@
 ## Session: 2026-04-10
 
 - Reworked the remaining interoperability items into execution-ready phases with explicit file targets, acceptance criteria, and dependency order after the tree-sitter runtime blocker was removed.
+- Completed the full seven-phase readiness plan and verified the final first-gate baseline after post-phase review fixes.
 
 ### Phase 1: Lock the Interoperability Contract
 - **Status:** complete
@@ -13,8 +14,8 @@
 - Files modified:
   - `docs/zig-port-plan.md`
   - `docs/gap-analysis.md`
-  - `docs/plans/in-progress/interoperability-alignment-readiness-plan.md`
-  - `docs/plans/in-progress/interoperability-alignment-readiness-progress.md`
+  - `docs/plans/implemented/interoperability-alignment-readiness-plan.md`
+  - `docs/plans/implemented/interoperability-alignment-readiness-progress.md`
   - `src/extractor.zig`
   - `src/pipeline.zig`
   - `src/registry.zig`
@@ -109,7 +110,7 @@
   - Fixed `src/cypher.zig` quoted equality parsing so readiness count queries return filtered results.
   - Re-ran the harness against `python-basic`, `javascript-basic`, `typescript-basic`, `rust-basic`, and `zig-basic` from `testdata/interop/manifest.json`.
   - Captured baseline artifacts in `.interop_reports/interop_alignment_report.json` and `.interop_reports/interop_alignment_report.md`.
-  - Baseline mismatch summary:
+  - Initial baseline mismatch summary:
     - Total fixtures: 5
     - Total comparisons: 25
     - Matches: 8
@@ -120,7 +121,7 @@
       - `typescript-basic`: `search_graph`, `trace_call_path`, `index_repository`, `list_projects`
       - `rust-basic`: `search_graph`, `query_graph`, `trace_call_path`, `index_repository`, `list_projects`
       - `zig-basic`: `search_graph`, `trace_call_path`, `index_repository`, `list_projects`
-  - Next-phase prep:
+  - Next-phase prep at the time:
     - The remaining baseline now reflects real parity gaps instead of harness/reporting bugs.
     - The next implementation phase should focus on graph-model/count parity first, then TypeScript/Rust/Zig extraction and traversal deltas.
 - Files modified/created:
@@ -139,13 +140,23 @@
 
 ### Phase 7: Close the Remaining First-Gate Parity Gaps
 - **Status:** complete
-- Planned focus:
+- Actions:
   - Reconciled the fixture oracle with the observed reference baseline so the harness now gates on behavior instead of raw summary-count drift.
   - Reclassified `index_repository` / `list_projects` summary counts as diagnostic-only data in the first-gate contract.
   - Closed the Zig `trace_call_path` source-node attribution bug so the `run` node retains its outbound `CALLS` edge.
   - Re-ran the harness and refreshed the baseline/docs after the parity cleanup.
-- Known remaining mismatch buckets at phase start:
-  - none
+  - Fixed follow-up review findings in `src/cypher.zig`, `src/mcp.zig`, and `src/extractor.zig`:
+    - `CypherResult` ownership and cleanup
+    - unsupported `query_graph` requests now return MCP errors
+    - top-level constant/import declaration lines no longer pollute extracted call candidates
+    - Rust `impl foo::Bar for baz::Qux<T>` trait/type parsing now preserves the terminal type names
+  - Rebuilt the runtime binary and re-ran the harness against the updated executable.
+- Final baseline summary:
+  - Total fixtures: 5
+  - Total comparisons: 25
+  - Strict matches: 20
+  - Diagnostic-only comparisons: 5
+  - Mismatches: 0
 - Checklist status:
   - [x] Reconcile fixture expectations against the reference implementation output.
   - [x] Reclassify summary counts for `index_repository` and `list_projects` as diagnostic-only.
@@ -153,6 +164,15 @@
   - [x] Close Rust search/query/traversal parity gaps.
   - [x] Close Zig search/traversal parity gaps or explicitly reclassify them.
   - [x] Refresh the harness baseline and docs after parity cleanup.
+
+## Final Status
+- The interoperability readiness plan is complete.
+- The plan has been moved from `docs/plans/in-progress/` to `docs/plans/implemented/`.
+- Remaining work is now broader post-readiness implementation:
+  - full MCP surface
+  - fuller Cypher parity
+  - usage edges and advanced extraction parity
+  - watcher / incremental indexing / CLI / performance-oriented milestones
 
 ## Errors
 | Timestamp | Error | Attempt | Resolution |

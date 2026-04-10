@@ -4,6 +4,91 @@ What the C codebase has that the Zig port does NOT yet have. Excludes deliberate
 
 Status key: **STUB** (type signatures exist, no implementation), **MISSING** (not present at all), **PARTIAL** (some logic, incomplete)
 
+## Current Snapshot
+
+Completed now:
+- The first interoperability-readiness gate is complete.
+- The readiness-scope tool surface is implemented and exercised:
+  - `index_repository`
+  - `search_graph`
+  - `query_graph`
+  - `trace_call_path`
+  - `list_projects`
+- Parser-backed definition extraction is working for the readiness languages:
+  - Python
+  - JavaScript
+  - TypeScript
+  - TSX
+  - Rust
+  - Zig
+- The current fixture harness baseline is:
+  - `Strict matches: 20`
+  - `Diagnostic-only comparisons: 5`
+  - `Mismatches: 0`
+
+Still to implement after the readiness gate:
+- The remaining MCP tools outside the five-tool readiness slice.
+- Full Cypher parity beyond the constrained readiness query subset.
+- Usage/type-reference extraction parity and broader cross-language semantics.
+- Watcher, incremental indexing, CLI parity, parallelism, and MinHash/LSH.
+- Deferred history/enrichment/route/config-link features.
+
+## Remaining Implementation Plan
+
+Complete slices:
+- First-gate interoperability readiness plan
+- Readiness-scope extractor/pipeline/registry/store/MCP vertical slice
+- First fixture corpus and alignment harness
+
+Open slices:
+- Public surface expansion:
+  - `get_code_snippet`
+  - `get_graph_schema`
+  - `get_architecture`
+  - `search_code`
+  - `delete_project`
+  - `index_status`
+  - `detect_changes`
+  - `manage_adr`
+- Query/runtime expansion:
+  - full Cypher lexer/parser/executor
+  - richer search filters/sorting/degree filtering
+  - impact/risk summaries and broader traversal parity
+- Indexing/runtime expansion:
+  - usage/type-ref extraction
+  - watcher-driven auto-index
+  - incremental indexing
+  - parallel extraction
+  - MinHash/LSH similarity
+- Productization:
+  - CLI install/uninstall/update/config parity
+  - progress sinks and richer diagnostics
+
+### Recommended Sequencing
+
+Use this order for the remaining backlog:
+
+1. **Shared substrate first**
+   - store/search/traversal/schema helpers
+   - graph-buffer completion
+   - registry/FQN strengthening
+2. **Low-risk public surface second**
+   - tools that mostly expose existing graph data
+3. **Graph fidelity third**
+   - extraction, call/import resolution, usages, semantic edges
+4. **Heavy analysis surface fourth**
+   - fuller search/Cypher/architecture/detect-changes work
+5. **Lifecycle and scale fifth**
+   - watcher, incremental indexing, parallel extraction, similarity
+6. **Productization and selective deferred features last**
+   - CLI parity plus any deferred features that still make sense after the core runtime settles
+
+This order is recommended because it maximizes shared reuse, keeps early verification cheap, and avoids layering concurrency or installer behavior on top of still-moving indexing semantics.
+
+## Note On Detailed Matrix
+
+The detailed subsystem matrix below predates the completed readiness milestone and is best read as a broad backlog inventory rather than the authoritative status of the readiness slice. Use the snapshot and plan sections above for the current complete-vs-remaining split.
+
 ---
 
 ## Readiness Alignment Scope (Current Gate)

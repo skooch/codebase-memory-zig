@@ -1,6 +1,58 @@
 # Zig Port of codebase-memory-mcp
 
-## Status: In Progress / Open Technical Decisions Remain
+## Status: Readiness Gate Complete / Broader Port Still In Progress
+
+### Current Snapshot
+
+Completed now:
+- The seven-phase interoperability-readiness plan is complete.
+- The first-gate alignment slice is implemented for:
+  - `index_repository`
+  - `search_graph`
+  - `query_graph`
+  - `trace_call_path`
+  - `list_projects`
+- Parser-backed definition extraction is the default readiness path for:
+  - Python
+  - JavaScript
+  - TypeScript
+  - TSX
+  - Rust
+  - Zig
+- The committed fixture corpus and harness currently report:
+  - `Strict matches: 20`
+  - `Diagnostic-only comparisons: 5`
+  - `Mismatches: 0`
+
+Still to implement after the readiness gate:
+- Full MCP surface beyond the five readiness-scope tools.
+- Full Cypher parser/executor parity beyond the constrained readiness query subset.
+- Usage/type-ref parity and broader extraction semantics.
+- Watcher-driven reindexing, incremental indexing, and broader CLI parity.
+- Parallel indexing, MinHash/LSH, and the deferred enrichment/history features.
+
+### Recommended Execution Order
+
+The most effective next order is:
+
+1. **Core graph/query substrate**
+   - finish shared store, graph-buffer, traversal, schema, and registry/FQN primitives first
+   - reason: these are reused by almost every remaining tool, so finishing them early reduces rework
+2. **Low-risk MCP surface expansion**
+   - add tools that mostly expose already-indexed data, such as snippet/schema/status/delete flows
+   - reason: this increases usable surface area quickly without waiting on the hardest query/indexing work
+3. **Indexing fidelity parity**
+   - improve extraction, call/import resolution, usage/type-ref coverage, and semantic edges
+   - reason: advanced tools are only as good as the graph they read from
+4. **Heavy query and analysis features**
+   - broaden `search_graph`, build fuller Cypher support, then add `search_code`, `get_architecture`, and `detect_changes`
+   - reason: these depend on both stronger graph facts and stronger shared query infrastructure
+5. **Runtime lifecycle and scale**
+   - watcher, incremental indexing, parallel extraction, similarity
+   - reason: lifecycle/concurrency work is much easier once single-threaded semantics are stable
+6. **Productization and deferred features**
+   - CLI parity, install/update/config flows, and selective promotion of deferred features
+   - reason: user-facing packaging and long-tail features should settle after core runtime behavior stops shifting
 
 ---
 
@@ -414,7 +466,7 @@ Checked means complete relative to this plan's stated goal. Unchecked means stil
 
 ### M0 Checklist
 
-- [ ] `build.zig` compiles SQLite + tree-sitter runtime + one grammar
+- [x] `build.zig` compiles SQLite + tree-sitter runtime + one grammar
 - [ ] Foundation types: allocator wrappers, string interning, logging
 - [x] Port `store/` to Zig calling SQLite via `@cImport`
 - [x] Port `graph_buffer/` using `std.HashMap` + `std.ArrayList`
@@ -424,12 +476,12 @@ Checked means complete relative to this plan's stated goal. Unchecked means stil
 ### M1 Checklist
 
 - [x] Port `discover/` (file walk, language detection, gitignore)
-- [ ] Port extraction layer: tree-sitter parsing, definition extraction
+- [x] Port extraction layer: tree-sitter parsing, definition extraction
 - [x] Port `pipeline/` orchestrator with `pass_definitions` + `registry`
 - [ ] Port `pass_calls`, `pass_usages`, `pass_semantic`
 - [x] Single-threaded first
 - [x] Exit criterion: can index a small repo and produce a populated graph DB
-Current state: the end-to-end vertical slice is working with heuristic extraction plus persisted call/import/semantic edges, but `pass_usages` parity and tree-sitter-backed extraction are still outstanding.
+Current state: the end-to-end vertical slice is working with parser-backed definitions plus persisted call/import/semantic edges for readiness-scope languages, but full `pass_usages` parity and broader extraction parity remain outstanding.
 
 ### M2 Checklist
 
@@ -438,7 +490,7 @@ Current state: the end-to-end vertical slice is working with heuristic extractio
 - [ ] Wire up all MCP tools: `search_graph`, `query_graph`, `get_code_snippet`, `trace_call_path`, etc.
 - [ ] Port `watcher/` for auto-reindex
 - [ ] Exit criterion: can run as MCP server, index a repo, answer queries via Claude Code
-Current state: the readiness-slice MCP surface is live for `index_repository`, `search_graph`, `query_graph`, `trace_call_path`, and `list_projects`, but this milestone is still incomplete relative to the full public surface described above.
+Current state: the readiness-slice MCP surface is live and under harness coverage for `index_repository`, `search_graph`, `query_graph`, `trace_call_path`, and `list_projects`, but the broader tool surface, watcher integration, and fuller query semantics are still incomplete.
 
 ### M3 Checklist
 
@@ -457,3 +509,33 @@ Current state: the readiness-slice MCP surface is live for `index_repository`, `
 - [ ] Test tagging
 - [ ] Config-code linking
 - [ ] Decorator enrichment
+
+## Completion Summary
+
+Complete plan/milestone slices:
+- Interoperability-readiness Phases 1-7
+- M0 exit criterion
+- M1 exit criterion for a single-threaded readiness slice
+- M2 readiness subset only
+
+Still-open implementation slices:
+- Remaining M2 work:
+  - full Cypher support
+  - remaining MCP tools
+  - watcher-based auto-reindex
+- All of M3:
+  - parallel extraction
+  - MinHash similarity integration
+  - CLI parity
+  - memory/performance parity work
+- All of M4:
+  - incremental/history/enrichment features
+
+## 9. Post-Readiness Execution Plan
+
+The tracked plan for the next stage of work now lives at:
+
+- [post-readiness-zig-port-execution-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/post-readiness-zig-port-execution-plan.md)
+- [post-readiness-zig-port-execution-progress.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/post-readiness-zig-port-execution-progress.md)
+
+That plan replaces the older assumption that the remaining work should simply proceed M2 -> M3 -> M4 as written. The new sequencing is dependency-driven and should reduce churn while still delivering useful public-surface growth early.
