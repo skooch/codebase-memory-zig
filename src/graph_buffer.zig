@@ -273,6 +273,112 @@ pub const GraphBuffer = struct {
         return self.nodes_by_id.items;
     }
 
+    pub fn loadFromStore(self: *GraphBuffer, db: *store.Store) !void {
+        const stored_nodes = try db.searchNodes(.{
+            .project = self.project,
+            .limit = 1_000_000,
+        });
+        defer db.freeNodes(stored_nodes);
+
+        const edges = try db.listEdges(self.project, null);
+        defer db.freeEdges(edges);
+
+        for (stored_nodes) |node| {
+            const qn_copy = try self.allocator.dupe(u8, node.qualified_name);
+            errdefer self.allocator.free(qn_copy);
+            const owned = try ownedNodeFromSlices(
+                self.allocator,
+                node.label,
+                node.name,
+                node.qualified_name,
+                node.file_path,
+                node.start_line,
+                node.end_line,
+                node.properties_json,
+            );
+            errdefer self.freeNode(owned);
+
+            var inserted = owned;
+            inserted.id = node.id;
+            try self.nodes_by_id.append(self.allocator, inserted);
+            try self.nodes_by_qn.put(qn_copy, node.id);
+            if (node.id >= self.next_node_id) {
+                self.next_node_id = node.id + 1;
+            }
+        }
+
+        for (edges) |edge| {
+            const edge_type_copy = try self.allocator.dupe(u8, edge.edge_type);
+            errdefer self.allocator.free(edge_type_copy);
+            const props_copy = try self.allocator.dupe(u8, edge.properties_json);
+            errdefer self.allocator.free(props_copy);
+            const key = try self.makeEdgeKey(edge.source_id, edge.target_id, edge.edge_type);
+            errdefer self.allocator.free(key);
+
+            try self.edge_keys.put(key, {});
+            try self.edges.append(self.allocator, .{
+                .id = edge.id,
+                .source_id = edge.source_id,
+                .target_id = edge.target_id,
+                .edge_type = edge_type_copy,
+                .properties_json = props_copy,
+            });
+            if (edge.id >= self.next_edge_id) {
+                self.next_edge_id = edge.id + 1;
+            }
+        }
+    }
+
+    pub fn deleteByFile(self: *GraphBuffer, file_path: []const u8) void {
+        var removed = std.AutoHashMap(i64, void).init(self.allocator);
+        defer removed.deinit();
+
+        var keep_nodes = std.ArrayList(BufferNode).empty;
+        defer keep_nodes.deinit(self.allocator);
+
+        for (self.nodes_by_id.items) |node| {
+            if (std.mem.eql(u8, node.file_path, file_path)) {
+                removed.put(node.id, {}) catch {};
+                if (self.nodes_by_qn.fetchRemove(node.qualified_name)) |entry| {
+                    self.allocator.free(entry.key);
+                }
+                self.freeNode(node);
+            } else {
+                keep_nodes.append(self.allocator, node) catch unreachable;
+            }
+        }
+
+        self.nodes_by_id.clearRetainingCapacity();
+        self.nodes_by_id.appendSlice(self.allocator, keep_nodes.items) catch unreachable;
+
+        var keep_edges = std.ArrayList(BufferEdge).empty;
+        defer keep_edges.deinit(self.allocator);
+
+        var old_edge_keys = self.edge_keys;
+        self.edge_keys = std.StringHashMap(void).init(self.allocator);
+        defer old_edge_keys.deinit();
+
+        var edge_key_it = old_edge_keys.iterator();
+        while (edge_key_it.next()) |entry| {
+            self.allocator.free(entry.key_ptr.*);
+        }
+
+        for (self.edges.items) |edge| {
+            if (removed.contains(edge.source_id) or removed.contains(edge.target_id)) {
+                self.allocator.free(edge.edge_type);
+                self.allocator.free(edge.properties_json);
+                continue;
+            }
+
+            keep_edges.append(self.allocator, edge) catch unreachable;
+            const key = self.makeEdgeKey(edge.source_id, edge.target_id, edge.edge_type) catch unreachable;
+            self.edge_keys.put(key, {}) catch unreachable;
+        }
+
+        self.edges.clearRetainingCapacity();
+        self.edges.appendSlice(self.allocator, keep_edges.items) catch unreachable;
+    }
+
     pub fn edgesForSource(self: *const GraphBuffer, source_id: i64, out: *std.ArrayList(BufferEdge)) void {
         for (self.edges.items) |edge| {
             if (edge.source_id == source_id) {
@@ -425,4 +531,45 @@ test "graph buffer findNodeById tolerates sparse ids" {
     } else {
         return error.TestExpectedEqual;
     }
+}
+
+test "graph buffer can load from store and purge a file slice" {
+    var db = try store.Store.openMemory(std.testing.allocator);
+    defer db.deinit();
+    try db.upsertProject("demo", "/tmp/demo");
+
+    const keep_id = try db.upsertNode(.{
+        .project = "demo",
+        .label = "Function",
+        .name = "keep",
+        .qualified_name = "demo.keep",
+        .file_path = "keep.py",
+    });
+    const drop_id = try db.upsertNode(.{
+        .project = "demo",
+        .label = "Function",
+        .name = "drop",
+        .qualified_name = "demo.drop",
+        .file_path = "drop.py",
+    });
+    _ = try db.upsertEdge(.{
+        .project = "demo",
+        .source_id = keep_id,
+        .target_id = drop_id,
+        .edge_type = "CALLS",
+    });
+
+    var gb = GraphBuffer.init(std.testing.allocator, "demo");
+    defer gb.deinit();
+    try gb.loadFromStore(&db);
+
+    try std.testing.expectEqual(@as(usize, 2), gb.nodeCount());
+    try std.testing.expectEqual(@as(usize, 1), gb.edgeCount());
+
+    gb.deleteByFile("drop.py");
+
+    try std.testing.expectEqual(@as(usize, 1), gb.nodeCount());
+    try std.testing.expectEqual(@as(usize, 0), gb.edgeCount());
+    try std.testing.expect(gb.findNodeByQualifiedName("demo.drop") == null);
+    try std.testing.expect(gb.findNodeByQualifiedName("demo.keep") != null);
 }

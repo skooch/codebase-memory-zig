@@ -38,6 +38,14 @@ pub const Project = struct {
     root_path: []const u8 = "",
 };
 
+pub const FileHash = struct {
+    project: []const u8,
+    rel_path: []const u8,
+    sha256: []const u8 = "",
+    mtime_ns: i64 = 0,
+    size: i64 = 0,
+};
+
 pub const ProjectStatus = struct {
     project: []const u8,
     indexed_at: []const u8 = "",
@@ -345,6 +353,81 @@ pub const Store = struct {
         self.allocator.free(status.project);
         self.allocator.free(status.indexed_at);
         self.allocator.free(status.root_path);
+    }
+
+    pub fn upsertFileHash(
+        self: *Store,
+        project: []const u8,
+        rel_path: []const u8,
+        sha256: []const u8,
+        mtime_ns: i64,
+        size: i64,
+    ) !void {
+        const stmt = try self.prepare(
+            "INSERT INTO file_hashes(project, rel_path, sha256, mtime_ns, size) VALUES(?1, ?2, ?3, ?4, ?5) " ++
+                "ON CONFLICT(project, rel_path) DO UPDATE SET sha256 = excluded.sha256, mtime_ns = excluded.mtime_ns, size = excluded.size",
+        );
+        defer self.finalize(stmt);
+        try self.bindText(stmt, 1, project);
+        try self.bindText(stmt, 2, rel_path);
+        try self.bindText(stmt, 3, sha256);
+        try self.bindInt(stmt, 4, mtime_ns);
+        try self.bindInt(stmt, 5, size);
+        try self.stepDone(stmt);
+    }
+
+    pub fn getFileHashes(self: *Store, project: []const u8) ![]FileHash {
+        const stmt = try self.prepare(
+            "SELECT project, rel_path, sha256, mtime_ns, size FROM file_hashes WHERE project = ?1 ORDER BY rel_path ASC",
+        );
+        defer self.finalize(stmt);
+        try self.bindText(stmt, 1, project);
+
+        var out = std.ArrayList(FileHash).empty;
+        errdefer {
+            for (out.items) |hash| self.freeFileHash(hash);
+            out.deinit(self.allocator);
+        }
+
+        while (true) {
+            const rc = c.sqlite3_step(stmt);
+            if (rc == c.SQLITE_DONE) break;
+            if (rc != c.SQLITE_ROW) return StoreError.SqlError;
+            try out.append(self.allocator, .{
+                .project = try self.copyColumnText(stmt, 0),
+                .rel_path = try self.copyColumnText(stmt, 1),
+                .sha256 = try self.copyColumnText(stmt, 2),
+                .mtime_ns = c.sqlite3_column_int64(stmt, 3),
+                .size = c.sqlite3_column_int64(stmt, 4),
+            });
+        }
+        return out.toOwnedSlice(self.allocator);
+    }
+
+    pub fn deleteFileHash(self: *Store, project: []const u8, rel_path: []const u8) !void {
+        const stmt = try self.prepare("DELETE FROM file_hashes WHERE project = ?1 AND rel_path = ?2");
+        defer self.finalize(stmt);
+        try self.bindText(stmt, 1, project);
+        try self.bindText(stmt, 2, rel_path);
+        try self.stepDone(stmt);
+    }
+
+    pub fn deleteFileHashes(self: *Store, project: []const u8) !void {
+        const stmt = try self.prepare("DELETE FROM file_hashes WHERE project = ?1");
+        defer self.finalize(stmt);
+        try self.bindText(stmt, 1, project);
+        try self.stepDone(stmt);
+    }
+
+    pub fn freeFileHash(self: *Store, hash: FileHash) void {
+        self.allocator.free(hash.project);
+        self.allocator.free(hash.rel_path);
+        self.allocator.free(hash.sha256);
+    }
+
+    pub fn freeFileHashes(self: *Store, hashes: []FileHash) void {
+        for (hashes) |hash| self.freeFileHash(hash);
+        self.allocator.free(hashes);
     }
 
     // --- Node CRUD -------------------------------------------------------

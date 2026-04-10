@@ -86,6 +86,22 @@
   - `src/cypher.zig`
   - `src/mcp.zig`
 
+### Phase 6: Runtime Lifecycle and Scale
+- **Status:** in progress
+- Actions:
+  - Added file-hash CRUD to `src/store.zig` so the pipeline can persist and reload per-file change metadata instead of always treating every run as a full rebuild.
+  - Added graph-buffer store loading and file-slice purge support in `src/graph_buffer.zig`, giving the incremental path a way to seed from the existing graph and surgically drop changed or deleted files before re-extraction.
+  - Routed `src/pipeline.zig` through an incremental path when stored hashes are present and the discovered file set stays within the expected range, then persisted refreshed hashes after both full and incremental runs.
+  - Added regression coverage proving the graph buffer can load and purge a file slice and that the pipeline can reindex only changed files against stored hashes.
+  - Replaced the watcher placeholder in `src/watcher.zig` with a git-backed watcher that owns its watched-project state, establishes baselines, detects HEAD or dirty-worktree changes, supports one-shot polling plus a blocking run loop, and exercises the callback path in tests against real temporary git repositories.
+  - Verified the chunk with `zig build test`.
+- Files modified:
+  - `docs/plans/in-progress/post-readiness-zig-port-execution-progress.md`
+  - `src/store.zig`
+  - `src/graph_buffer.zig`
+  - `src/pipeline.zig`
+  - `src/watcher.zig`
+
 ## Errors
 | Timestamp | Error | Attempt | Resolution |
 |-----------|-------|---------|------------|

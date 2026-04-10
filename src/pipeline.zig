@@ -68,6 +68,24 @@ pub const Pipeline = struct {
             return;
         }
 
+        const stored_hashes = try db.getFileHashes(self.project_name);
+        defer db.freeFileHashes(stored_hashes);
+        if (stored_hashes.len > 0 and
+            discovered_files.len <= stored_hashes.len + (stored_hashes.len / 2))
+        {
+            const used_incremental = self.runIncremental(db, discovered_files, stored_hashes) catch |err| switch (err) {
+                error.Cancelled => return PipelineError.Cancelled,
+                error.OutOfMemory => return PipelineError.OutOfMemory,
+                error.SqlError => return PipelineError.SqlError,
+                error.OpenFailed => return PipelineError.OpenFailed,
+                error.NotFound => return PipelineError.NotFound,
+                else => return PipelineError.DiscoveryFailed,
+            };
+            if (used_incremental) {
+                return;
+            }
+        }
+
         try db.deleteProject(self.project_name);
         try db.upsertProject(self.project_name, self.repo_path);
 
@@ -173,6 +191,7 @@ pub const Pipeline = struct {
         }
 
         try gb.dumpToStore(db);
+        try persistFileHashes(db, self.project_name, discovered_files);
         std.log.info(
             "pipeline graph buffer: {} nodes, {} edges",
             .{ gb.nodeCount(), gb.edgeCount() },
@@ -181,6 +200,84 @@ pub const Pipeline = struct {
 
     pub fn cancel(self: *Pipeline) void {
         self.cancelled.store(true, .release);
+    }
+
+    fn runIncremental(
+        self: *Pipeline,
+        db: *store.Store,
+        discovered_files: []discover.FileInfo,
+        stored_hashes: []const store.FileHash,
+    ) !bool {
+        const classification = try classifyDiscoveredFiles(
+            self.allocator,
+            discovered_files,
+            stored_hashes,
+        );
+        defer freeFileClassification(self.allocator, classification);
+
+        if (classification.changed_files.len == 0 and classification.deleted_paths.len == 0) {
+            try db.upsertProject(self.project_name, self.repo_path);
+            try persistFileHashes(db, self.project_name, discovered_files);
+            std.log.info("pipeline incremental: no changes for {s}", .{self.project_name});
+            return true;
+        }
+
+        var gb = GraphBuffer.init(self.allocator, self.project_name);
+        defer gb.deinit();
+        try gb.loadFromStore(db);
+
+        for (classification.changed_files) |file| {
+            gb.deleteByFile(file.rel_path);
+        }
+        for (classification.deleted_paths) |rel_path| {
+            gb.deleteByFile(rel_path);
+        }
+
+        var reg = Registry.init(self.allocator);
+        defer reg.deinit();
+        try seedRegistryFromGraphBuffer(&gb, &reg);
+
+        var extractions = std.ArrayList(extractor.FileExtraction).empty;
+        defer {
+            for (extractions.items) |extraction| {
+                extractor.freeFileExtraction(self.allocator, extraction);
+            }
+            extractions.deinit(self.allocator);
+        }
+
+        for (classification.changed_files) |file| {
+            if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
+
+            const extraction = extractFile(self.allocator, self.project_name, file, &gb) catch |err| {
+                std.log.warn("incremental extractor failed for {s}: {}", .{ file.rel_path, err });
+                continue;
+            };
+
+            for (extraction.symbols) |sym| {
+                try reg.add(sym.name, sym.qualified_name, sym.label, sym.file_path);
+            }
+            for (extraction.unresolved_imports) |imp| {
+                const alias = if (imp.binding_alias.len > 0)
+                    imp.binding_alias
+                else
+                    normalizeImportAlias(imp.import_name);
+                if (alias.len == 0) continue;
+                try reg.addImportBinding(imp.importer_id, alias, imp.import_name, imp.file_path);
+            }
+            try extractions.append(self.allocator, extraction);
+        }
+
+        try resolveExtractions(&gb, &reg, extractions.items, &self.cancelled);
+
+        try db.deleteProject(self.project_name);
+        try db.upsertProject(self.project_name, self.repo_path);
+        try gb.dumpToStore(db);
+        try persistFileHashes(db, self.project_name, discovered_files);
+        std.log.info(
+            "pipeline incremental graph buffer: {} nodes, {} edges",
+            .{ gb.nodeCount(), gb.edgeCount() },
+        );
+        return true;
     }
 
     fn freeDiscoveredFiles(self: *Pipeline, discovered_files: []discover.FileInfo) void {
@@ -249,6 +346,147 @@ fn resolveSemanticTarget(
             reg.resolve(hint.parent_name, hint.child_id, file_path, null);
     }
     return reg.resolve(hint.parent_name, hint.child_id, file_path, null);
+}
+
+const FileClassification = struct {
+    changed_files: []discover.FileInfo,
+    deleted_paths: [][]u8,
+};
+
+fn classifyDiscoveredFiles(
+    allocator: std.mem.Allocator,
+    discovered_files: []discover.FileInfo,
+    stored_hashes: []const store.FileHash,
+) !FileClassification {
+    var stored_by_path = std.StringHashMap(*const store.FileHash).init(allocator);
+    defer stored_by_path.deinit();
+    for (stored_hashes) |*hash| {
+        try stored_by_path.put(hash.rel_path, hash);
+    }
+
+    var seen_paths = std.StringHashMap(void).init(allocator);
+    defer seen_paths.deinit();
+
+    var changed_files = std.ArrayList(discover.FileInfo).empty;
+    errdefer changed_files.deinit(allocator);
+
+    for (discovered_files) |file| {
+        try seen_paths.put(file.rel_path, {});
+        if (stored_by_path.get(file.rel_path)) |stored| {
+            const stat = try statFile(file.path);
+            if (stat.mtime_ns != stored.mtime_ns or stat.size != stored.size) {
+                try changed_files.append(allocator, file);
+            }
+        } else {
+            try changed_files.append(allocator, file);
+        }
+    }
+
+    var deleted_paths = std.ArrayList([]u8).empty;
+    errdefer {
+        for (deleted_paths.items) |path| allocator.free(path);
+        deleted_paths.deinit(allocator);
+    }
+    for (stored_hashes) |hash| {
+        if (!seen_paths.contains(hash.rel_path)) {
+            try deleted_paths.append(allocator, try allocator.dupe(u8, hash.rel_path));
+        }
+    }
+
+    return .{
+        .changed_files = try changed_files.toOwnedSlice(allocator),
+        .deleted_paths = try deleted_paths.toOwnedSlice(allocator),
+    };
+}
+
+fn freeFileClassification(allocator: std.mem.Allocator, classification: FileClassification) void {
+    allocator.free(classification.changed_files);
+    for (classification.deleted_paths) |path| allocator.free(path);
+    allocator.free(classification.deleted_paths);
+}
+
+const FileStatSnapshot = struct {
+    mtime_ns: i64,
+    size: i64,
+};
+
+fn statFile(path: []const u8) !FileStatSnapshot {
+    const file = try std.fs.cwd().openFile(path, .{});
+    defer file.close();
+    const stat = try file.stat();
+    return .{
+        .mtime_ns = @intCast(stat.mtime),
+        .size = @intCast(stat.size),
+    };
+}
+
+fn persistFileHashes(
+    db: *store.Store,
+    project_name: []const u8,
+    discovered_files: []discover.FileInfo,
+) !void {
+    try db.deleteFileHashes(project_name);
+    for (discovered_files) |file| {
+        const stat = statFile(file.path) catch continue;
+        try db.upsertFileHash(project_name, file.rel_path, "", stat.mtime_ns, stat.size);
+    }
+}
+
+fn seedRegistryFromGraphBuffer(gb: *const GraphBuffer, reg: *Registry) !void {
+    for (gb.nodes()) |node| {
+        try reg.add(node.name, node.qualified_name, node.label, node.file_path);
+    }
+}
+
+fn resolveExtractions(
+    gb: *GraphBuffer,
+    reg: *Registry,
+    extractions: []const extractor.FileExtraction,
+    cancelled: *const std.atomic.Value(bool),
+) !void {
+    for (extractions) |extraction| {
+        if (cancelled.load(.acquire)) return PipelineError.Cancelled;
+
+        for (extraction.unresolved_imports) |imp| {
+            const importer_node = gb.findNodeById(imp.importer_id) orelse continue;
+            if (reg.resolve(imp.import_name, imp.importer_id, importer_node.file_path, null)) |res| {
+                if (gb.findNodeByQualifiedName(res.qualified_name)) |target| {
+                    _ = gb.insertEdge(imp.importer_id, target.id, "IMPORTS") catch {};
+                }
+            }
+        }
+
+        for (extraction.unresolved_calls) |call| {
+            const caller_node = gb.findNodeById(call.caller_id) orelse continue;
+            if (reg.resolve(call.callee_name, call.caller_id, caller_node.file_path, null)) |res| {
+                if (gb.findNodeByQualifiedName(res.qualified_name)) |target| {
+                    if (target.id != call.caller_id) {
+                        _ = gb.insertEdge(call.caller_id, target.id, "CALLS") catch {};
+                    }
+                }
+            }
+        }
+
+        for (extraction.unresolved_usages) |usage| {
+            const user_node = gb.findNodeById(usage.user_id) orelse continue;
+            if (reg.resolve(usage.ref_name, usage.user_id, user_node.file_path, null)) |res| {
+                if (gb.findNodeByQualifiedName(res.qualified_name)) |target| {
+                    if (target.id != usage.user_id) {
+                        _ = gb.insertEdge(usage.user_id, target.id, "USAGE") catch {};
+                    }
+                }
+            }
+        }
+
+        for (extraction.semantic_hints) |hint| {
+            const child_node = gb.findNodeById(hint.child_id) orelse continue;
+            if (resolveSemanticTarget(reg, hint, child_node.file_path)) |res| {
+                if (gb.findNodeByQualifiedName(res.qualified_name)) |target| {
+                    _ = gb.insertEdge(hint.child_id, target.id, hint.relation) catch {};
+                }
+            }
+        }
+    }
 }
 
 test "pipeline run handles simple extraction pipeline" {
@@ -407,6 +645,114 @@ test "pipeline resolves aliased imports across files" {
     defer db.freeNode(target);
     try std.testing.expectEqualStrings("helper", target.name);
     try std.testing.expectEqualStrings("util.py", target.file_path);
+}
+
+test "pipeline incremental reindexes only changed files against stored hashes" {
+    const allocator = std.testing.allocator;
+
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(
+        allocator,
+        "/tmp/cbm-pipeline-incremental-test-{x}",
+        .{project_id},
+    );
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    {
+        var dir = try std.fs.cwd().openDir(project_dir, .{});
+        defer dir.close();
+
+        var util = try dir.createFile("util.py", .{});
+        defer util.close();
+        try util.writeAll(
+            \\def helper(x):
+            \\    return x
+            \\
+        );
+
+        var app = try dir.createFile("app.py", .{});
+        defer app.close();
+        try app.writeAll(
+            \\from util import helper
+            \\def main():
+            \\    return helper(1)
+            \\
+        );
+    }
+
+    var db = try store.Store.openMemory(allocator);
+    defer db.deinit();
+
+    var pipeline = Pipeline.init(allocator, project_dir, .full);
+    defer pipeline.deinit();
+    try pipeline.run(&db);
+
+    const project_name = std.fs.path.basename(project_dir);
+    const initial_hashes = try db.getFileHashes(project_name);
+    defer db.freeFileHashes(initial_hashes);
+    try std.testing.expectEqual(@as(usize, 2), initial_hashes.len);
+
+    {
+        var dir = try std.fs.cwd().openDir(project_dir, .{});
+        defer dir.close();
+        var app = try dir.createFile("app.py", .{ .truncate = true });
+        defer app.close();
+        try app.writeAll(
+            \\from util import helper
+            \\def start():
+            \\    return helper(2)
+            \\
+        );
+    }
+
+    const discovered_files = try discover.discoverFiles(
+        allocator,
+        project_dir,
+        .{ .mode = .full },
+    );
+    defer pipeline.freeDiscoveredFiles(discovered_files);
+
+    const stored_hashes = try db.getFileHashes(project_name);
+    defer db.freeFileHashes(stored_hashes);
+    try std.testing.expect(try pipeline.runIncremental(&db, discovered_files, stored_hashes));
+
+    const helper_nodes = try db.searchNodes(.{
+        .project = project_name,
+        .label_pattern = "Function",
+        .name_pattern = "helper",
+        .limit = 5,
+    });
+    defer db.freeNodes(helper_nodes);
+    try std.testing.expectEqual(@as(usize, 1), helper_nodes.len);
+
+    const start_nodes = try db.searchNodes(.{
+        .project = project_name,
+        .label_pattern = "Function",
+        .name_pattern = "start",
+        .limit = 5,
+    });
+    defer db.freeNodes(start_nodes);
+    try std.testing.expectEqual(@as(usize, 1), start_nodes.len);
+
+    const main_nodes = try db.searchNodes(.{
+        .project = project_name,
+        .label_pattern = "Function",
+        .name_pattern = "main",
+        .limit = 5,
+    });
+    defer db.freeNodes(main_nodes);
+    try std.testing.expectEqual(@as(usize, 0), main_nodes.len);
+
+    const calls = try db.findEdgesBySource(project_name, start_nodes[0].id, "CALLS");
+    defer db.freeEdges(calls);
+    try std.testing.expectEqual(@as(usize, 1), calls.len);
+    try std.testing.expectEqual(helper_nodes[0].id, calls[0].target_id);
+
+    const final_hashes = try db.getFileHashes(project_name);
+    defer db.freeFileHashes(final_hashes);
+    try std.testing.expectEqual(@as(usize, 2), final_hashes.len);
 }
 
 test "pipeline retains parser-backed definitions and expected edges for all readiness languages" {
