@@ -203,6 +203,49 @@ For the first alignment milestone, we scope parity checks to:
 - Path normalization to `/` in serialized output.
 - No requirement for internal IDs or deferred feature-specific metadata.
 
+### 4.7 Alignment Comparison Contract (Readiness Gate)
+
+This section defines how outputs are compared while building the first interoperability baseline.
+
+- Normalize project and file paths by converting all separators to `/`, then trimming trailing `/`.
+- Ignore internal numeric IDs and process-order noise (`id` fields on nodes and traversal edges) when comparing outputs.
+- Compare results with explicit stable order rules:
+  - `search_graph`: order by `name`, then `file_path`, then `qualified_name` (when equal).
+  - `query_graph`: compare `columns` + `rows` order exactly as returned by the query.
+  - `trace_call_path`: compare `edges` as an unordered set unless contract explicitly states order.
+  - `list_projects`: sort by `name`.
+- Treat metadata from CUT and DEFER systems as non-blocking by default:
+  - watcher callbacks/index-status side effects,
+  - unused MCP tools,
+  - optional enrichment fields not emitted by the readiness slice.
+
+#### Tool contracts
+
+- `index_repository(project_path, mode)`:
+  - **Required response fields:** `project`, `mode`, `nodes`, `edges`.
+  - **Acceptance:** counts (`nodes`, `edges`) must be numeric and non-negative. Contract drift is a failure only if counts are materially different for equivalent inputs and baseline.
+
+- `search_graph(project, filters)`:
+  - **Required response fields:** `nodes[]` where each node includes:
+    - `label`, `name`, `qualified_name`, `file_path`.
+  - **Ignored fields:** `id`.
+  - **Acceptance:** rows must exist for expected symbols and no unexpected hard-fail fields.
+
+- `query_graph(project, query, max_rows)`:
+  - **Required response fields:** `columns[]`, `rows[][]`.
+  - **Acceptance:** schema shape, column order, and ordered row payloads must match normalized expected output.
+  - **String normalization:** quote escaping and whitespace should be normalized before deep comparison.
+
+- `trace_call_path(project, start_node_qn, direction, depth)`:
+  - **Required response fields:** `edges[]` with `source`, `target`, `type`.
+  - **Accepted behavior now:** the current Zig implementation traverses all edge types; this is intentional for the first pass and treated as contract-compliant as long as edge direction/depth behavior is equivalent.
+  - **Ignored fields:** `id` values inside edges.
+  - **Acceptance:** deterministic traversal result for same graph snapshot and parameters.
+
+- `list_projects()`:
+  - **Required response fields:** each entry must include `name`, `indexed_at`, `root_path`, `nodes`, `edges`.
+  - **Acceptance:** same project list (set + fields after path normalization), stable by name.
+
 ### 4.8 Parser Definition Extraction Status
 
 - For readiness scope languages, definitions come from tree-sitter by default:
@@ -224,7 +267,7 @@ For the first alignment milestone, we scope parity checks to:
 - **DEFER features**: do not block alignment.
 - `watcher` auto-index behavior is deferred for the initial readiness gate.
 
-### 4.7 Build System
+### 4.8 Build System
 
 ```zig
 // build.zig sketch

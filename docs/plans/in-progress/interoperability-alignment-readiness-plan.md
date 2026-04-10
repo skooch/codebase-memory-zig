@@ -54,12 +54,12 @@ Phase 4
 - **Status:** complete
 
 ### Phase 4: Define the Alignment Comparison Contract
-- [ ] In `docs/zig-port-plan.md`, write the per-tool comparison contract for `index_repository`, `search_graph`, `query_graph`, `trace_call_path`, and `list_projects`, including required fields, normalization rules, and stable sort expectations.
-- [ ] In `docs/gap-analysis.md`, list which differences are tolerated during the first interoperability gate and which differences are considered hard failures.
-- [ ] Specify exactly which fields are ignored during comparison, including internal IDs, watcher side effects, and metadata from CUT or DEFER features.
-- [ ] Define the acceptance rule for each readiness-scope tool so a harness can score pass/fail without ad-hoc interpretation.
-- [ ] Exit this phase only when a human reviewer can answer “does this mismatch matter?” by reading the documented contract instead of inferring intent from code.
-- **Status:** pending
+- [x] In `docs/zig-port-plan.md`, write the per-tool comparison contract for `index_repository`, `search_graph`, `query_graph`, `trace_call_path`, and `list_projects`, including required fields, normalization rules, and stable sort expectations.
+- [x] In `docs/gap-analysis.md`, list which differences are tolerated during the first interoperability gate and which differences are considered hard failures.
+- [x] Specify exactly which fields are ignored during comparison, including internal IDs, watcher side effects, and metadata from CUT or DEFER features.
+- [x] Define the acceptance rule for each readiness-scope tool so a harness can score pass/fail without ad-hoc interpretation.
+- [x] Exit this phase only when a human reviewer can answer “does this mismatch matter?” by reading the documented contract instead of inferring intent from code.
+- **Status:** complete
 
 ### Phase 5: Create the First Alignment Fixture Corpus
 - [ ] Create `testdata/interop/python-basic/main.py` and `testdata/interop/python-basic/util.py` to cover module imports, function definitions, and a resolved call edge.
@@ -90,7 +90,7 @@ Phase 4
 - **Phase 1 (done):** Scope, exclusions, and comparison rules are now explicit in implementation docs.
 - **Phase 2 (complete):** Parser-backed extraction is now the default readiness path for target languages and is covered by parser-regression assertions.
 - **Phase 3 (done):** Command entrypoints and MCP tools are callable for readiness-level alignment smoke checks.
-- **Phase 4 (pending):** Comparison rules are detailed enough that a harness can score pass/fail without hand-written interpretation.
+- **Phase 4 (complete):** Comparison rules are detailed enough that a harness can score pass/fail without hand-written interpretation.
 - **Phase 5 (pending):** A committed cross-language fixture corpus exists with a manifest that states what each fixture proves.
 - **Phase 6 (pending):** A repeatable harness run exists and the first mismatch categories have been recorded.
 
@@ -101,7 +101,7 @@ Phase 4
 - [x] **Phase 2 hardening landed** — cross-file call-edge regression coverage exists and graph-buffer ID / allocation rollback bugs found during review have been fixed.
 - [x] **Phase 2 parity complete** — parser-backed definitions are the default for target languages, and language-specific regression coverage plus explicit deferred-parsing notes exist.
 - [x] **Phase 3 complete** — the five readiness-scope MCP tools and automation entrypoints are available.
-- [ ] **Phase 4 contract complete** — per-tool comparison rules and tolerated drift are documented at harness-ready fidelity.
+- [x] **Phase 4 contract complete** — per-tool comparison rules and tolerated drift are documented at harness-ready fidelity.
 - [ ] **Phase 5 fixtures complete** — the first cross-language fixture corpus and manifest are committed.
 - [ ] **Phase 6 baseline complete** — the alignment harness runs both implementations and records the initial mismatch categories.
 - [x] **Runtime stability checkpoint** — the tree-sitter header/runtime compatibility crash is fixed and the current Zig test suite passes again.

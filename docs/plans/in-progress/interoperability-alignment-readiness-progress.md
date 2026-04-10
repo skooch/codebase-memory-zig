@@ -78,14 +78,15 @@
   - [x] CLI entry points usable for automation.
 
 ### Phase 4: Define the Alignment Comparison Contract
-- **Status:** not_started
+- **Status:** complete
 - Actions:
-  - No per-tool mismatch contract has been written yet.
-  - No tolerated-drift rules are documented at harness-ready fidelity yet.
+  - Documented the per-tool output contracts and deterministic comparison normalization rules in `docs/zig-port-plan.md`.
+  - Documented tolerated vs hard-failure drift categories in `docs/gap-analysis.md`.
+  - Defined ignored fields and acceptance criteria so harness diffs can be interpreted without heuristic overrides.
 - Checklist status:
-  - [ ] Write per-tool comparison rules for the five readiness-scope tools.
-  - [ ] Document tolerated and disallowed drift categories.
-  - [ ] Define harness-ready pass/fail criteria.
+  - [x] Write per-tool comparison rules for the five readiness-scope tools.
+  - [x] Document tolerated and disallowed drift categories.
+  - [x] Define harness-ready pass/fail criteria.
 
 ### Phase 5: Create the First Alignment Fixture Corpus
 - **Status:** not_started

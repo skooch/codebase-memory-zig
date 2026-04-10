@@ -35,9 +35,26 @@ Parser-backed extraction behavior for this gate:
 Comparator assumptions for this scope:
 
 - Path values are normalized to `/`.
-- Tool output order is treated as deterministic (name/file/qualified_name ordering where applicable).
+- Tool output order is treated as deterministic once normalized:
+  - `search_graph`: name, file path, qualified name.
+  - `query_graph`: column and row order as returned by the execution result.
+  - `trace_call_path`: edge order is treated as an unordered set for first-pass comparison.
+  - `list_projects`: sorted by project name.
 - Internal IDs, watcher callbacks, and deferred/missing modules are ignored unless explicitly promoted.
 - CUT and DEFER sections in the larger plan are out-of-scope for mismatch scoring during this gate.
+
+#### Readiness diff tolerance
+
+- **Accepted differences**
+  - Unstable numeric IDs in response payloads (`nodes.id`, trace edge IDs) are not compared.
+  - Path separator normalization differences (`\\` vs `/`) are normalized before comparison.
+  - Tool behavior differences limited to the first gate scope are allowed if they are documented in the current docs.
+  - Extra non-`CALLS` edges in `trace_call_path` are accepted while the traversal remains direction/depth-consistent.
+- **Hard failures**
+  - Missing expected nodes/edges for supported symbols in `search_graph`.
+  - Incorrect `index_repository` node/edge counts for the same project path and mode.
+  - `query_graph` schema mismatch (`columns` order/content or row set mismatch).
+  - `list_projects` field omissions (`name`, `indexed_at`, `root_path`, `nodes`, `edges`) after normalization.
 
 ---
 
