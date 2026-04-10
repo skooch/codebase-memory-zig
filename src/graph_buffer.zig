@@ -273,6 +273,10 @@ pub const GraphBuffer = struct {
         return self.nodes_by_id.items;
     }
 
+    pub fn edgeItems(self: *const GraphBuffer) []const BufferEdge {
+        return self.edges.items;
+    }
+
     pub fn loadFromStore(self: *GraphBuffer, db: *store.Store) !void {
         const stored_nodes = try db.searchNodes(.{
             .project = self.project,

@@ -6,6 +6,7 @@
 const std = @import("std");
 const discover = @import("discover.zig");
 const GraphBuffer = @import("graph_buffer.zig").GraphBuffer;
+const GraphBufferError = @import("graph_buffer.zig").GraphBufferError;
 const extractor = @import("extractor.zig");
 const Registry = @import("registry.zig").Registry;
 const store = @import("store.zig");
@@ -26,6 +27,11 @@ pub const PipelineContext = struct {
     repo_path: []const u8,
     allocator: std.mem.Allocator,
     cancelled: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
+};
+
+const OwnedExtraction = struct {
+    allocator: std.mem.Allocator,
+    extraction: extractor.FileExtraction,
 };
 
 pub const Pipeline = struct {
@@ -95,100 +101,17 @@ pub const Pipeline = struct {
         var reg = Registry.init(self.allocator);
         defer reg.deinit();
 
-        var extractions = std.ArrayList(extractor.FileExtraction).empty;
+        var extractions = std.ArrayList(OwnedExtraction).empty;
         defer {
-            for (extractions.items) |extraction| {
-                extractor.freeFileExtraction(self.allocator, extraction);
+            for (extractions.items) |owned| {
+                extractor.freeFileExtraction(owned.allocator, owned.extraction);
             }
             extractions.deinit(self.allocator);
         }
 
-        for (discovered_files) |file| {
-            if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
+        try collectExtractions(self, discovered_files, &gb, &reg, &extractions);
 
-            const extraction = extractFile(self.allocator, self.project_name, file, &gb) catch |err| {
-                std.log.warn("extractor failed for {s}: {}", .{ file.rel_path, err });
-                continue;
-            };
-
-            for (extraction.symbols) |sym| {
-                try reg.add(
-                    sym.name,
-                    sym.qualified_name,
-                    sym.label,
-                    sym.file_path,
-                );
-            }
-            for (extraction.unresolved_imports) |imp| {
-                const alias = if (imp.binding_alias.len > 0)
-                    imp.binding_alias
-                else
-                    normalizeImportAlias(imp.import_name);
-                if (alias.len == 0) continue;
-                try reg.addImportBinding(imp.importer_id, alias, imp.import_name, imp.file_path);
-            }
-
-            const unresolved_import_count = extraction.unresolved_imports.len;
-            const unresolved_call_count = extraction.unresolved_calls.len;
-            const unresolved_usage_count = extraction.unresolved_usages.len;
-            const semantic_hint_count = extraction.semantic_hints.len;
-            std.log.debug(
-                "file {s} extracted {d} symbols, {d} imports, {d} calls, {d} usages, {d} semantic hints",
-                .{
-                    extraction.file_path,
-                    extraction.symbols.len,
-                    unresolved_import_count,
-                    unresolved_call_count,
-                    unresolved_usage_count,
-                    semantic_hint_count,
-                },
-            );
-
-            try extractions.append(self.allocator, extraction);
-        }
-
-        for (extractions.items) |extraction| {
-            if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
-            for (extraction.unresolved_imports) |imp| {
-                const importer_node = gb.findNodeById(imp.importer_id) orelse continue;
-                if (reg.resolve(imp.import_name, imp.importer_id, importer_node.file_path, null)) |res| {
-                    if (gb.findNodeByQualifiedName(res.qualified_name)) |target| {
-                        _ = gb.insertEdge(imp.importer_id, target.id, "IMPORTS") catch {};
-                    }
-                }
-            }
-
-            for (extraction.unresolved_calls) |call| {
-                const caller_node = gb.findNodeById(call.caller_id) orelse continue;
-                if (reg.resolve(call.callee_name, call.caller_id, caller_node.file_path, null)) |res| {
-                    if (gb.findNodeByQualifiedName(res.qualified_name)) |target| {
-                        if (target.id != call.caller_id) {
-                            _ = gb.insertEdge(call.caller_id, target.id, "CALLS") catch {};
-                        }
-                    }
-                }
-            }
-
-            for (extraction.unresolved_usages) |usage| {
-                const user_node = gb.findNodeById(usage.user_id) orelse continue;
-                if (reg.resolve(usage.ref_name, usage.user_id, user_node.file_path, null)) |res| {
-                    if (gb.findNodeByQualifiedName(res.qualified_name)) |target| {
-                        if (target.id != usage.user_id) {
-                            _ = gb.insertEdge(usage.user_id, target.id, "USAGE") catch {};
-                        }
-                    }
-                }
-            }
-
-            for (extraction.semantic_hints) |hint| {
-                const child_node = gb.findNodeById(hint.child_id) orelse continue;
-                if (resolveSemanticTarget(&reg, hint, child_node.file_path)) |res| {
-                    if (gb.findNodeByQualifiedName(res.qualified_name)) |target| {
-                        _ = gb.insertEdge(hint.child_id, target.id, hint.relation) catch {};
-                    }
-                }
-            }
-        }
+        try resolveExtractions(&gb, &reg, extractions.items, &self.cancelled);
 
         try gb.dumpToStore(db);
         try persistFileHashes(db, self.project_name, discovered_files);
@@ -237,35 +160,15 @@ pub const Pipeline = struct {
         defer reg.deinit();
         try seedRegistryFromGraphBuffer(&gb, &reg);
 
-        var extractions = std.ArrayList(extractor.FileExtraction).empty;
+        var extractions = std.ArrayList(OwnedExtraction).empty;
         defer {
-            for (extractions.items) |extraction| {
-                extractor.freeFileExtraction(self.allocator, extraction);
+            for (extractions.items) |owned| {
+                extractor.freeFileExtraction(owned.allocator, owned.extraction);
             }
             extractions.deinit(self.allocator);
         }
 
-        for (classification.changed_files) |file| {
-            if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
-
-            const extraction = extractFile(self.allocator, self.project_name, file, &gb) catch |err| {
-                std.log.warn("incremental extractor failed for {s}: {}", .{ file.rel_path, err });
-                continue;
-            };
-
-            for (extraction.symbols) |sym| {
-                try reg.add(sym.name, sym.qualified_name, sym.label, sym.file_path);
-            }
-            for (extraction.unresolved_imports) |imp| {
-                const alias = if (imp.binding_alias.len > 0)
-                    imp.binding_alias
-                else
-                    normalizeImportAlias(imp.import_name);
-                if (alias.len == 0) continue;
-                try reg.addImportBinding(imp.importer_id, alias, imp.import_name, imp.file_path);
-            }
-            try extractions.append(self.allocator, extraction);
-        }
+        try collectExtractions(self, classification.changed_files, &gb, &reg, &extractions);
 
         try resolveExtractions(&gb, &reg, extractions.items, &self.cancelled);
 
@@ -432,6 +335,237 @@ fn persistFileHashes(
     }
 }
 
+fn collectExtractions(
+    self: *Pipeline,
+    files: []const discover.FileInfo,
+    gb: *GraphBuffer,
+    reg: *Registry,
+    out: *std.ArrayList(OwnedExtraction),
+) PipelineError!void {
+    const cpu_count = std.Thread.getCpuCount() catch 1;
+    if (files.len >= 32 and cpu_count > 1) {
+        collectExtractionsParallel(self, files, gb, reg, out, @min(cpu_count, files.len)) catch |err| switch (err) {
+            error.OutOfMemory => return PipelineError.OutOfMemory,
+            else => try collectExtractionsSequential(self, files, gb, reg, out),
+        };
+        return;
+    }
+    try collectExtractionsSequential(self, files, gb, reg, out);
+}
+
+fn collectExtractionsSequential(
+    self: *Pipeline,
+    files: []const discover.FileInfo,
+    gb: *GraphBuffer,
+    reg: *Registry,
+    out: *std.ArrayList(OwnedExtraction),
+) PipelineError!void {
+    for (files) |file| {
+        if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
+
+        const extraction = extractFile(self.allocator, self.project_name, file, gb) catch |err| {
+            std.log.warn("extractor failed for {s}: {}", .{ file.rel_path, err });
+            continue;
+        };
+        try registerExtraction(reg, extraction);
+        logExtractionDebug(extraction);
+        try out.append(self.allocator, .{
+            .allocator = self.allocator,
+            .extraction = extraction,
+        });
+    }
+}
+
+const ParallelFileResult = struct {
+    allocator: std.mem.Allocator,
+    buffer: GraphBuffer,
+    extraction: extractor.FileExtraction,
+
+    fn deinit(self: *ParallelFileResult) void {
+        extractor.freeFileExtraction(self.allocator, self.extraction);
+        self.buffer.deinit();
+    }
+};
+
+const ParallelWorkerContext = struct {
+    project_name: []const u8,
+    files: []const discover.FileInfo,
+    results: []?*ParallelFileResult,
+    start: usize,
+    end: usize,
+    cancelled: *const std.atomic.Value(bool),
+};
+
+fn collectExtractionsParallel(
+    self: *Pipeline,
+    files: []const discover.FileInfo,
+    gb: *GraphBuffer,
+    reg: *Registry,
+    out: *std.ArrayList(OwnedExtraction),
+    worker_count: usize,
+) !void {
+    const results = try self.allocator.alloc(?*ParallelFileResult, files.len);
+    defer self.allocator.free(results);
+    @memset(results, null);
+
+    const contexts = try self.allocator.alloc(ParallelWorkerContext, worker_count);
+    defer self.allocator.free(contexts);
+    const threads = try self.allocator.alloc(std.Thread, worker_count);
+    defer self.allocator.free(threads);
+
+    const chunk_size = @max(@as(usize, 1), files.len / worker_count);
+    var worker_index: usize = 0;
+    var start: usize = 0;
+    while (worker_index < worker_count and start < files.len) : (worker_index += 1) {
+        const end = if (worker_index + 1 == worker_count) files.len else @min(files.len, start + chunk_size);
+        contexts[worker_index] = .{
+            .project_name = self.project_name,
+            .files = files,
+            .results = results,
+            .start = start,
+            .end = end,
+            .cancelled = &self.cancelled,
+        };
+        threads[worker_index] = try std.Thread.spawn(.{}, parallelExtractWorker, .{&contexts[worker_index]});
+        start = end;
+    }
+
+    var joined: usize = 0;
+    defer {
+        while (joined < worker_index) : (joined += 1) {
+            threads[joined].join();
+        }
+    }
+
+    while (joined < worker_index) : (joined += 1) {
+        threads[joined].join();
+    }
+
+    for (results) |maybe_result| {
+        const result = maybe_result orelse continue;
+
+        try mergeParallelExtraction(self.allocator, gb, result);
+        try registerExtraction(reg, result.extraction);
+        logExtractionDebug(result.extraction);
+        try out.append(self.allocator, .{
+            .allocator = result.allocator,
+            .extraction = result.extraction,
+        });
+        result.buffer.deinit();
+        result.allocator.destroy(result);
+    }
+}
+
+fn parallelExtractWorker(ctx: *ParallelWorkerContext) void {
+    var idx = ctx.start;
+    while (idx < ctx.end) : (idx += 1) {
+        if (ctx.cancelled.load(.acquire)) return;
+
+        var local_gb = GraphBuffer.init(std.heap.c_allocator, ctx.project_name);
+        const extraction = extractFile(std.heap.c_allocator, ctx.project_name, ctx.files[idx], &local_gb) catch {
+            local_gb.deinit();
+            continue;
+        };
+
+        const result = std.heap.c_allocator.create(ParallelFileResult) catch {
+            extractor.freeFileExtraction(std.heap.c_allocator, extraction);
+            local_gb.deinit();
+            continue;
+        };
+        result.* = .{
+            .allocator = std.heap.c_allocator,
+            .buffer = local_gb,
+            .extraction = extraction,
+        };
+        ctx.results[idx] = result;
+    }
+}
+
+fn mergeParallelExtraction(
+    allocator: std.mem.Allocator,
+    gb: *GraphBuffer,
+    result: *ParallelFileResult,
+) !void {
+    var id_map = std.AutoHashMap(i64, i64).init(allocator);
+    defer id_map.deinit();
+
+    for (result.buffer.nodes()) |node| {
+        const new_id = try gb.upsertNodeWithProperties(
+            node.label,
+            node.name,
+            node.qualified_name,
+            node.file_path,
+            node.start_line,
+            node.end_line,
+            node.properties_json,
+        );
+        try id_map.put(node.id, new_id);
+    }
+
+    for (result.buffer.edgeItems()) |edge| {
+        const source_id = id_map.get(edge.source_id) orelse continue;
+        const target_id = id_map.get(edge.target_id) orelse continue;
+        _ = gb.insertEdgeWithProperties(source_id, target_id, edge.edge_type, edge.properties_json) catch |err| switch (err) {
+            GraphBufferError.DuplicateEdge => 0,
+            else => return err,
+        };
+    }
+
+    remapExtractionIds(&result.extraction, &id_map);
+}
+
+fn remapExtractionIds(
+    extraction: *extractor.FileExtraction,
+    id_map: *const std.AutoHashMap(i64, i64),
+) void {
+    extraction.file_id = id_map.get(extraction.file_id) orelse extraction.file_id;
+    extraction.module_id = id_map.get(extraction.module_id) orelse extraction.module_id;
+
+    for (extraction.symbols) |*sym| {
+        sym.id = id_map.get(sym.id) orelse sym.id;
+    }
+    for (extraction.unresolved_imports) |*imp| {
+        imp.importer_id = id_map.get(imp.importer_id) orelse imp.importer_id;
+    }
+    for (extraction.unresolved_calls) |*call| {
+        call.caller_id = id_map.get(call.caller_id) orelse call.caller_id;
+    }
+    for (extraction.unresolved_usages) |*usage| {
+        usage.user_id = id_map.get(usage.user_id) orelse usage.user_id;
+    }
+    for (extraction.semantic_hints) |*hint| {
+        hint.child_id = id_map.get(hint.child_id) orelse hint.child_id;
+    }
+}
+
+fn registerExtraction(reg: *Registry, extraction: extractor.FileExtraction) !void {
+    for (extraction.symbols) |sym| {
+        try reg.add(sym.name, sym.qualified_name, sym.label, sym.file_path);
+    }
+    for (extraction.unresolved_imports) |imp| {
+        const alias = if (imp.binding_alias.len > 0)
+            imp.binding_alias
+        else
+            normalizeImportAlias(imp.import_name);
+        if (alias.len == 0) continue;
+        try reg.addImportBinding(imp.importer_id, alias, imp.import_name, imp.file_path);
+    }
+}
+
+fn logExtractionDebug(extraction: extractor.FileExtraction) void {
+    std.log.debug(
+        "file {s} extracted {d} symbols, {d} imports, {d} calls, {d} usages, {d} semantic hints",
+        .{
+            extraction.file_path,
+            extraction.symbols.len,
+            extraction.unresolved_imports.len,
+            extraction.unresolved_calls.len,
+            extraction.unresolved_usages.len,
+            extraction.semantic_hints.len,
+        },
+    );
+}
+
 fn seedRegistryFromGraphBuffer(gb: *const GraphBuffer, reg: *Registry) !void {
     for (gb.nodes()) |node| {
         try reg.add(node.name, node.qualified_name, node.label, node.file_path);
@@ -441,11 +575,12 @@ fn seedRegistryFromGraphBuffer(gb: *const GraphBuffer, reg: *Registry) !void {
 fn resolveExtractions(
     gb: *GraphBuffer,
     reg: *Registry,
-    extractions: []const extractor.FileExtraction,
+    extractions: []const OwnedExtraction,
     cancelled: *const std.atomic.Value(bool),
 ) !void {
-    for (extractions) |extraction| {
+    for (extractions) |owned| {
         if (cancelled.load(.acquire)) return PipelineError.Cancelled;
+        const extraction = owned.extraction;
 
         for (extraction.unresolved_imports) |imp| {
             const importer_node = gb.findNodeById(imp.importer_id) orelse continue;
@@ -753,6 +888,58 @@ test "pipeline incremental reindexes only changed files against stored hashes" {
     const final_hashes = try db.getFileHashes(project_name);
     defer db.freeFileHashes(final_hashes);
     try std.testing.expectEqual(@as(usize, 2), final_hashes.len);
+}
+
+test "pipeline parallel extraction path indexes larger projects" {
+    if ((std.Thread.getCpuCount() catch 1) <= 1) return error.SkipZigTest;
+
+    const allocator = std.testing.allocator;
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(
+        allocator,
+        "/tmp/cbm-pipeline-parallel-test-{x}",
+        .{project_id},
+    );
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    var dir = try std.fs.cwd().openDir(project_dir, .{});
+    defer dir.close();
+
+    var file_index: usize = 0;
+    while (file_index < 40) : (file_index += 1) {
+        const file_name = try std.fmt.allocPrint(allocator, "mod{d:0>2}.py", .{file_index});
+        defer allocator.free(file_name);
+        var file = try dir.createFile(file_name, .{});
+        defer file.close();
+        const contents = try std.fmt.allocPrint(
+            allocator,
+            \\def fn_{d}(x):
+            \\    return x + {d}
+            \\
+        ,
+            .{ file_index, file_index },
+        );
+        defer allocator.free(contents);
+        try file.writeAll(contents);
+    }
+
+    var db = try store.Store.openMemory(allocator);
+    defer db.deinit();
+
+    var pipeline = Pipeline.init(allocator, project_dir, .full);
+    defer pipeline.deinit();
+    try pipeline.run(&db);
+
+    const project_name = std.fs.path.basename(project_dir);
+    const function_nodes = try db.searchNodes(.{
+        .project = project_name,
+        .label_pattern = "Function",
+        .limit = 200,
+    });
+    defer db.freeNodes(function_nodes);
+    try std.testing.expectEqual(@as(usize, 40), function_nodes.len);
 }
 
 test "pipeline retains parser-backed definitions and expected edges for all readiness languages" {

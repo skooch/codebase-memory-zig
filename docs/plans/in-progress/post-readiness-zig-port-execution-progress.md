@@ -94,7 +94,9 @@
   - Routed `src/pipeline.zig` through an incremental path when stored hashes are present and the discovered file set stays within the expected range, then persisted refreshed hashes after both full and incremental runs.
   - Added regression coverage proving the graph buffer can load and purge a file slice and that the pipeline can reindex only changed files against stored hashes.
   - Replaced the watcher placeholder in `src/watcher.zig` with a git-backed watcher that owns its watched-project state, establishes baselines, detects HEAD or dirty-worktree changes, supports one-shot polling plus a blocking run loop, and exercises the callback path in tests against real temporary git repositories.
-  - Verified the chunk with `zig build test`.
+  - Added a parallel extraction path in `src/pipeline.zig` that extracts files into per-file local graph buffers on worker threads, merges them back into the main graph with explicit ID remapping, and falls back to the sequential path if thread setup fails.
+  - Added regression coverage that forces the larger-file-count path so the parallel extraction and merge logic is exercised directly rather than only compiling.
+  - Verified the chunk with `zig build test` and `zig build`.
 - Files modified:
   - `docs/plans/in-progress/post-readiness-zig-port-execution-progress.md`
   - `src/store.zig`
