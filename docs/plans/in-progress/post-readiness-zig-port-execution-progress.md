@@ -18,7 +18,7 @@
 ### Next Phase
 - **Status:** in progress
 - Focus:
-  - Phase 5 is next, starting with heavier query and analysis surfaces now that Phase 4 has raised the graph fidelity floor for the target daily-use languages.
+  - Phase 6 is next, starting with runtime lifecycle and scale work now that the heavier Phase 5 query and analysis surface is in place.
 
 ### Phase 2: Core Graph and Query Substrate
 - **Status:** in progress
@@ -69,6 +69,22 @@
   - `src/extractor.zig`
   - `src/registry.zig`
   - `src/pipeline.zig`
+
+### Phase 5: Heavy Query and Analysis Surface
+- **Status:** complete
+- Actions:
+  - Expanded `src/store.zig` with reusable graph-search paging, sorting, degree filtering, project file listing, and edge-list helpers so the Phase 5 tools could reuse store-layer primitives instead of adding MCP-local query logic.
+  - Reworked `src/cypher.zig` from the constrained readiness subset into a broader read-only Cypher bridge that supports node and edge matches, label/type patterns, field projections, WHERE clauses, ORDER BY, LIMIT, DISTINCT, and count queries.
+  - Exposed the heavier MCP analysis surface in `src/mcp.zig`, including richer `search_graph` output, `get_architecture`, `search_code`, and `detect_changes`.
+  - Tightened the new Phase 5 code paths after the initial landing by fixing allocator ownership, defer ordering, tool dispatch coverage, and helper cleanup behavior so the new surface was correct rather than merely compiling.
+  - Added direct regression coverage for the new Phase 5 MCP contracts, including richer graph search payloads, architecture summaries, code search results, and git-backed change detection.
+  - Verified the completed phase with `zig build test`, `zig build`, and `bash scripts/run_interop_alignment.sh`.
+- Files modified:
+  - `docs/plans/in-progress/post-readiness-zig-port-execution-plan.md`
+  - `docs/plans/in-progress/post-readiness-zig-port-execution-progress.md`
+  - `src/store.zig`
+  - `src/cypher.zig`
+  - `src/mcp.zig`
 
 ## Errors
 | Timestamp | Error | Attempt | Resolution |

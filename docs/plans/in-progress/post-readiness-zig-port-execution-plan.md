@@ -4,7 +4,7 @@
 Break the remaining Zig port into dependency-aware phases that maximize delivered functionality per phase while keeping verification and integration risk manageable.
 
 ## Current Phase
-Phase 5
+Phase 6
 
 ## File Map
 - Create: `docs/plans/in-progress/post-readiness-zig-port-execution-plan.md`
@@ -43,11 +43,11 @@ Phase 5
 - **Status:** complete
 
 ### Phase 5: Implement the Heavy Query and Analysis Surface
-- [ ] Expand `search_graph` toward fuller parity, including richer filters, sorting, pagination, relationship/degree-aware queries, and connected-node options where they remain in-scope.
-- [ ] Port the fuller Cypher parser/executor surface in a staged way, prioritizing the query shapes needed by `query_graph`, `get_architecture`, and `detect_changes`.
-- [ ] Implement the higher-complexity analysis tools that depend on the stronger substrate and richer graph fidelity: `search_code`, `get_architecture`, and `detect_changes`.
-- [ ] Exit this phase only when the Zig port can answer the main day-to-day analysis workflows without requiring the original C implementation as a fallback.
-- **Status:** pending
+- [x] Expand `search_graph` toward fuller parity, including richer filters, sorting, pagination, relationship/degree-aware queries, and connected-node options where they remain in-scope.
+- [x] Port the fuller Cypher parser/executor surface in a staged way, prioritizing the query shapes needed by `query_graph`, `get_architecture`, and `detect_changes`.
+- [x] Implement the higher-complexity analysis tools that depend on the stronger substrate and richer graph fidelity: `search_code`, `get_architecture`, and `detect_changes`.
+- [x] Exit this phase only when the Zig port can answer the main day-to-day analysis workflows without requiring the original C implementation as a fallback.
+- **Status:** complete
 
 ### Phase 6: Add Runtime Lifecycle and Scale Features
 - [ ] Implement watcher-driven auto-index, then incremental indexing, in that order, so background reindex behavior is built on a stable full-index path first.

@@ -14,6 +14,14 @@ Completed now:
   - `query_graph`
   - `trace_call_path`
   - `list_projects`
+- The broader day-to-day MCP surface added after readiness is now implemented:
+  - `get_code_snippet`
+  - `get_graph_schema`
+  - `get_architecture`
+  - `search_code`
+  - `delete_project`
+  - `index_status`
+  - `detect_changes`
 - Parser-backed definition extraction is working for the readiness languages:
   - Python
   - JavaScript
@@ -27,8 +35,8 @@ Completed now:
   - `Mismatches: 0`
 
 Still to implement after the readiness gate:
-- The remaining MCP tools outside the five-tool readiness slice.
-- Full Cypher parity beyond the constrained readiness query subset.
+- The remaining MCP tools outside the current daily-use slice, especially `manage_adr`.
+- Full Cypher parity beyond the broader day-to-day query subset now supporting node/edge reads, filtering, sorting, and counts.
 - Deeper usage/type-reference extraction parity and broader cross-language semantics beyond the current target daily-use slice.
 - Watcher, incremental indexing, CLI parity, parallelism, and MinHash/LSH.
 - Deferred history/enrichment/route/config-link features.
@@ -42,18 +50,10 @@ Complete slices:
 
 Open slices:
 - Public surface expansion:
-  - `get_code_snippet`
-  - `get_graph_schema`
-  - `get_architecture`
-  - `search_code`
-  - `delete_project`
-  - `index_status`
-  - `detect_changes`
   - `manage_adr`
 - Query/runtime expansion:
-  - full Cypher lexer/parser/executor
-  - richer search filters/sorting/degree filtering
-  - impact/risk summaries and broader traversal parity
+  - full Cypher lexer/parser/executor parity beyond the current day-to-day subset
+  - broader traversal/risk/reporting parity beyond the current `detect_changes` implementation
 - Indexing/runtime expansion:
   - deeper usage/type-ref extraction parity beyond the current daily-use slice
   - watcher-driven auto-index
@@ -78,6 +78,7 @@ Use this order for the remaining backlog:
    - extraction, call/import resolution, usages, semantic edges
 4. **Heavy analysis surface fourth**
    - fuller search/Cypher/architecture/detect-changes work
+   - status: complete for the current daily-use slice
 5. **Lifecycle and scale fifth**
    - watcher, incremental indexing, parallel extraction, similarity
 6. **Productization and selective deferred features last**

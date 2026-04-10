@@ -10,9 +10,17 @@
 //  * search_graph
 //  * query_graph
 //  * trace_call_path
+//  * get_code_snippet
+//  * get_graph_schema
+//  * get_architecture
+//  * search_code
 //  * list_projects
+//  * delete_project
+//  * index_status
+//  * detect_changes
 
 const std = @import("std");
+const discover = @import("discover.zig");
 const store = @import("store.zig");
 const pipeline = @import("pipeline.zig");
 const cypher = @import("cypher.zig");
@@ -26,9 +34,12 @@ const SupportedTool = enum {
     trace_call_path,
     get_code_snippet,
     get_graph_schema,
+    get_architecture,
+    search_code,
     list_projects,
     delete_project,
     index_status,
+    detect_changes,
 };
 
 const RpcRequest = struct {
@@ -139,14 +150,17 @@ pub const McpServer = struct {
             const payload =
                 \\{"tools":[
                 \\{"name":"index_repository","description":"Index a repository into the graph store","inputSchema":{"type":"object","properties":{"project_path":{"type":"string"},"mode":{"type":"string","enum":["full","fast"]}}}},
-                \\{"name":"search_graph","description":"Search nodes in the graph store","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"label_pattern":{"type":"string"},"name_pattern":{"type":"string"},"qn_pattern":{"type":"string"},"file_pattern":{"type":"string"},"limit":{"type":"number"}}}},
+                \\{"name":"search_graph","description":"Structured graph search with filtering, degree-aware ranking, pagination, and optional connected-node context","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"label":{"type":"string"},"label_pattern":{"type":"string"},"name_pattern":{"type":"string"},"qn_pattern":{"type":"string"},"file_pattern":{"type":"string"},"relationship":{"type":"string"},"exclude_entry_points":{"type":"boolean"},"include_connected":{"type":"boolean"},"limit":{"type":"number"},"offset":{"type":"number"},"min_degree":{"type":"number"},"max_degree":{"type":"number"},"sort_by":{"type":"string"},"sort_direction":{"type":"string"}}}},
                 \\{"name":"query_graph","description":"Run a read-only Cypher-like query","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"query":{"type":"string"},"max_rows":{"type":"number"}}}},
                 \\{"name":"trace_call_path","description":"Trace CALLS edges between nodes","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"start_node_qn":{"type":"string"},"direction":{"type":"string","enum":["in","out","both"]},"depth":{"type":"number"}}}},
                 \\{"name":"get_code_snippet","description":"Read source code for a function/class/symbol. IMPORTANT: First call search_graph to find the exact qualified_name, then pass it here. This is a read tool, not a search tool. Accepts full qualified_name (exact match) or short function name (returns suggestions if ambiguous).","inputSchema":{"type":"object","properties":{"qualified_name":{"type":"string","description":"Full qualified_name from search_graph, or short function name"},"project":{"type":"string"},"include_neighbors":{"type":"boolean","default":false}},"required":["qualified_name","project"]}},
                 \\{"name":"get_graph_schema","description":"Get the schema of the knowledge graph (node labels, edge types)","inputSchema":{"type":"object","properties":{"project":{"type":"string"}},"required":["project"]}},
+                \\{"name":"get_architecture","description":"High-level project summary: structure, dependencies, languages, hotspots, entry points, and routes","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"aspects":{"type":"array","items":{"type":"string"}}},"required":["project"]}},
+                \\{"name":"search_code","description":"Text search across indexed project files with compact, full, or files-only output","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"pattern":{"type":"string"},"mode":{"type":"string","enum":["compact","full","files"]},"file_pattern":{"type":"string"},"path_filter":{"type":"string"},"limit":{"type":"number"},"context":{"type":"number"},"regex":{"type":"boolean"}},"required":["project","pattern"]}},
                 \\{"name":"list_projects","description":"List indexed projects","inputSchema":{"type":"object","properties":{}}},
                 \\{"name":"delete_project","description":"Delete a project from the index","inputSchema":{"type":"object","properties":{"project":{"type":"string"}},"required":["project"]}},
-                \\{"name":"index_status","description":"Get the indexing status of a project","inputSchema":{"type":"object","properties":{"project":{"type":"string"}}}}
+                \\{"name":"index_status","description":"Get the indexing status of a project","inputSchema":{"type":"object","properties":{"project":{"type":"string"}}}},
+                \\{"name":"detect_changes","description":"Map local git changes to affected symbols and nearby blast radius","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"base_branch":{"type":"string"},"scope":{"type":"string"},"depth":{"type":"number"}},"required":["project"]}}
                 \\]}
             ;
             return self.successResponse(request.value.id, payload);
@@ -176,9 +190,12 @@ pub const McpServer = struct {
             .trace_call_path => self.handleTraceCallPath(request_id, call.arguments orelse .null),
             .get_code_snippet => self.handleGetCodeSnippet(request_id, call.arguments orelse .null),
             .get_graph_schema => self.handleGetGraphSchema(request_id, call.arguments orelse .null),
+            .get_architecture => self.handleGetArchitecture(request_id, call.arguments orelse .null),
+            .search_code => self.handleSearchCode(request_id, call.arguments orelse .null),
             .list_projects => self.handleListProjects(request_id),
             .delete_project => self.handleDeleteProject(request_id, call.arguments orelse .null),
             .index_status => self.handleIndexStatus(request_id, call.arguments orelse .null),
+            .detect_changes => self.handleDetectChanges(request_id, call.arguments orelse .null),
         };
     }
 
@@ -204,39 +221,53 @@ pub const McpServer = struct {
     }
 
     fn handleSearchGraph(self: *McpServer, request_id: ?std.json.Value, args: std.json.Value) !?[]const u8 {
-        const project = stringArg(args, "project");
-        const label_pattern = stringArg(args, "label_pattern");
-        const name_pattern = stringArg(args, "name_pattern");
-        const qn_pattern = stringArg(args, "qn_pattern");
-        const file_pattern = stringArg(args, "file_pattern");
-        const limit = intArg(args, "limit") orelse 100;
+        const project = stringArg(args, "project") orelse "";
+        const label_pattern = stringArg(args, "label_pattern") orelse stringArg(args, "label");
+        const relationship = stringArg(args, "relationship");
+        const include_connected = boolArg(args, "include_connected") orelse false;
+        const sort_by = stringArg(args, "sort_by");
+        const sort_direction = stringArg(args, "sort_direction");
 
-        const results = try self.db.searchNodes(.{
-            .project = project orelse "",
+        const page = try self.db.searchGraph(.{
+            .project = project,
             .label_pattern = label_pattern,
-            .name_pattern = name_pattern,
-            .qn_pattern = qn_pattern,
-            .file_pattern = file_pattern,
-            .limit = @intCast(limit),
+            .name_pattern = stringArg(args, "name_pattern"),
+            .qn_pattern = stringArg(args, "qn_pattern"),
+            .file_pattern = stringArg(args, "file_pattern"),
+            .relationship = relationship,
+            .min_degree = signedIntArg(args, "min_degree"),
+            .max_degree = signedIntArg(args, "max_degree"),
+            .exclude_entry_points = boolArg(args, "exclude_entry_points") orelse false,
+            .limit = intArg(args, "limit") orelse 100,
+            .offset = intArg(args, "offset") orelse 0,
+            .sort_field = parseGraphSortField(sort_by),
+            .descending = sort_direction != null and std.ascii.eqlIgnoreCase(sort_direction.?, "desc"),
         });
-        defer self.db.freeNodes(results);
+        defer self.db.freeGraphSearchPage(page);
 
         var payload = std.ArrayList(u8).empty;
-        try payload.appendSlice(self.allocator, "{\"nodes\":[");
-        for (results, 0..) |node, idx| {
+        try payload.writer(self.allocator).print(
+            "{{\"total\":{d},\"results\":[",
+            .{page.total},
+        );
+        for (page.hits, 0..) |hit, idx| {
             if (idx > 0) try payload.append(self.allocator, ',');
-            try payload.writer(self.allocator).print(
-                "{{\"id\":{d},\"label\":\"{s}\",\"name\":\"{s}\",\"qualified_name\":\"{s}\",\"file_path\":\"{s}\"}}",
-                .{
-                    node.id,
-                    node.label,
-                    node.name,
-                    node.qualified_name,
-                    node.file_path,
-                },
-            );
+            try payload.appendSlice(self.allocator, "{");
+            try appendJsonStringField(&payload, self.allocator, "name", hit.node.name, true);
+            try appendJsonStringField(&payload, self.allocator, "qualified_name", hit.node.qualified_name, false);
+            try appendJsonStringField(&payload, self.allocator, "label", hit.node.label, false);
+            try appendJsonStringField(&payload, self.allocator, "file_path", hit.node.file_path, false);
+            try appendJsonIntField(&payload, self.allocator, "in_degree", hit.in_degree, false);
+            try appendJsonIntField(&payload, self.allocator, "out_degree", hit.out_degree, false);
+            if (include_connected) {
+                try appendConnectedSummary(&payload, self, project, hit.node.id, relationship);
+            }
+            try payload.appendSlice(self.allocator, "}");
         }
-        try payload.appendSlice(self.allocator, "]}");
+        try payload.writer(self.allocator).print(
+            "],\"has_more\":{s}}}",
+            .{if (page.total > page.hits.len + (intArg(args, "offset") orelse 0)) "true" else "false"},
+        );
         const owned_payload = try payload.toOwnedSlice(self.allocator);
         defer self.allocator.free(owned_payload);
         return self.successResponse(request_id, owned_payload);
@@ -273,7 +304,7 @@ pub const McpServer = struct {
             }
             try payload.appendSlice(self.allocator, "]");
         }
-        try payload.appendSlice(self.allocator, "]}");
+        try payload.writer(self.allocator).print("],\"total\":{d}}}", .{result.rows.len});
         const owned_payload = try payload.toOwnedSlice(self.allocator);
         defer self.allocator.free(owned_payload);
         return self.successResponse(request_id, owned_payload);
@@ -464,6 +495,158 @@ pub const McpServer = struct {
         return self.successResponse(request_id, payload);
     }
 
+    fn handleGetArchitecture(self: *McpServer, request_id: ?std.json.Value, args: std.json.Value) !?[]const u8 {
+        const project = stringArg(args, "project") orelse return self.errorResponse(request_id, -32602, "Missing project");
+        const status = try self.db.getProjectStatus(project);
+        defer self.db.freeProjectStatus(status);
+        if (status.status == .not_found) {
+            return self.errorResponse(request_id, -32602, "Unknown project");
+        }
+
+        const schema = try self.db.getSchema(project);
+        defer self.db.freeSchema(schema);
+        const files = try self.db.listProjectFiles(project);
+        defer self.db.freePaths(files);
+
+        var payload = std.ArrayList(u8).empty;
+        try payload.appendSlice(self.allocator, "{");
+        try appendJsonStringField(&payload, self.allocator, "project", project, true);
+        try appendJsonIntField(&payload, self.allocator, "total_nodes", status.nodes, false);
+        try appendJsonIntField(&payload, self.allocator, "total_edges", status.edges, false);
+
+        if (aspectWanted(args, "structure")) {
+            try appendSchemaCountsField(&payload, self.allocator, "node_labels", schema.labels);
+            try appendLanguageSummaryField(&payload, self.allocator, files);
+            try appendDirectorySummaryField(&payload, self.allocator, files);
+        }
+        if (aspectWanted(args, "dependencies")) {
+            try appendEdgeTypeCountsField(&payload, self.allocator, "edge_types", schema.edge_types);
+            try appendHotspotsField(&payload, self, project, 10);
+        }
+        if (aspectWanted(args, "entry_points")) {
+            try appendEntryPointsField(&payload, self, project, 15);
+        }
+        if (aspectWanted(args, "routes")) {
+            try appendRoutesField(&payload, self, project);
+        }
+
+        try payload.appendSlice(self.allocator, "}");
+        const owned_payload = try payload.toOwnedSlice(self.allocator);
+        defer self.allocator.free(owned_payload);
+        return self.successResponse(request_id, owned_payload);
+    }
+
+    fn handleSearchCode(self: *McpServer, request_id: ?std.json.Value, args: std.json.Value) !?[]const u8 {
+        const project = stringArg(args, "project") orelse return self.errorResponse(request_id, -32602, "Missing project");
+        const pattern = stringArg(args, "pattern") orelse return self.errorResponse(request_id, -32602, "Missing pattern");
+        const status = try self.db.getProjectStatus(project);
+        defer self.db.freeProjectStatus(status);
+        if (status.status == .not_found) {
+            return self.errorResponse(request_id, -32602, "Unknown project");
+        }
+
+        const mode = parseSearchCodeMode(stringArg(args, "mode"));
+        const file_pattern = stringArg(args, "file_pattern");
+        const path_filter = stringArg(args, "path_filter");
+        const regex = boolArg(args, "regex") orelse false;
+        const limit = intArg(args, "limit") orelse 25;
+        const context = intArg(args, "context") orelse 0;
+
+        const hits = try collectSearchCodeHits(
+            self.allocator,
+            self.db,
+            project,
+            status.root_path,
+            pattern,
+            mode,
+            file_pattern,
+            path_filter,
+            regex,
+            limit,
+            context,
+        );
+        defer freeCodeSearchHits(self.allocator, hits);
+
+        var payload = std.ArrayList(u8).empty;
+        try payload.appendSlice(self.allocator, "{");
+        try appendJsonStringField(&payload, self.allocator, "mode", searchCodeModeText(mode), true);
+        try appendJsonIntField(&payload, self.allocator, "total", @intCast(hits.len), false);
+        try payload.appendSlice(self.allocator, ",\"results\":[");
+        for (hits, 0..) |hit, idx| {
+            if (idx > 0) try payload.append(self.allocator, ',');
+            try payload.appendSlice(self.allocator, "{");
+            try appendJsonStringField(&payload, self.allocator, "file_path", hit.file_path, true);
+            if (mode != .files) {
+                try appendJsonIntField(&payload, self.allocator, "line", @intCast(hit.line), false);
+                try appendJsonStringField(&payload, self.allocator, "snippet", hit.snippet, false);
+                if (hit.name) |name| try appendJsonStringField(&payload, self.allocator, "name", name, false);
+                if (hit.label) |label| try appendJsonStringField(&payload, self.allocator, "label", label, false);
+                if (hit.qualified_name) |qn| try appendJsonStringField(&payload, self.allocator, "qualified_name", qn, false);
+            }
+            try payload.appendSlice(self.allocator, "}");
+        }
+        try payload.appendSlice(self.allocator, "],\"has_more\":false}");
+
+        const owned_payload = try payload.toOwnedSlice(self.allocator);
+        defer self.allocator.free(owned_payload);
+        return self.successResponse(request_id, owned_payload);
+    }
+
+    fn handleDetectChanges(self: *McpServer, request_id: ?std.json.Value, args: std.json.Value) !?[]const u8 {
+        const project = stringArg(args, "project") orelse return self.errorResponse(request_id, -32602, "Missing project");
+        const status = try self.db.getProjectStatus(project);
+        defer self.db.freeProjectStatus(status);
+        if (status.status == .not_found) {
+            return self.errorResponse(request_id, -32602, "Unknown project");
+        }
+
+        const base_branch = stringArg(args, "base_branch") orelse "main";
+        const scope = stringArg(args, "scope");
+        const depth = intArg(args, "depth") orelse 3;
+
+        const changed_files = try collectChangedFiles(self.allocator, status.root_path, base_branch, scope);
+        defer freeOwnedStrings(self.allocator, changed_files);
+        const impacted = try collectImpactedSymbols(self.allocator, self.db, project, changed_files);
+        defer freeChangeSymbols(self.allocator, impacted);
+        const blast_radius = try collectBlastRadius(self.allocator, self.db, project, impacted, depth);
+        defer freeBlastItems(self.allocator, blast_radius);
+
+        var payload = std.ArrayList(u8).empty;
+        try payload.appendSlice(self.allocator, "{");
+        try appendJsonStringField(&payload, self.allocator, "project", project, true);
+        try appendJsonStringField(&payload, self.allocator, "base_branch", base_branch, false);
+        if (scope) |scope_value| try appendJsonStringField(&payload, self.allocator, "scope", scope_value, false);
+        try appendJsonIntField(&payload, self.allocator, "depth", @intCast(depth), false);
+        try appendJsonStringArrayField(&payload, self.allocator, "changed_files", changed_files, false);
+        try appendJsonIntField(&payload, self.allocator, "changed_count", @intCast(changed_files.len), false);
+        try payload.appendSlice(self.allocator, ",\"impacted_symbols\":[");
+        for (impacted, 0..) |item, idx| {
+            if (idx > 0) try payload.append(self.allocator, ',');
+            try payload.appendSlice(self.allocator, "{");
+            try appendJsonStringField(&payload, self.allocator, "name", item.name, true);
+            try appendJsonStringField(&payload, self.allocator, "label", item.label, false);
+            try appendJsonStringField(&payload, self.allocator, "file_path", item.file_path, false);
+            try appendJsonStringField(&payload, self.allocator, "qualified_name", item.qualified_name, false);
+            try payload.appendSlice(self.allocator, "}");
+        }
+        try payload.appendSlice(self.allocator, "],\"blast_radius\":[");
+        for (blast_radius, 0..) |item, idx| {
+            if (idx > 0) try payload.append(self.allocator, ',');
+            try payload.appendSlice(self.allocator, "{");
+            try appendJsonStringField(&payload, self.allocator, "name", item.name, true);
+            try appendJsonStringField(&payload, self.allocator, "qualified_name", item.qualified_name, false);
+            try appendJsonStringField(&payload, self.allocator, "file_path", item.file_path, false);
+            try appendJsonIntField(&payload, self.allocator, "hop", @intCast(item.hop), false);
+            try appendJsonStringField(&payload, self.allocator, "risk", riskLabel(item.hop), false);
+            try payload.appendSlice(self.allocator, "}");
+        }
+        try payload.appendSlice(self.allocator, "]}");
+
+        const owned_payload = try payload.toOwnedSlice(self.allocator);
+        defer self.allocator.free(owned_payload);
+        return self.successResponse(request_id, owned_payload);
+    }
+
     fn respondWithSnippet(
         self: *McpServer,
         request_id: ?std.json.Value,
@@ -651,6 +834,755 @@ fn freeOwnedNode(allocator: std.mem.Allocator, node: store.Node) void {
     allocator.free(node.properties_json);
 }
 
+const SearchCodeMode = enum { compact, full, files };
+
+const CodeSearchHit = struct {
+    file_path: []u8,
+    line: u32 = 0,
+    snippet: []u8,
+    name: ?[]u8 = null,
+    label: ?[]u8 = null,
+    qualified_name: ?[]u8 = null,
+};
+
+const ChangeSymbol = struct {
+    id: i64,
+    name: []u8,
+    label: []u8,
+    file_path: []u8,
+    qualified_name: []u8,
+};
+
+const BlastItem = struct {
+    name: []u8,
+    qualified_name: []u8,
+    file_path: []u8,
+    hop: u32,
+};
+
+fn parseGraphSortField(raw: ?[]const u8) store.GraphSortField {
+    const text = raw orelse return .name;
+    if (std.ascii.eqlIgnoreCase(text, "label")) return .label;
+    if (std.ascii.eqlIgnoreCase(text, "file_path")) return .file_path;
+    if (std.ascii.eqlIgnoreCase(text, "in_degree")) return .in_degree;
+    if (std.ascii.eqlIgnoreCase(text, "out_degree")) return .out_degree;
+    if (std.ascii.eqlIgnoreCase(text, "degree") or std.ascii.eqlIgnoreCase(text, "total_degree")) return .total_degree;
+    return .name;
+}
+
+fn parseSearchCodeMode(raw: ?[]const u8) SearchCodeMode {
+    const text = raw orelse return .compact;
+    if (std.ascii.eqlIgnoreCase(text, "full")) return .full;
+    if (std.ascii.eqlIgnoreCase(text, "files")) return .files;
+    return .compact;
+}
+
+fn searchCodeModeText(mode: SearchCodeMode) []const u8 {
+    return switch (mode) {
+        .compact => "compact",
+        .full => "full",
+        .files => "files",
+    };
+}
+
+fn signedIntArg(value: std.json.Value, key: []const u8) ?i32 {
+    if (value != .object) return null;
+    const child = value.object.get(key) orelse return null;
+    return switch (child) {
+        .integer => |v| @intCast(v),
+        else => null,
+    };
+}
+
+fn aspectWanted(args: std.json.Value, aspect: []const u8) bool {
+    if (args != .object) return true;
+    const aspects = args.object.get("aspects") orelse return true;
+    if (aspects != .array) return true;
+    if (aspects.array.items.len == 0) return true;
+    for (aspects.array.items) |item| {
+        if (item != .string) continue;
+        if (std.ascii.eqlIgnoreCase(item.string, "all") or std.ascii.eqlIgnoreCase(item.string, aspect)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn appendConnectedSummary(
+    payload: *std.ArrayList(u8),
+    self: *McpServer,
+    project: []const u8,
+    node_id: i64,
+    relationship: ?[]const u8,
+) !void {
+    const inbound = try self.collectNeighborNames(project, node_id, .inbound, 5);
+    defer freeOwnedStrings(self.allocator, inbound);
+    const outbound = try self.collectNeighborNames(project, node_id, .outbound, 5);
+    defer freeOwnedStrings(self.allocator, outbound);
+
+    _ = relationship;
+    try payload.appendSlice(self.allocator, ",\"connected\":{");
+    try appendJsonStringArrayField(payload, self.allocator, "inbound", inbound, true);
+    try appendJsonStringArrayField(payload, self.allocator, "outbound", outbound, false);
+    try payload.appendSlice(self.allocator, "}");
+}
+
+fn appendSchemaCountsField(
+    payload: *std.ArrayList(u8),
+    allocator: std.mem.Allocator,
+    key: []const u8,
+    counts: []const store.LabelCount,
+) !void {
+    try payload.append(allocator, ',');
+    try appendJsonString(payload, allocator, key);
+    try payload.appendSlice(allocator, ":[");
+    for (counts, 0..) |count, idx| {
+        if (idx > 0) try payload.append(allocator, ',');
+        try payload.writer(allocator).print(
+            "{{\"label\":{f},\"count\":{d}}}",
+            .{ std.json.fmt(count.label, .{}), count.count },
+        );
+    }
+    try payload.append(allocator, ']');
+}
+
+fn appendEdgeTypeCountsField(
+    payload: *std.ArrayList(u8),
+    allocator: std.mem.Allocator,
+    key: []const u8,
+    counts: []const store.EdgeTypeCount,
+) !void {
+    try payload.append(allocator, ',');
+    try appendJsonString(payload, allocator, key);
+    try payload.appendSlice(allocator, ":[");
+    for (counts, 0..) |count, idx| {
+        if (idx > 0) try payload.append(allocator, ',');
+        try payload.writer(allocator).print(
+            "{{\"type\":{f},\"count\":{d}}}",
+            .{ std.json.fmt(count.edge_type, .{}), count.count },
+        );
+    }
+    try payload.append(allocator, ']');
+}
+
+fn appendLanguageSummaryField(
+    payload: *std.ArrayList(u8),
+    allocator: std.mem.Allocator,
+    files: [][]u8,
+) !void {
+    var counts = std.StringHashMap(i32).init(allocator);
+    defer {
+        var it = counts.iterator();
+        while (it.next()) |entry| allocator.free(entry.key_ptr.*);
+        counts.deinit();
+    }
+
+    for (files) |file_path| {
+        const language = languageNameForPath(file_path);
+        const entry = try counts.getOrPut(try allocator.dupe(u8, language));
+        if (!entry.found_existing) entry.value_ptr.* = 0;
+        entry.value_ptr.* += 1;
+    }
+
+    try payload.appendSlice(allocator, ",\"languages\":[");
+    var idx: usize = 0;
+    var it = counts.iterator();
+    while (it.next()) |entry| : (idx += 1) {
+        if (idx > 0) try payload.append(allocator, ',');
+        try payload.writer(allocator).print(
+            "{{\"language\":{f},\"count\":{d}}}",
+            .{ std.json.fmt(entry.key_ptr.*, .{}), entry.value_ptr.* },
+        );
+    }
+    try payload.append(allocator, ']');
+}
+
+fn appendDirectorySummaryField(
+    payload: *std.ArrayList(u8),
+    allocator: std.mem.Allocator,
+    files: [][]u8,
+) !void {
+    var counts = std.StringHashMap(i32).init(allocator);
+    defer {
+        var it = counts.iterator();
+        while (it.next()) |entry| allocator.free(entry.key_ptr.*);
+        counts.deinit();
+    }
+
+    for (files) |file_path| {
+        const dir_name = topLevelDirectory(file_path);
+        const entry = try counts.getOrPut(try allocator.dupe(u8, dir_name));
+        if (!entry.found_existing) entry.value_ptr.* = 0;
+        entry.value_ptr.* += 1;
+    }
+
+    try payload.appendSlice(allocator, ",\"packages\":[");
+    var idx: usize = 0;
+    var it = counts.iterator();
+    while (it.next()) |entry| : (idx += 1) {
+        if (idx > 0) try payload.append(allocator, ',');
+        try payload.writer(allocator).print(
+            "{{\"name\":{f},\"count\":{d}}}",
+            .{ std.json.fmt(entry.key_ptr.*, .{}), entry.value_ptr.* },
+        );
+    }
+    try payload.append(allocator, ']');
+}
+
+fn appendHotspotsField(
+    payload: *std.ArrayList(u8),
+    self: *McpServer,
+    project: []const u8,
+    limit: usize,
+) !void {
+    const page = try self.db.searchGraph(.{
+        .project = project,
+        .sort_field = .total_degree,
+        .descending = true,
+        .limit = limit,
+    });
+    defer self.db.freeGraphSearchPage(page);
+
+    try payload.appendSlice(self.allocator, ",\"hotspots\":[");
+    for (page.hits, 0..) |hit, idx| {
+        if (idx > 0) try payload.append(self.allocator, ',');
+        try payload.appendSlice(self.allocator, "{");
+        try appendJsonStringField(payload, self.allocator, "name", hit.node.name, true);
+        try appendJsonStringField(payload, self.allocator, "label", hit.node.label, false);
+        try appendJsonStringField(payload, self.allocator, "file_path", hit.node.file_path, false);
+        try appendJsonIntField(payload, self.allocator, "in_degree", hit.in_degree, false);
+        try appendJsonIntField(payload, self.allocator, "out_degree", hit.out_degree, false);
+        try payload.appendSlice(self.allocator, "}");
+    }
+    try payload.append(self.allocator, ']');
+}
+
+fn appendEntryPointsField(
+    payload: *std.ArrayList(u8),
+    self: *McpServer,
+    project: []const u8,
+    limit: usize,
+) !void {
+    const page = try self.db.searchGraph(.{
+        .project = project,
+        .label_pattern = "Function",
+        .sort_field = .out_degree,
+        .descending = true,
+        .limit = 100,
+    });
+    defer self.db.freeGraphSearchPage(page);
+
+    try payload.appendSlice(self.allocator, ",\"entry_points\":[");
+    var written: usize = 0;
+    for (page.hits) |hit| {
+        if (hit.in_degree != 0 or hit.out_degree == 0) continue;
+        if (written >= limit) break;
+        if (written > 0) try payload.append(self.allocator, ',');
+        try payload.appendSlice(self.allocator, "{");
+        try appendJsonStringField(payload, self.allocator, "name", hit.node.name, true);
+        try appendJsonStringField(payload, self.allocator, "qualified_name", hit.node.qualified_name, false);
+        try appendJsonStringField(payload, self.allocator, "file_path", hit.node.file_path, false);
+        try appendJsonIntField(payload, self.allocator, "out_degree", hit.out_degree, false);
+        try payload.appendSlice(self.allocator, "}");
+        written += 1;
+    }
+    try payload.append(self.allocator, ']');
+}
+
+fn appendRoutesField(
+    payload: *std.ArrayList(u8),
+    self: *McpServer,
+    project: []const u8,
+) !void {
+    const nodes = try self.db.searchNodes(.{
+        .project = project,
+        .label_pattern = "Route",
+        .limit = 500,
+    });
+    defer self.db.freeNodes(nodes);
+
+    const edges = try self.db.listEdges(project, null);
+    defer self.db.freeEdges(edges);
+
+    try payload.appendSlice(self.allocator, ",\"routes\":[");
+    var wrote: usize = 0;
+    for (nodes) |node| {
+        if (wrote > 0) try payload.append(self.allocator, ',');
+        try payload.appendSlice(self.allocator, "{");
+        try appendJsonStringField(payload, self.allocator, "name", node.name, true);
+        try appendJsonStringField(payload, self.allocator, "file_path", node.file_path, false);
+        try payload.appendSlice(self.allocator, "}");
+        wrote += 1;
+    }
+    for (edges) |edge| {
+        if (!std.mem.containsAtLeast(u8, edge.edge_type, 1, "HTTP") and !std.mem.containsAtLeast(u8, edge.edge_type, 1, "ROUTE")) continue;
+        const source = (try self.db.findNodeById(project, edge.source_id)) orelse continue;
+        defer self.db.freeNode(source);
+        const target = (try self.db.findNodeById(project, edge.target_id)) orelse continue;
+        defer self.db.freeNode(target);
+        if (wrote > 0) try payload.append(self.allocator, ',');
+        try payload.appendSlice(self.allocator, "{");
+        try appendJsonStringField(payload, self.allocator, "name", source.name, true);
+        try appendJsonStringField(payload, self.allocator, "target", target.name, false);
+        try appendJsonStringField(payload, self.allocator, "type", edge.edge_type, false);
+        try payload.appendSlice(self.allocator, "}");
+        wrote += 1;
+    }
+    try payload.append(self.allocator, ']');
+}
+
+fn languageNameForPath(path: []const u8) []const u8 {
+    if (std.mem.lastIndexOfScalar(u8, path, '.')) |dot| {
+        if (discover.languageForExtension(path[dot..])) |language| {
+            return language.name();
+        }
+    }
+    return "unknown";
+}
+
+fn topLevelDirectory(path: []const u8) []const u8 {
+    if (std.mem.indexOfScalar(u8, path, '/')) |slash| {
+        return path[0..slash];
+    }
+    return ".";
+}
+
+fn collectSearchCodeHits(
+    allocator: std.mem.Allocator,
+    db: *Store,
+    project: []const u8,
+    root_path: []const u8,
+    pattern: []const u8,
+    mode: SearchCodeMode,
+    file_pattern: ?[]const u8,
+    path_filter: ?[]const u8,
+    regex: bool,
+    limit: usize,
+    context: usize,
+) ![]CodeSearchHit {
+    const files = try discover.discoverFiles(allocator, root_path, .{ .mode = .full });
+    defer {
+        for (files) |file| {
+            allocator.free(file.path);
+            allocator.free(file.rel_path);
+        }
+        allocator.free(files);
+    }
+
+    var out = std.ArrayList(CodeSearchHit).empty;
+    errdefer {
+        for (out.items) |hit| {
+            allocator.free(hit.file_path);
+            allocator.free(hit.snippet);
+            if (hit.name) |value| allocator.free(value);
+            if (hit.label) |value| allocator.free(value);
+            if (hit.qualified_name) |value| allocator.free(value);
+        }
+        out.deinit(allocator);
+    }
+    var seen = std.StringHashMap(void).init(allocator);
+    defer {
+        var it = seen.iterator();
+        while (it.next()) |entry| allocator.free(entry.key_ptr.*);
+        seen.deinit();
+    }
+
+    file_loop: for (files) |file| {
+        if (path_filter) |filter| {
+            if (std.mem.indexOf(u8, file.rel_path, filter) == null) continue;
+        }
+        if (file_pattern) |pattern_filter| {
+            if (!globMatch(file.rel_path, pattern_filter)) continue;
+        }
+
+        const bytes = std.fs.cwd().readFileAlloc(allocator, file.path, 8 * 1024 * 1024) catch continue;
+        defer allocator.free(bytes);
+        const file_nodes = try db.findNodesByFile(project, file.rel_path);
+        defer db.freeNodes(file_nodes);
+
+        var line_iter = std.mem.splitAny(u8, bytes, "\n");
+        var line_no: u32 = 1;
+        while (line_iter.next()) |line| : (line_no += 1) {
+            if (!searchPatternMatches(line, pattern, regex)) continue;
+
+            if (mode == .files) {
+                const key = try allocator.dupe(u8, file.rel_path);
+                if (seen.contains(key)) {
+                    allocator.free(key);
+                    break;
+                }
+                try seen.put(key, {});
+                try out.append(allocator, .{
+                    .file_path = try allocator.dupe(u8, file.rel_path),
+                    .snippet = try allocator.dupe(u8, ""),
+                });
+                if (out.items.len >= limit) break :file_loop;
+                break;
+            }
+
+            const snippet = try buildSearchSnippet(allocator, bytes, line_no, if (mode == .full) context else 0);
+            const symbol = bestNodeForLine(file_nodes, line_no);
+            const dedupe_key = if (mode == .compact and symbol != null)
+                try allocator.dupe(u8, symbol.?.qualified_name)
+            else
+                try std.fmt.allocPrint(allocator, "{s}:{d}", .{ file.rel_path, line_no });
+            if (seen.contains(dedupe_key)) {
+                allocator.free(dedupe_key);
+                allocator.free(snippet);
+                continue;
+            }
+            try seen.put(dedupe_key, {});
+
+            try out.append(allocator, .{
+                .file_path = try allocator.dupe(u8, file.rel_path),
+                .line = line_no,
+                .snippet = snippet,
+                .name = if (symbol) |node| try allocator.dupe(u8, node.name) else null,
+                .label = if (symbol) |node| try allocator.dupe(u8, node.label) else null,
+                .qualified_name = if (symbol) |node| try allocator.dupe(u8, node.qualified_name) else null,
+            });
+            if (out.items.len >= limit) break :file_loop;
+        }
+    }
+
+    return out.toOwnedSlice(allocator);
+}
+
+fn buildSearchSnippet(
+    allocator: std.mem.Allocator,
+    bytes: []const u8,
+    line_no: u32,
+    context: usize,
+) ![]u8 {
+    if (context == 0) {
+        const line = nthLine(bytes, line_no) orelse "";
+        return allocator.dupe(u8, std.mem.trimRight(u8, line, "\r"));
+    }
+    const start_line: i32 = @intCast(@max(@as(i32, 1), @as(i32, @intCast(line_no)) - @as(i32, @intCast(context))));
+    const end_line: i32 = @intCast(@as(i32, @intCast(line_no)) + @as(i32, @intCast(context)));
+    return readInlineLines(allocator, bytes, start_line, end_line);
+}
+
+fn nthLine(bytes: []const u8, line_no: u32) ?[]const u8 {
+    var iter = std.mem.splitAny(u8, bytes, "\n");
+    var current: u32 = 1;
+    while (iter.next()) |line| : (current += 1) {
+        if (current == line_no) return line;
+    }
+    return null;
+}
+
+fn readInlineLines(allocator: std.mem.Allocator, bytes: []const u8, start_line: i32, end_line: i32) ![]u8 {
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(allocator);
+    var iter = std.mem.splitAny(u8, bytes, "\n");
+    var current: i32 = 1;
+    while (iter.next()) |line| : (current += 1) {
+        if (current < start_line) continue;
+        if (current > end_line) break;
+        if (out.items.len > 0) try out.append(allocator, '\n');
+        try out.appendSlice(allocator, std.mem.trimRight(u8, line, "\r"));
+    }
+    return out.toOwnedSlice(allocator);
+}
+
+fn bestNodeForLine(nodes: []const store.Node, line_no: u32) ?store.Node {
+    var best: ?store.Node = null;
+    var best_span: i32 = std.math.maxInt(i32);
+    for (nodes) |node| {
+        if (node.label.len == 0 or std.mem.eql(u8, node.label, "File") or std.mem.eql(u8, node.label, "Module")) continue;
+        const start = if (node.start_line > 0) node.start_line else 1;
+        const end = if (node.end_line >= start) node.end_line else start;
+        if (line_no < @as(u32, @intCast(start)) or line_no > @as(u32, @intCast(end))) continue;
+        const span = end - start;
+        if (span <= best_span) {
+            best = node;
+            best_span = span;
+        }
+    }
+    return best;
+}
+
+fn searchPatternMatches(line: []const u8, pattern: []const u8, regex: bool) bool {
+    if (!regex) return std.mem.indexOf(u8, line, pattern) != null;
+    var iter = std.mem.splitSequence(u8, pattern, "|");
+    while (iter.next()) |branch| {
+        const trimmed = std.mem.trim(u8, branch, " \t");
+        if (trimmed.len == 0) continue;
+        if (matchRegexishText(line, trimmed)) return true;
+    }
+    return false;
+}
+
+fn matchRegexishText(line: []const u8, pattern: []const u8) bool {
+    if (pattern.len >= 2 and pattern[0] == '^' and pattern[pattern.len - 1] == '$') {
+        const inner = pattern[1 .. pattern.len - 1];
+        if (std.mem.startsWith(u8, inner, ".*") and std.mem.endsWith(u8, inner, ".*") and inner.len >= 4) {
+            return std.mem.indexOf(u8, line, inner[2 .. inner.len - 2]) != null;
+        }
+        return std.mem.eql(u8, line, inner);
+    }
+    if (std.mem.indexOf(u8, pattern, ".*")) |_| {
+        var tmp = std.ArrayList(u8).empty;
+        defer tmp.deinit(std.heap.page_allocator);
+        var i: usize = 0;
+        while (i < pattern.len) : (i += 1) {
+            if (pattern[i] == '.' and i + 1 < pattern.len and pattern[i + 1] == '*') {
+                i += 1;
+                continue;
+            }
+            tmp.append(std.heap.page_allocator, pattern[i]) catch return false;
+        }
+        return std.mem.indexOf(u8, line, tmp.items) != null;
+    }
+    return std.mem.indexOf(u8, line, pattern) != null;
+}
+
+fn globMatch(text: []const u8, pattern: []const u8) bool {
+    if (std.mem.eql(u8, pattern, "*")) return true;
+    if (std.mem.indexOfScalar(u8, pattern, '*') == null) {
+        return std.mem.eql(u8, text, pattern);
+    }
+    if (std.mem.startsWith(u8, pattern, "*") and std.mem.endsWith(u8, pattern, "*") and pattern.len >= 2) {
+        return std.mem.indexOf(u8, text, pattern[1 .. pattern.len - 1]) != null;
+    }
+    if (std.mem.startsWith(u8, pattern, "*")) {
+        return std.mem.endsWith(u8, text, pattern[1..]);
+    }
+    if (std.mem.endsWith(u8, pattern, "*")) {
+        return std.mem.startsWith(u8, text, pattern[0 .. pattern.len - 1]);
+    }
+    const star = std.mem.indexOfScalar(u8, pattern, '*') orelse return false;
+    return std.mem.startsWith(u8, text, pattern[0..star]) and std.mem.endsWith(u8, text, pattern[star + 1 ..]);
+}
+
+fn collectChangedFiles(
+    allocator: std.mem.Allocator,
+    root_path: []const u8,
+    base_branch: []const u8,
+    scope: ?[]const u8,
+) ![][]u8 {
+    const branch_spec = try std.fmt.allocPrint(allocator, "{s}...HEAD", .{base_branch});
+    defer allocator.free(branch_spec);
+    const diff_base = try runCommandCapture(
+        allocator,
+        &.{ "git", "-C", root_path, "diff", "--name-only", branch_spec },
+    );
+    defer freeCommandResult(allocator, diff_base);
+    const diff_worktree = try runCommandCapture(
+        allocator,
+        &.{ "git", "-C", root_path, "diff", "--name-only" },
+    );
+    defer freeCommandResult(allocator, diff_worktree);
+
+    var out = std.ArrayList([]u8).empty;
+    errdefer {
+        for (out.items) |value| allocator.free(value);
+        out.deinit(allocator);
+    }
+    var seen = std.StringHashMap(void).init(allocator);
+    defer {
+        var it = seen.iterator();
+        while (it.next()) |entry| allocator.free(entry.key_ptr.*);
+        seen.deinit();
+    }
+
+    try appendChangedLines(allocator, &out, &seen, diff_base.stdout, scope);
+    try appendChangedLines(allocator, &out, &seen, diff_worktree.stdout, scope);
+    return out.toOwnedSlice(allocator);
+}
+
+fn appendChangedLines(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList([]u8),
+    seen: *std.StringHashMap(void),
+    text: []const u8,
+    scope: ?[]const u8,
+) !void {
+    var iter = std.mem.splitAny(u8, text, "\n\r");
+    while (iter.next()) |line| {
+        const trimmed = std.mem.trim(u8, line, " \t");
+        if (trimmed.len == 0) continue;
+        if (scope) |scope_value| {
+            if (!std.mem.startsWith(u8, trimmed, scope_value)) continue;
+        }
+        const key = try allocator.dupe(u8, trimmed);
+        if (seen.contains(key)) {
+            allocator.free(key);
+            continue;
+        }
+        try seen.put(key, {});
+        try out.append(allocator, try allocator.dupe(u8, trimmed));
+    }
+}
+
+fn collectImpactedSymbols(
+    allocator: std.mem.Allocator,
+    db: *Store,
+    project: []const u8,
+    changed_files: [][]u8,
+) ![]ChangeSymbol {
+    var out = std.ArrayList(ChangeSymbol).empty;
+    errdefer {
+        for (out.items) |item| {
+            allocator.free(item.name);
+            allocator.free(item.label);
+            allocator.free(item.file_path);
+            allocator.free(item.qualified_name);
+        }
+        out.deinit(allocator);
+    }
+    var seen = std.StringHashMap(void).init(allocator);
+    defer {
+        var it = seen.iterator();
+        while (it.next()) |entry| allocator.free(entry.key_ptr.*);
+        seen.deinit();
+    }
+
+    for (changed_files) |file_path| {
+        const nodes = try db.findNodesByFile(project, file_path);
+        defer db.freeNodes(nodes);
+        for (nodes) |node| {
+            if (std.mem.eql(u8, node.label, "File") or std.mem.eql(u8, node.label, "Module")) continue;
+            const key = try allocator.dupe(u8, node.qualified_name);
+            if (seen.contains(key)) {
+                allocator.free(key);
+                continue;
+            }
+            try seen.put(key, {});
+            try out.append(allocator, .{
+                .id = node.id,
+                .name = try allocator.dupe(u8, node.name),
+                .label = try allocator.dupe(u8, node.label),
+                .file_path = try allocator.dupe(u8, node.file_path),
+                .qualified_name = try allocator.dupe(u8, node.qualified_name),
+            });
+        }
+    }
+
+    return out.toOwnedSlice(allocator);
+}
+
+fn collectBlastRadius(
+    allocator: std.mem.Allocator,
+    db: *Store,
+    project: []const u8,
+    impacted: []const ChangeSymbol,
+    depth: usize,
+) ![]BlastItem {
+    var out = std.ArrayList(BlastItem).empty;
+    errdefer {
+        for (out.items) |item| {
+            allocator.free(item.name);
+            allocator.free(item.qualified_name);
+            allocator.free(item.file_path);
+        }
+        out.deinit(allocator);
+    }
+    var seen = std.StringHashMap(u32).init(allocator);
+    defer {
+        var it = seen.iterator();
+        while (it.next()) |entry| allocator.free(entry.key_ptr.*);
+        seen.deinit();
+    }
+
+    for (impacted) |symbol| {
+        const traversal = try db.traverseEdgesBreadthFirst(project, symbol.id, .both, @intCast(depth), null);
+        defer db.freeTraversalEdges(traversal);
+
+        for (traversal) |edge| {
+            const candidates = [_]i64{ edge.source_id, edge.target_id };
+            for (candidates) |candidate_id| {
+                if (candidate_id == symbol.id) continue;
+                const node = (try db.findNodeById(project, candidate_id)) orelse continue;
+                defer db.freeNode(node);
+                if (std.mem.eql(u8, node.label, "File") or std.mem.eql(u8, node.label, "Module")) continue;
+                const key = try allocator.dupe(u8, node.qualified_name);
+                if (seen.get(key)) |existing_hop| {
+                    allocator.free(key);
+                    if (edge.depth >= existing_hop) continue;
+                    updateBlastItemHop(out.items, node.qualified_name, edge.depth);
+                    continue;
+                }
+                try seen.put(key, edge.depth);
+                try out.append(allocator, .{
+                    .name = try allocator.dupe(u8, node.name),
+                    .qualified_name = try allocator.dupe(u8, node.qualified_name),
+                    .file_path = try allocator.dupe(u8, node.file_path),
+                    .hop = edge.depth,
+                });
+            }
+        }
+    }
+
+    return out.toOwnedSlice(allocator);
+}
+
+fn updateBlastItemHop(items: []BlastItem, qualified_name: []const u8, hop: u32) void {
+    for (items) |*item| {
+        if (std.mem.eql(u8, item.qualified_name, qualified_name) and hop < item.hop) {
+            item.hop = hop;
+            return;
+        }
+    }
+}
+
+fn riskLabel(hop: u32) []const u8 {
+    return if (hop <= 1) "high" else if (hop == 2) "medium" else "low";
+}
+
+const CommandResult = struct {
+    stdout: []u8,
+    stderr: []u8,
+};
+
+fn runCommandCapture(allocator: std.mem.Allocator, argv: []const []const u8) !CommandResult {
+    const result = try std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = argv,
+        .max_output_bytes = 16 * 1024 * 1024,
+    });
+    return .{
+        .stdout = result.stdout,
+        .stderr = result.stderr,
+    };
+}
+
+fn freeCommandResult(allocator: std.mem.Allocator, result: CommandResult) void {
+    allocator.free(result.stdout);
+    allocator.free(result.stderr);
+}
+
+fn freeCodeSearchHits(allocator: std.mem.Allocator, hits: []const CodeSearchHit) void {
+    for (hits) |hit| {
+        allocator.free(hit.file_path);
+        allocator.free(hit.snippet);
+        if (hit.name) |value| allocator.free(value);
+        if (hit.label) |value| allocator.free(value);
+        if (hit.qualified_name) |value| allocator.free(value);
+    }
+    allocator.free(hits);
+}
+
+fn freeChangeSymbols(allocator: std.mem.Allocator, items: []const ChangeSymbol) void {
+    for (items) |item| {
+        allocator.free(item.name);
+        allocator.free(item.label);
+        allocator.free(item.file_path);
+        allocator.free(item.qualified_name);
+    }
+    allocator.free(items);
+}
+
+fn freeBlastItems(allocator: std.mem.Allocator, items: []const BlastItem) void {
+    for (items) |item| {
+        allocator.free(item.name);
+        allocator.free(item.qualified_name);
+        allocator.free(item.file_path);
+    }
+    allocator.free(items);
+}
+
 fn parseTraversalDirection(direction: []const u8) ?store.TraversalDirection {
     if (std.mem.eql(u8, direction, "out") or std.mem.eql(u8, direction, "outbound")) {
         return .outbound;
@@ -680,9 +1612,12 @@ fn SupportedToolFromString(name: []const u8) error{UnsupportedTool}!SupportedToo
     if (std.mem.eql(u8, name, "trace_call_path")) return .trace_call_path;
     if (std.mem.eql(u8, name, "get_code_snippet")) return .get_code_snippet;
     if (std.mem.eql(u8, name, "get_graph_schema")) return .get_graph_schema;
+    if (std.mem.eql(u8, name, "get_architecture")) return .get_architecture;
+    if (std.mem.eql(u8, name, "search_code")) return .search_code;
     if (std.mem.eql(u8, name, "list_projects")) return .list_projects;
     if (std.mem.eql(u8, name, "delete_project")) return .delete_project;
     if (std.mem.eql(u8, name, "index_status")) return .index_status;
+    if (std.mem.eql(u8, name, "detect_changes")) return .detect_changes;
     return error.UnsupportedTool;
 }
 
@@ -907,6 +1842,9 @@ test "mcp init/deinit" {
 
 test "tool enum coverage" {
     try std.testing.expectEqual(SupportedTool.index_repository, try SupportedToolFromString("index_repository"));
+    try std.testing.expectEqual(SupportedTool.get_architecture, try SupportedToolFromString("get_architecture"));
+    try std.testing.expectEqual(SupportedTool.search_code, try SupportedToolFromString("search_code"));
+    try std.testing.expectEqual(SupportedTool.detect_changes, try SupportedToolFromString("detect_changes"));
     try std.testing.expectError(error.UnsupportedTool, SupportedToolFromString("missing"));
 }
 
@@ -1198,4 +2136,248 @@ test "get_code_snippet returns source, match metadata, and suggestions" {
     const ambiguous_result = ambiguous_parsed.value.object.get("result").?.object;
     try std.testing.expectEqualStrings("ambiguous", ambiguous_result.get("status").?.string);
     try std.testing.expect(ambiguous_result.get("suggestions").?.array.items.len >= 2);
+}
+
+test "search_graph returns totals pagination and connected summaries" {
+    var s = try store.Store.openMemory(std.testing.allocator);
+    defer s.deinit();
+    try s.upsertProject("demo", "/tmp/demo");
+
+    const alpha_id = try s.upsertNode(.{
+        .project = "demo",
+        .label = "Function",
+        .name = "alpha",
+        .qualified_name = "demo.alpha",
+        .file_path = "src/main.py",
+    });
+    const beta_id = try s.upsertNode(.{
+        .project = "demo",
+        .label = "Function",
+        .name = "beta",
+        .qualified_name = "demo.beta",
+        .file_path = "src/main.py",
+    });
+    const gamma_id = try s.upsertNode(.{
+        .project = "demo",
+        .label = "Function",
+        .name = "gamma",
+        .qualified_name = "demo.gamma",
+        .file_path = "src/util.py",
+    });
+    _ = try s.upsertEdge(.{
+        .project = "demo",
+        .source_id = alpha_id,
+        .target_id = beta_id,
+        .edge_type = "CALLS",
+    });
+    _ = try s.upsertEdge(.{
+        .project = "demo",
+        .source_id = alpha_id,
+        .target_id = gamma_id,
+        .edge_type = "CALLS",
+    });
+
+    var srv = McpServer.init(std.testing.allocator, &s);
+    defer srv.deinit();
+
+    const response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"search_graph","arguments":{"project":"demo","label":"Function","relationship":"CALLS","sort_by":"total_degree","sort_direction":"desc","limit":1,"offset":0,"include_connected":true}}}
+    )).?;
+    defer std.testing.allocator.free(response);
+
+    const parsed = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, response, .{});
+    defer parsed.deinit();
+
+    const result = parsed.value.object.get("result").?.object;
+    try std.testing.expectEqual(@as(i64, 3), result.get("total").?.integer);
+    try std.testing.expectEqual(true, result.get("has_more").?.bool);
+    const results = result.get("results").?.array;
+    try std.testing.expectEqual(@as(usize, 1), results.items.len);
+    try std.testing.expectEqualStrings("alpha", results.items[0].object.get("name").?.string);
+    try std.testing.expect(results.items[0].object.get("connected") != null);
+}
+
+test "get_architecture and search_code expose phase 5 summaries" {
+    const allocator = std.testing.allocator;
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(allocator, "/tmp/cbm-phase5-arch-{x}", .{project_id});
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+    const src_dir = try std.fs.path.join(allocator, &.{ project_dir, "src" });
+    defer allocator.free(src_dir);
+    try std.fs.cwd().makePath(src_dir);
+
+    const main_path = try std.fs.path.join(allocator, &.{ project_dir, "src", "main.py" });
+    defer allocator.free(main_path);
+    var main_file = try std.fs.cwd().createFile(main_path, .{});
+    defer main_file.close();
+    try main_file.writeAll(
+        \\def run():
+        \\    helper()
+        \\
+        \\def helper():
+        \\    return "phase5"
+        \\
+    );
+
+    var s = try store.Store.openMemory(allocator);
+    defer s.deinit();
+    try s.upsertProject("demo", project_dir);
+    const run_id = try s.upsertNode(.{
+        .project = "demo",
+        .label = "Function",
+        .name = "run",
+        .qualified_name = "demo.src.main.run",
+        .file_path = "src/main.py",
+        .start_line = 1,
+        .end_line = 2,
+    });
+    const helper_id = try s.upsertNode(.{
+        .project = "demo",
+        .label = "Function",
+        .name = "helper",
+        .qualified_name = "demo.src.main.helper",
+        .file_path = "src/main.py",
+        .start_line = 4,
+        .end_line = 5,
+    });
+    _ = try s.upsertEdge(.{
+        .project = "demo",
+        .source_id = run_id,
+        .target_id = helper_id,
+        .edge_type = "CALLS",
+    });
+
+    var srv = McpServer.init(allocator, &s);
+    defer srv.deinit();
+
+    const arch_response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"get_architecture","arguments":{"project":"demo","aspects":["structure","dependencies","entry_points"]}}}
+    )).?;
+    defer allocator.free(arch_response);
+    const arch_parsed = try std.json.parseFromSlice(std.json.Value, allocator, arch_response, .{});
+    defer arch_parsed.deinit();
+    const arch_result = arch_parsed.value.object.get("result").?.object;
+    try std.testing.expect(arch_result.get("node_labels") != null);
+    try std.testing.expect(arch_result.get("edge_types") != null);
+    try std.testing.expect(arch_result.get("entry_points") != null);
+
+    const code_response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"search_code","arguments":{"project":"demo","pattern":"helper","mode":"compact","limit":5}}}
+    )).?;
+    defer allocator.free(code_response);
+    const code_parsed = try std.json.parseFromSlice(std.json.Value, allocator, code_response, .{});
+    defer code_parsed.deinit();
+    const code_result = code_parsed.value.object.get("result").?.object;
+    try std.testing.expectEqualStrings("compact", code_result.get("mode").?.string);
+    try std.testing.expect(code_result.get("results").?.array.items.len >= 1);
+}
+
+test "detect_changes maps git diffs to impacted symbols and blast radius" {
+    const allocator = std.testing.allocator;
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(allocator, "/tmp/cbm-phase5-changes-{x}", .{project_id});
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+    const src_dir = try std.fs.path.join(allocator, &.{ project_dir, "src" });
+    defer allocator.free(src_dir);
+    try std.fs.cwd().makePath(src_dir);
+
+    const main_path = try std.fs.path.join(allocator, &.{ project_dir, "src", "main.py" });
+    defer allocator.free(main_path);
+    var main_file = try std.fs.cwd().createFile(main_path, .{});
+    defer main_file.close();
+    try main_file.writeAll(
+        \\def run():
+        \\    return helper()
+        \\
+        \\def helper():
+        \\    return 1
+        \\
+    );
+
+    try runTestCommand(allocator, &.{ "git", "-C", project_dir, "init", "-b", "main" });
+    try runTestCommand(allocator, &.{ "git", "-C", project_dir, "config", "user.email", "tests@example.com" });
+    try runTestCommand(allocator, &.{ "git", "-C", project_dir, "config", "user.name", "Phase Five Tests" });
+    try runTestCommand(allocator, &.{ "git", "-C", project_dir, "add", "." });
+    try runTestCommand(allocator, &.{ "git", "-C", project_dir, "commit", "-m", "initial" });
+
+    {
+        var updated_file = try std.fs.cwd().createFile(main_path, .{ .truncate = true });
+        defer updated_file.close();
+        try updated_file.writeAll(
+            \\def run():
+            \\    return helper() + 1
+            \\
+            \\def helper():
+            \\    return 1
+            \\
+        );
+    }
+
+    var s = try store.Store.openMemory(allocator);
+    defer s.deinit();
+    try s.upsertProject("demo", project_dir);
+    const run_id = try s.upsertNode(.{
+        .project = "demo",
+        .label = "Function",
+        .name = "run",
+        .qualified_name = "demo.src.main.run",
+        .file_path = "src/main.py",
+        .start_line = 1,
+        .end_line = 2,
+    });
+    const helper_id = try s.upsertNode(.{
+        .project = "demo",
+        .label = "Function",
+        .name = "helper",
+        .qualified_name = "demo.src.main.helper",
+        .file_path = "src/main.py",
+        .start_line = 4,
+        .end_line = 5,
+    });
+    _ = try s.upsertEdge(.{
+        .project = "demo",
+        .source_id = run_id,
+        .target_id = helper_id,
+        .edge_type = "CALLS",
+    });
+
+    var srv = McpServer.init(allocator, &s);
+    defer srv.deinit();
+
+    const response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"detect_changes","arguments":{"project":"demo","base_branch":"main","depth":2}}}
+    )).?;
+    defer allocator.free(response);
+
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, response, .{});
+    defer parsed.deinit();
+    const result = parsed.value.object.get("result").?.object;
+    try std.testing.expectEqual(@as(i64, 1), result.get("changed_count").?.integer);
+    try std.testing.expect(result.get("changed_files").?.array.items.len >= 1);
+    try std.testing.expect(result.get("impacted_symbols").?.array.items.len >= 2);
+    try std.testing.expect(result.get("blast_radius").?.array.items.len >= 1);
+}
+
+fn runTestCommand(allocator: std.mem.Allocator, argv: []const []const u8) !void {
+    const result = try std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = argv,
+        .max_output_bytes = 1024 * 1024,
+    });
+    defer allocator.free(result.stdout);
+    defer allocator.free(result.stderr);
+
+    switch (result.term) {
+        .Exited => |code| {
+            if (code != 0) {
+                std.debug.print("command failed ({d}): {s}\nstderr:\n{s}\n", .{ code, argv[0], result.stderr });
+                return error.TestCommandFailed;
+            }
+        },
+        else => return error.TestCommandFailed,
+    }
 }

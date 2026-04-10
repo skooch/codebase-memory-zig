@@ -48,6 +48,7 @@ src/
 - Error unions with inferred error sets where possible
 - Tests live in `*_test.zig` files alongside their module
 - `zig fmt` for formatting (enforced)
+- If `git commit` or `git add` fails because `.git/index.lock` already exists, treat it as a stale lock, remove it with a non-interactive `rm -f .git/index.lock`, and retry the git command.
 
 ## Porting from C
 

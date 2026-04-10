@@ -1,6 +1,6 @@
 # Zig Port of codebase-memory-mcp
 
-## Status: Readiness Gate Complete / Broader Port Still In Progress
+## Status: Query And Analysis Surface Complete / Broader Port Still In Progress
 
 ### Current Snapshot
 
@@ -12,6 +12,14 @@ Completed now:
   - `query_graph`
   - `trace_call_path`
   - `list_projects`
+- The post-readiness public surface added in Phases 3 and 5 is now implemented for:
+  - `get_code_snippet`
+  - `get_graph_schema`
+  - `get_architecture`
+  - `search_code`
+  - `delete_project`
+  - `index_status`
+  - `detect_changes`
 - Parser-backed definition extraction is the default readiness path for:
   - Python
   - JavaScript
@@ -25,8 +33,8 @@ Completed now:
   - `Mismatches: 0`
 
 Still to implement after the readiness gate:
-- Full MCP surface beyond the five readiness-scope tools.
-- Full Cypher parser/executor parity beyond the constrained readiness query subset.
+- Remaining MCP surface beyond the current daily-use slice, especially `manage_adr` and the later productization/runtime features.
+- Full Cypher parity beyond the broader day-to-day query subset now used by `query_graph`, `get_architecture`, and `detect_changes`.
 - Deeper usage/type-ref parity and broader extraction semantics beyond the current daily-use slice for Python, JS/TS/TSX, Rust, and Zig.
 - Watcher-driven reindexing, incremental indexing, and broader CLI parity.
 - Parallel indexing, MinHash/LSH, and the deferred enrichment/history features.
@@ -47,6 +55,7 @@ The most effective next order is:
 4. **Heavy query and analysis features**
    - broaden `search_graph`, build fuller Cypher support, then add `search_code`, `get_architecture`, and `detect_changes`
    - reason: these depend on both stronger graph facts and stronger shared query infrastructure
+   - status: complete
 5. **Runtime lifecycle and scale**
    - watcher, incremental indexing, parallel extraction, similarity
    - reason: lifecycle/concurrency work is much easier once single-threaded semantics are stable

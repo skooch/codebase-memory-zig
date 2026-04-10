@@ -68,6 +68,42 @@ pub const NodeSearchFilter = struct {
     limit: usize = 100,
 };
 
+pub const GraphSortField = enum {
+    name,
+    label,
+    file_path,
+    in_degree,
+    out_degree,
+    total_degree,
+};
+
+pub const GraphSearchFilter = struct {
+    project: []const u8 = "",
+    label_pattern: ?[]const u8 = null,
+    name_pattern: ?[]const u8 = null,
+    qn_pattern: ?[]const u8 = null,
+    file_pattern: ?[]const u8 = null,
+    relationship: ?[]const u8 = null,
+    min_degree: ?i32 = null,
+    max_degree: ?i32 = null,
+    exclude_entry_points: bool = false,
+    limit: usize = 100,
+    offset: usize = 0,
+    sort_field: GraphSortField = .name,
+    descending: bool = false,
+};
+
+pub const GraphSearchHit = struct {
+    node: Node,
+    in_degree: i32,
+    out_degree: i32,
+};
+
+pub const GraphSearchPage = struct {
+    total: usize,
+    hits: []GraphSearchHit,
+};
+
 pub const TraversalDirection = enum {
     outbound,
     inbound,
@@ -407,6 +443,41 @@ pub const Store = struct {
         return out.toOwnedSlice(self.allocator);
     }
 
+    pub fn findNodesByFile(self: *Store, project: []const u8, file_path: []const u8) ![]Node {
+        return self.searchNodes(.{
+            .project = project,
+            .file_pattern = file_path,
+            .limit = 10_000,
+        });
+    }
+
+    pub fn listProjectFiles(self: *Store, project: []const u8) ![][]u8 {
+        const stmt = try self.prepare(
+            "SELECT DISTINCT file_path FROM nodes WHERE project = ?1 AND file_path != '' ORDER BY file_path ASC",
+        );
+        defer self.finalize(stmt);
+        try self.bindText(stmt, 1, project);
+
+        var out = std.ArrayList([]u8).empty;
+        errdefer {
+            for (out.items) |path| self.allocator.free(path);
+            out.deinit(self.allocator);
+        }
+
+        while (true) {
+            const rc = c.sqlite3_step(stmt);
+            if (rc == c.SQLITE_DONE) break;
+            if (rc != c.SQLITE_ROW) return StoreError.SqlError;
+            try out.append(self.allocator, try self.copyColumnText(stmt, 0));
+        }
+        return out.toOwnedSlice(self.allocator);
+    }
+
+    pub fn freePaths(self: *Store, paths: [][]u8) void {
+        for (paths) |path| self.allocator.free(path);
+        self.allocator.free(paths);
+    }
+
     pub fn searchNodes(self: *Store, filter: NodeSearchFilter) ![]Node {
         var sql = std.ArrayList(u8).empty;
         defer sql.deinit(self.allocator);
@@ -475,6 +546,114 @@ pub const Store = struct {
             try out.append(self.allocator, try self.rowToNode(stmt));
         }
         return out.toOwnedSlice(self.allocator);
+    }
+
+    pub fn searchGraph(self: *Store, filter: GraphSearchFilter) !GraphSearchPage {
+        var sql = std.ArrayList(u8).empty;
+        defer sql.deinit(self.allocator);
+
+        var binds = std.ArrayList([]u8).empty;
+        defer {
+            for (binds.items) |b| self.allocator.free(b);
+            binds.deinit(self.allocator);
+        }
+
+        const degree_expr =
+            \\(SELECT COUNT(*) FROM edges e WHERE e.project = n.project AND e.target_id = n.id{s})
+        ;
+        const out_degree_expr =
+            \\(SELECT COUNT(*) FROM edges e WHERE e.project = n.project AND e.source_id = n.id{s})
+        ;
+        const rel_suffix = if (filter.relationship != null) " AND e.type = ?" else "";
+
+        try sql.writer(self.allocator).print(
+            "SELECT * FROM (" ++
+                "SELECT n.id, n.project, n.label, n.name, n.qualified_name, n.file_path, n.start_line, n.end_line, n.properties, " ++
+                degree_expr ++ " AS in_degree, " ++ out_degree_expr ++ " AS out_degree " ++
+                "FROM nodes n WHERE 1=1",
+            .{ rel_suffix, rel_suffix },
+        );
+
+        if (filter.project.len > 0) {
+            try sql.appendSlice(self.allocator, " AND n.project = ?");
+            try binds.append(self.allocator, try self.allocator.dupe(u8, filter.project));
+        }
+        if (filter.label_pattern) |pat| {
+            try sql.appendSlice(self.allocator, " AND n.label LIKE ?");
+            try binds.append(self.allocator, try toLike(self.allocator, pat));
+        }
+        if (filter.name_pattern) |pat| {
+            try sql.appendSlice(self.allocator, " AND n.name LIKE ?");
+            try binds.append(self.allocator, try toLike(self.allocator, pat));
+        }
+        if (filter.qn_pattern) |pat| {
+            try sql.appendSlice(self.allocator, " AND n.qualified_name LIKE ?");
+            try binds.append(self.allocator, try toLike(self.allocator, pat));
+        }
+        if (filter.file_pattern) |pat| {
+            try sql.appendSlice(self.allocator, " AND n.file_path LIKE ?");
+            try binds.append(self.allocator, try toLike(self.allocator, pat));
+        }
+        try sql.appendSlice(self.allocator, ")");
+
+        var has_where = false;
+        if (filter.min_degree) |min_degree| {
+            try sql.appendSlice(self.allocator, if (has_where) " AND " else " WHERE ");
+            try sql.appendSlice(self.allocator, "(in_degree + out_degree) >= ?");
+            has_where = true;
+            try binds.append(self.allocator, try std.fmt.allocPrint(self.allocator, "{d}", .{min_degree}));
+        }
+        if (filter.max_degree) |max_degree| {
+            try sql.appendSlice(self.allocator, if (has_where) " AND " else " WHERE ");
+            try sql.appendSlice(self.allocator, "(in_degree + out_degree) <= ?");
+            has_where = true;
+            try binds.append(self.allocator, try std.fmt.allocPrint(self.allocator, "{d}", .{max_degree}));
+        }
+        if (filter.exclude_entry_points) {
+            try sql.appendSlice(self.allocator, if (has_where) " AND " else " WHERE ");
+            try sql.appendSlice(self.allocator, "NOT (label = 'Function' AND in_degree = 0)");
+            has_where = true;
+        }
+
+        const total_sql = try std.fmt.allocPrint(self.allocator, "SELECT COUNT(*) FROM ({s})", .{sql.items});
+        defer self.allocator.free(total_sql);
+        const total = try self.executeGraphCount(total_sql, binds.items, filter.relationship);
+
+        try sql.appendSlice(self.allocator, " ORDER BY ");
+        try sql.appendSlice(self.allocator, graphSortSql(filter.sort_field));
+        try sql.appendSlice(self.allocator, if (filter.descending) " DESC" else " ASC");
+        try sql.appendSlice(self.allocator, ", name ASC");
+        try sql.appendSlice(self.allocator, " LIMIT ? OFFSET ?");
+
+        const stmt = try self.prepare(sql.items);
+        defer self.finalize(stmt);
+        try self.bindGraphSearchArgs(stmt, binds.items, filter.relationship, filter.limit, filter.offset);
+
+        var out = std.ArrayList(GraphSearchHit).empty;
+        errdefer {
+            for (out.items) |hit| self.freeNode(hit.node);
+            out.deinit(self.allocator);
+        }
+        while (true) {
+            const rc = c.sqlite3_step(stmt);
+            if (rc == c.SQLITE_DONE) break;
+            if (rc != c.SQLITE_ROW) return StoreError.SqlError;
+            try out.append(self.allocator, .{
+                .node = try self.rowToNode(stmt),
+                .in_degree = @intCast(c.sqlite3_column_int(stmt, 9)),
+                .out_degree = @intCast(c.sqlite3_column_int(stmt, 10)),
+            });
+        }
+
+        return .{
+            .total = total,
+            .hits = try out.toOwnedSlice(self.allocator),
+        };
+    }
+
+    pub fn freeGraphSearchPage(self: *Store, page: GraphSearchPage) void {
+        for (page.hits) |hit| self.freeNode(hit.node);
+        self.allocator.free(page.hits);
     }
 
     pub fn freeNodes(self: *Store, nodes: []Node) void {
@@ -605,6 +784,26 @@ pub const Store = struct {
         if (rc == c.SQLITE_DONE) return null;
         if (rc != c.SQLITE_ROW) return StoreError.SqlError;
         return try self.rowToEdge(stmt);
+    }
+
+    pub fn listEdges(self: *Store, project: []const u8, edge_type: ?[]const u8) ![]Edge {
+        const sql = if (edge_type) |_|
+            "SELECT id, project, source_id, target_id, type, properties FROM edges WHERE project = ?1 AND type = ?2 ORDER BY id"
+        else
+            "SELECT id, project, source_id, target_id, type, properties FROM edges WHERE project = ?1 ORDER BY id";
+        const stmt = try self.prepare(sql);
+        defer self.finalize(stmt);
+        try self.bindText(stmt, 1, project);
+        if (edge_type) |et| try self.bindText(stmt, 2, et);
+
+        var out = std.ArrayList(Edge).empty;
+        while (true) {
+            const rc = c.sqlite3_step(stmt);
+            if (rc == c.SQLITE_DONE) break;
+            if (rc != c.SQLITE_ROW) return StoreError.SqlError;
+            try out.append(self.allocator, try self.rowToEdge(stmt));
+        }
+        return out.toOwnedSlice(self.allocator);
     }
 
     pub fn freeEdges(self: *Store, edges: []Edge) void {
@@ -785,6 +984,52 @@ pub const Store = struct {
 
     // --- Internal helpers -----------------------------------------------
 
+    fn executeGraphCount(
+        self: *Store,
+        sql: []const u8,
+        binds: []const []const u8,
+        relationship: ?[]const u8,
+    ) !usize {
+        const stmt = try self.prepare(sql);
+        defer self.finalize(stmt);
+        try self.bindGraphSearchArgs(stmt, binds, relationship, null, null);
+        const rc = c.sqlite3_step(stmt);
+        if (rc != c.SQLITE_ROW) return StoreError.SqlError;
+        return @intCast(c.sqlite3_column_int64(stmt, 0));
+    }
+
+    fn bindGraphSearchArgs(
+        self: *Store,
+        stmt: *c.sqlite3_stmt,
+        binds: []const []const u8,
+        relationship: ?[]const u8,
+        limit: ?usize,
+        offset: ?usize,
+    ) !void {
+        var bind_index: c_int = 1;
+        if (relationship) |rel| {
+            try self.bindText(stmt, bind_index, rel);
+            bind_index += 1;
+            try self.bindText(stmt, bind_index, rel);
+            bind_index += 1;
+        }
+        for (binds) |bind| {
+            if (looksLikeInteger(bind)) {
+                try self.bindInt(stmt, bind_index, try std.fmt.parseInt(i64, bind, 10));
+            } else {
+                try self.bindText(stmt, bind_index, bind);
+            }
+            bind_index += 1;
+        }
+        if (limit) |value| {
+            try self.bindInt(stmt, bind_index, @intCast(if (value == 0) 100 else value));
+            bind_index += 1;
+        }
+        if (offset) |value| {
+            try self.bindInt(stmt, bind_index, @intCast(value));
+        }
+    }
+
     fn prepare(self: *Store, sql: []const u8) !*c.sqlite3_stmt {
         const sql_c = try self.allocator.dupeZ(u8, sql);
         defer self.allocator.free(sql_c);
@@ -906,6 +1151,30 @@ pub const Store = struct {
         }
     }
 };
+
+fn graphSortSql(field: GraphSortField) []const u8 {
+    return switch (field) {
+        .name => "name",
+        .label => "label",
+        .file_path => "file_path",
+        .in_degree => "in_degree",
+        .out_degree => "out_degree",
+        .total_degree => "(in_degree + out_degree)",
+    };
+}
+
+fn looksLikeInteger(text: []const u8) bool {
+    if (text.len == 0) return false;
+    var start: usize = 0;
+    if (text[0] == '-') {
+        if (text.len == 1) return false;
+        start = 1;
+    }
+    for (text[start..]) |ch| {
+        if (!std.ascii.isDigit(ch)) return false;
+    }
+    return true;
+}
 
 fn toLike(allocator: std.mem.Allocator, pattern: []const u8) ![]u8 {
     if (pattern.len == 0) return try allocator.dupe(u8, "%");
@@ -1107,4 +1376,66 @@ test "store project status and suffix helpers support phase 3 tools" {
     const degree = try s.getNodeDegree("phase3", run_id);
     try std.testing.expectEqual(@as(i32, 0), degree.callers);
     try std.testing.expectEqual(@as(i32, 1), degree.callees);
+}
+
+test "store graph search supports degree filters and pagination" {
+    var s = try Store.openMemory(std.testing.allocator);
+    defer s.deinit();
+
+    try s.upsertProject("phase5", "/tmp/phase5");
+    const main_id = try s.upsertNode(.{
+        .project = "phase5",
+        .label = "Function",
+        .name = "main",
+        .qualified_name = "phase5.main",
+        .file_path = "src/main.py",
+    });
+    const helper_id = try s.upsertNode(.{
+        .project = "phase5",
+        .label = "Function",
+        .name = "helper",
+        .qualified_name = "phase5.helper",
+        .file_path = "src/main.py",
+    });
+    const worker_id = try s.upsertNode(.{
+        .project = "phase5",
+        .label = "Class",
+        .name = "Worker",
+        .qualified_name = "phase5.Worker",
+        .file_path = "src/worker.py",
+    });
+    _ = try s.upsertEdge(.{
+        .project = "phase5",
+        .source_id = main_id,
+        .target_id = helper_id,
+        .edge_type = "CALLS",
+    });
+    _ = try s.upsertEdge(.{
+        .project = "phase5",
+        .source_id = worker_id,
+        .target_id = helper_id,
+        .edge_type = "CALLS",
+    });
+
+    const page = try s.searchGraph(.{
+        .project = "phase5",
+        .relationship = "CALLS",
+        .min_degree = 2,
+        .sort_field = .total_degree,
+    });
+    defer s.freeGraphSearchPage(page);
+    try std.testing.expectEqual(@as(usize, 1), page.total);
+    try std.testing.expectEqual(@as(usize, 1), page.hits.len);
+    try std.testing.expectEqualStrings("helper", page.hits[0].node.name);
+    try std.testing.expectEqual(@as(i32, 2), page.hits[0].in_degree);
+
+    const paged = try s.searchGraph(.{
+        .project = "phase5",
+        .label_pattern = "Function",
+        .offset = 1,
+        .limit = 1,
+    });
+    defer s.freeGraphSearchPage(paged);
+    try std.testing.expectEqual(@as(usize, 2), paged.total);
+    try std.testing.expectEqual(@as(usize, 1), paged.hits.len);
 }
