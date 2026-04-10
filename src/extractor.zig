@@ -288,6 +288,8 @@ pub fn extractFile(
             clean_line,
             file.language,
             parsed_symbol,
+            current_scope_id,
+            module_id,
         ) catch |err| switch (err) {
             error.OutOfMemory => return err,
         };
@@ -500,10 +502,12 @@ fn collectCalls(
     line: []const u8,
     language: discover.Language,
     parsed_symbol: ?ParsedSymbol,
+    current_scope_id: i64,
+    module_id: i64,
 ) !?[]const []const u8 {
     if (line.len == 0) return null;
     if (parsed_symbol) |sym| {
-        if (isDeclarationLabel(sym.label)) return null;
+        if (shouldSkipDeclarationCalls(sym.label, current_scope_id, module_id)) return null;
     } else if (isDeclarationLine(language, line)) {
         return null;
     }
@@ -577,6 +581,11 @@ fn isDeclarationLabel(label: []const u8) bool {
         std.mem.eql(u8, label, "Trait") or
         std.mem.eql(u8, label, "Interface") or
         std.mem.eql(u8, label, "Test");
+}
+
+fn shouldSkipDeclarationCalls(label: []const u8, current_scope_id: i64, module_id: i64) bool {
+    if (isDeclarationLabel(label)) return true;
+    return std.mem.eql(u8, label, "Constant") and current_scope_id == module_id;
 }
 
 fn addSymbolFromParsed(
@@ -1063,19 +1072,48 @@ fn parseRustImplParts(line: []const u8) ?struct {
     if (std.mem.indexOf(u8, trimmed, " for ")) |for_pos| {
         const trait_raw = std.mem.trim(u8, trimmed[0..for_pos], " \t");
         const target_raw = std.mem.trim(u8, trimmed[for_pos + " for ".len ..], " \t");
-        const trait_name = firstIdentifier(trait_raw) orelse return null;
-        const target_name = firstIdentifier(target_raw) orelse return null;
+        const trait_name = parseRustTypeName(trait_raw) orelse return null;
+        const target_name = parseRustTypeName(target_raw) orelse return null;
         return .{
             .target_name = target_name,
             .trait_name = trait_name,
         };
     }
 
-    const target_name = firstIdentifier(trimmed) orelse return null;
+    const target_name = parseRustTypeName(trimmed) orelse return null;
     return .{
         .target_name = target_name,
         .trait_name = null,
     };
+}
+
+fn parseRustTypeName(text: []const u8) ?[]const u8 {
+    var trimmed = std.mem.trim(u8, text, " \t");
+    while (trimmed.len > 0 and (trimmed[0] == '&' or trimmed[0] == '*')) {
+        trimmed = std.mem.trim(u8, trimmed[1..], " \t");
+    }
+    if (std.mem.startsWith(u8, trimmed, "mut ")) {
+        trimmed = std.mem.trim(u8, trimmed["mut ".len..], " \t");
+    }
+    if (std.mem.startsWith(u8, trimmed, "dyn ")) {
+        trimmed = std.mem.trim(u8, trimmed["dyn ".len..], " \t");
+    }
+    if (trimmed.len == 0) return null;
+
+    var head_end = trimmed.len;
+    for (trimmed, 0..) |ch, idx| {
+        if (ch == '<' or ch == '(' or ch == '{' or ch == '[' or ch == ',' or std.ascii.isWhitespace(ch)) {
+            head_end = idx;
+            break;
+        }
+    }
+
+    const head = std.mem.trim(u8, trimmed[0..head_end], " \t");
+    if (head.len == 0) return null;
+    if (std.mem.lastIndexOf(u8, head, "::")) |sep| {
+        return firstIdentifier(head[sep + 2 ..]);
+    }
+    return firstIdentifier(head);
 }
 
 fn isDeclarationLine(language: discover.Language, line: []const u8) bool {
@@ -1445,7 +1483,7 @@ test "line parser captures Rust top-level funcs despite traits" {
         \\    emit(counter, "ready");
         \\}
         \\
-        ;
+    ;
     var lines = std.mem.splitAny(u8, source, "\n\r");
     var line_no: u32 = 1;
     while (lines.next()) |line_raw| : (line_no += 1) {
@@ -1505,16 +1543,23 @@ test "rust impl parsing keeps target and trait roles straight" {
     try std.testing.expect(parts.trait_name != null);
     try std.testing.expectEqualStrings("Display", parts.trait_name.?);
 
+    const namespaced = parseRustImplParts("impl fmt::Display for crate::models::Foo<T> {") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("Foo", namespaced.target_name);
+    try std.testing.expect(namespaced.trait_name != null);
+    try std.testing.expectEqualStrings("Display", namespaced.trait_name.?);
+
     const hint = parseRustSemanticHint("impl Display for Foo {") orelse return error.TestUnexpectedResult;
     try std.testing.expectEqualStrings("Display", hint.trait_name);
 }
 
 test "call collection skips declaration lines" {
-    try std.testing.expect((try collectCalls(std.testing.allocator, "fn main() void {}", .zig, null)) == null);
-    try std.testing.expect((try collectCalls(std.testing.allocator, "def hello(x):", .python, null)) == null);
-    try std.testing.expect((try collectCalls(std.testing.allocator, "class Foo(Base):", .python, null)) == null);
+    try std.testing.expect((try collectCalls(std.testing.allocator, "fn main() void {}", .zig, null, 1, 1)) == null);
+    try std.testing.expect((try collectCalls(std.testing.allocator, "def hello(x):", .python, null, 1, 1)) == null);
+    try std.testing.expect((try collectCalls(std.testing.allocator, "class Foo(Base):", .python, null, 1, 1)) == null);
+    const const_decl = parseSymbol(.zig, "const std = @import(\"std\");") orelse return error.TestUnexpectedResult;
+    try std.testing.expect((try collectCalls(std.testing.allocator, "const std = @import(\"std\");", .zig, const_decl, 1, 1)) == null);
 
-    const calls = (try collectCalls(std.testing.allocator, "result = helper(value)", .python, null)) orelse return error.TestUnexpectedResult;
+    const calls = (try collectCalls(std.testing.allocator, "result = helper(value)", .python, null, 2, 1)) orelse return error.TestUnexpectedResult;
     defer freeStringSlices(std.testing.allocator, calls);
     try std.testing.expectEqual(@as(usize, 1), calls.len);
     try std.testing.expectEqualStrings("helper", calls[0]);
@@ -1524,6 +1569,8 @@ test "call collection skips declaration lines" {
         "const doubled = add(value, 1)",
         .zig,
         null,
+        2,
+        1,
     )) orelse return error.TestUnexpectedResult;
     defer freeStringSlices(std.testing.allocator, const_calls);
     try std.testing.expectEqual(@as(usize, 1), const_calls.len);

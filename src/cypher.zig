@@ -18,6 +18,17 @@ pub const CypherResult = struct {
     err: ?[]const u8 = null,
 };
 
+pub fn freeResult(allocator: std.mem.Allocator, result: CypherResult) void {
+    for (result.columns) |column| allocator.free(column);
+    allocator.free(result.columns);
+    for (result.rows) |row| {
+        for (row) |cell| allocator.free(cell);
+        allocator.free(row);
+    }
+    allocator.free(result.rows);
+    if (result.err) |err_text| allocator.free(err_text);
+}
+
 pub fn execute(
     allocator: std.mem.Allocator,
     db: *Store,
@@ -52,10 +63,15 @@ pub fn execute(
         const nodes = try db.searchNodes(filter);
         defer db.freeNodes(nodes);
         const columns = try allocator.alloc([]const u8, 1);
+        errdefer allocator.free(columns);
         columns[0] = try allocator.dupe(u8, "count");
+        errdefer allocator.free(columns[0]);
         const rows = try allocator.alloc([][]const u8, 1);
+        errdefer allocator.free(rows);
         rows[0] = try allocator.alloc([]const u8, 1);
+        errdefer allocator.free(rows[0]);
         rows[0][0] = try std.fmt.allocPrint(allocator, "{d}", .{nodes.len});
+        errdefer allocator.free(rows[0][0]);
         return CypherResult{
             .columns = columns,
             .rows = rows,
@@ -94,29 +110,57 @@ pub fn execute(
     const nodes = try db.searchNodes(filter);
     errdefer db.freeNodes(nodes);
 
-    var columns = std.ArrayList([]const u8).empty;
-    defer columns.deinit(allocator);
-    try columns.append(allocator, try allocator.dupe(u8, "id"));
-    try columns.append(allocator, try allocator.dupe(u8, "label"));
-    try columns.append(allocator, try allocator.dupe(u8, "name"));
-    try columns.append(allocator, try allocator.dupe(u8, "qualified_name"));
-    try columns.append(allocator, try allocator.dupe(u8, "file_path"));
+    const columns = try allocator.alloc([]const u8, 5);
+    var columns_filled: usize = 0;
+    errdefer {
+        for (columns[0..columns_filled]) |column| allocator.free(column);
+        allocator.free(columns);
+    }
+    columns[columns_filled] = try allocator.dupe(u8, "id");
+    columns_filled += 1;
+    columns[columns_filled] = try allocator.dupe(u8, "label");
+    columns_filled += 1;
+    columns[columns_filled] = try allocator.dupe(u8, "name");
+    columns_filled += 1;
+    columns[columns_filled] = try allocator.dupe(u8, "qualified_name");
+    columns_filled += 1;
+    columns[columns_filled] = try allocator.dupe(u8, "file_path");
+    columns_filled += 1;
+
     const out_rows = try allocator.alloc([][]const u8, nodes.len);
+    var rows_filled: usize = 0;
+    errdefer {
+        for (out_rows[0..rows_filled]) |row| {
+            for (row) |cell| allocator.free(cell);
+            allocator.free(row);
+        }
+        allocator.free(out_rows);
+    }
     for (nodes, 0..) |node, idx| {
-        var row = std.ArrayList([]const u8).empty;
-        try row.append(allocator, try std.fmt.allocPrint(allocator, "{d}", .{node.id}));
-        try row.append(allocator, try allocator.dupe(u8, node.label));
-        try row.append(allocator, try allocator.dupe(u8, node.name));
-        try row.append(allocator, try allocator.dupe(u8, node.qualified_name));
-        try row.append(allocator, try allocator.dupe(u8, node.file_path));
-        out_rows[idx] = try row.toOwnedSlice(allocator);
+        const row = try allocator.alloc([]const u8, 5);
+        var cells_filled: usize = 0;
+        errdefer {
+            for (row[0..cells_filled]) |cell| allocator.free(cell);
+            allocator.free(row);
+        }
+        row[cells_filled] = try std.fmt.allocPrint(allocator, "{d}", .{node.id});
+        cells_filled += 1;
+        row[cells_filled] = try allocator.dupe(u8, node.label);
+        cells_filled += 1;
+        row[cells_filled] = try allocator.dupe(u8, node.name);
+        cells_filled += 1;
+        row[cells_filled] = try allocator.dupe(u8, node.qualified_name);
+        cells_filled += 1;
+        row[cells_filled] = try allocator.dupe(u8, node.file_path);
+        out_rows[idx] = row;
+        rows_filled += 1;
     }
     db.freeNodes(nodes);
     return CypherResult{
-            .columns = try columns.toOwnedSlice(allocator),
-            .rows = out_rows,
-            .err = null,
-        };
+        .columns = columns,
+        .rows = out_rows,
+        .err = null,
+    };
 }
 
 fn toLower(allocator: std.mem.Allocator, query: []const u8) ![]u8 {
@@ -159,18 +203,22 @@ test "cypher can return a count" {
     });
 
     const result = try execute(std.testing.allocator, &s, "MATCH (n) WHERE n.label = \"Function\" RETURN count(n)", "p", 10);
-    defer {
-        for (result.columns) |c| std.testing.allocator.free(c);
-        for (result.rows) |row| {
-            for (row) |cell| std.testing.allocator.free(cell);
-            std.testing.allocator.free(row);
-        }
-        std.testing.allocator.free(result.rows);
-        std.testing.allocator.free(result.columns);
-        if (result.err) |e| std.testing.allocator.free(e);
-    }
+    defer freeResult(std.testing.allocator, result);
     try std.testing.expect(result.columns.len == 1);
     try std.testing.expectEqualStrings("count", result.columns[0]);
     try std.testing.expectEqual(@as(usize, 1), result.rows.len);
     try std.testing.expectEqualStrings("1", result.rows[0][0]);
+}
+
+test "cypher reports unsupported queries as errors" {
+    var s = try Store.openMemory(std.testing.allocator);
+    defer s.deinit();
+
+    const result = try execute(std.testing.allocator, &s, "RETURN 1", null, 10);
+    defer freeResult(std.testing.allocator, result);
+
+    try std.testing.expectEqual(@as(usize, 0), result.columns.len);
+    try std.testing.expectEqual(@as(usize, 0), result.rows.len);
+    try std.testing.expect(result.err != null);
+    try std.testing.expectEqualStrings("unsupported query", result.err.?);
 }

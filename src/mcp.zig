@@ -236,15 +236,9 @@ pub const McpServer = struct {
         const max_rows = if (intArg(args, "max_rows")) |v| v else 50;
 
         const result = try cypher.execute(self.allocator, self.db, query, project, @intCast(max_rows));
-        defer {
-            for (result.columns) |col| self.allocator.free(col);
-            self.allocator.free(result.columns);
-            for (result.rows) |row| {
-                for (row) |cell| self.allocator.free(cell);
-                self.allocator.free(row);
-            }
-            self.allocator.free(result.rows);
-            if (result.err) |e| self.allocator.free(e);
+        defer cypher.freeResult(self.allocator, result);
+        if (result.err) |err_text| {
+            return self.errorResponse(request_id, -32602, err_text);
         }
 
         var payload = std.ArrayList(u8).empty;
@@ -572,4 +566,25 @@ test "trace_call_path returns qualified names" {
     try std.testing.expectEqual(@as(usize, 1), edges.items.len);
     try std.testing.expectEqualStrings("demo:start", edges.items[0].object.get("source").?.string);
     try std.testing.expectEqualStrings("demo:finish", edges.items[0].object.get("target").?.string);
+}
+
+test "query_graph returns MCP error for unsupported query" {
+    var s = try store.Store.openMemory(std.testing.allocator);
+    defer s.deinit();
+
+    var srv = McpServer.init(std.testing.allocator, &s);
+    defer srv.deinit();
+
+    const response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"query_graph","arguments":{"project":"demo","query":"RETURN 1"}}}
+    )).?;
+    defer std.testing.allocator.free(response);
+
+    const parsed = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, response, .{});
+    defer parsed.deinit();
+
+    try std.testing.expect(parsed.value.object.get("error") != null);
+    const error_obj = parsed.value.object.get("error").?.object;
+    try std.testing.expectEqual(@as(i64, -32602), error_obj.get("code").?.integer);
+    try std.testing.expectEqualStrings("unsupported query", error_obj.get("message").?.string);
 }

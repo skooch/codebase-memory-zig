@@ -724,7 +724,8 @@ def main() -> None:
                     z = z_entries[0]["payload"]
                     c = c_entries[0]["payload"]
                     comparisons[scope] = {
-                        "status": "match",
+                        "status": "diagnostic",
+                        "note": "node and edge totals remain diagnostic-only until parity work defines stable expectations",
                         "zig": {"nodes": int(z.get("nodes", 0)), "edges": int(z.get("edges", 0))},
                         "c": {"nodes": int(c.get("nodes", 0)), "edges": int(c.get("edges", 0))},
                     }
@@ -739,6 +740,7 @@ def main() -> None:
 
     total_fixtures = len(report["fixtures"])
     total_matches = sum(1 for r in report["fixtures"].values() for cmp in r.get("comparison", {}).values() if isinstance(cmp, dict) and cmp.get("status") == "match")
+    total_diagnostics = sum(1 for r in report["fixtures"].values() for cmp in r.get("comparison", {}).values() if isinstance(cmp, dict) and cmp.get("status") == "diagnostic")
     total_comparisons = total_fixtures * 5
     mismatch_count = len(report["mismatches"])
 
@@ -747,7 +749,8 @@ def main() -> None:
         "",
         f"- Fixtures: {total_fixtures}",
         f"- Comparisons: {total_comparisons}",
-        f"- Matches: {total_matches}",
+        f"- Strict matches: {total_matches}",
+        f"- Diagnostic-only comparisons: {total_diagnostics}",
         f"- Mismatches: {mismatch_count}",
         "",
         "## Mismatch Summary",
