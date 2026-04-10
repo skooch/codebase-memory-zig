@@ -24,7 +24,10 @@ const SupportedTool = enum {
     search_graph,
     query_graph,
     trace_call_path,
+    get_graph_schema,
     list_projects,
+    delete_project,
+    index_status,
 };
 
 const RpcRequest = struct {
@@ -138,7 +141,10 @@ pub const McpServer = struct {
                 \\{"name":"search_graph","description":"Search nodes in the graph store","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"label_pattern":{"type":"string"},"name_pattern":{"type":"string"},"qn_pattern":{"type":"string"},"file_pattern":{"type":"string"},"limit":{"type":"number"}}}},
                 \\{"name":"query_graph","description":"Run a read-only Cypher-like query","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"query":{"type":"string"},"max_rows":{"type":"number"}}}},
                 \\{"name":"trace_call_path","description":"Trace CALLS edges between nodes","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"start_node_qn":{"type":"string"},"direction":{"type":"string","enum":["in","out","both"]},"depth":{"type":"number"}}}},
-                \\{"name":"list_projects","description":"List indexed projects","inputSchema":{"type":"object","properties":{}}}
+                \\{"name":"get_graph_schema","description":"Get the schema of the knowledge graph (node labels, edge types)","inputSchema":{"type":"object","properties":{"project":{"type":"string"}},"required":["project"]}},
+                \\{"name":"list_projects","description":"List indexed projects","inputSchema":{"type":"object","properties":{}}},
+                \\{"name":"delete_project","description":"Delete a project from the index","inputSchema":{"type":"object","properties":{"project":{"type":"string"}},"required":["project"]}},
+                \\{"name":"index_status","description":"Get the indexing status of a project","inputSchema":{"type":"object","properties":{"project":{"type":"string"}}}}
                 \\]}
             ;
             return self.successResponse(request.value.id, payload);
@@ -166,7 +172,10 @@ pub const McpServer = struct {
             .search_graph => self.handleSearchGraph(request_id, call.arguments orelse .null),
             .query_graph => self.handleQueryGraph(request_id, call.arguments orelse .null),
             .trace_call_path => self.handleTraceCallPath(request_id, call.arguments orelse .null),
+            .get_graph_schema => self.handleGetGraphSchema(request_id, call.arguments orelse .null),
             .list_projects => self.handleListProjects(request_id),
+            .delete_project => self.handleDeleteProject(request_id, call.arguments orelse .null),
+            .index_status => self.handleIndexStatus(request_id, call.arguments orelse .null),
         };
     }
 
@@ -327,6 +336,92 @@ pub const McpServer = struct {
         return self.successResponse(request_id, owned_payload);
     }
 
+    fn handleGetGraphSchema(self: *McpServer, request_id: ?std.json.Value, args: std.json.Value) !?[]const u8 {
+        const project = stringArg(args, "project") orelse return self.errorResponse(request_id, -32602, "Missing project");
+        const status = try self.db.getProjectStatus(project);
+        defer self.db.freeProjectStatus(status);
+
+        var payload = std.ArrayList(u8).empty;
+        try payload.writer(self.allocator).print(
+            "{{\"project\":\"{s}\",\"status\":\"{s}\",\"nodes\":{d},\"edges\":{d},\"node_labels\":[",
+            .{ status.project, projectStatusText(status.status), status.nodes, status.edges },
+        );
+
+        if (status.status != .not_found) {
+            const schema = try self.db.getSchema(project);
+            defer self.db.freeSchema(schema);
+
+            for (schema.labels, 0..) |label, idx| {
+                if (idx > 0) try payload.append(self.allocator, ',');
+                try payload.writer(self.allocator).print(
+                    "{{\"label\":\"{s}\",\"count\":{d}}}",
+                    .{ label.label, label.count },
+                );
+            }
+            try payload.appendSlice(self.allocator, "],\"edge_types\":[");
+            for (schema.edge_types, 0..) |edge_type, idx| {
+                if (idx > 0) try payload.append(self.allocator, ',');
+                try payload.writer(self.allocator).print(
+                    "{{\"type\":\"{s}\",\"count\":{d}}}",
+                    .{ edge_type.edge_type, edge_type.count },
+                );
+            }
+            try payload.appendSlice(self.allocator, "],\"languages\":[");
+            for (schema.languages, 0..) |language, idx| {
+                if (idx > 0) try payload.append(self.allocator, ',');
+                try payload.writer(self.allocator).print(
+                    "{{\"language\":\"{s}\",\"count\":{d}}}",
+                    .{ language.language, language.count },
+                );
+            }
+        } else {
+            try payload.appendSlice(self.allocator, "],\"edge_types\":[],\"languages\":[");
+        }
+        try payload.appendSlice(self.allocator, "]}");
+
+        const owned_payload = try payload.toOwnedSlice(self.allocator);
+        defer self.allocator.free(owned_payload);
+        return self.successResponse(request_id, owned_payload);
+    }
+
+    fn handleDeleteProject(self: *McpServer, request_id: ?std.json.Value, args: std.json.Value) !?[]const u8 {
+        const project = stringArg(args, "project") orelse return self.errorResponse(request_id, -32602, "Missing project");
+        const status = try self.db.getProjectStatus(project);
+        defer self.db.freeProjectStatus(status);
+
+        if (status.status != .not_found) {
+            try self.db.deleteProject(project);
+        }
+
+        const payload = try std.fmt.allocPrint(
+            self.allocator,
+            "{{\"project\":\"{s}\",\"status\":\"{s}\"}}",
+            .{ project, if (status.status == .not_found) "not_found" else "deleted" },
+        );
+        defer self.allocator.free(payload);
+        return self.successResponse(request_id, payload);
+    }
+
+    fn handleIndexStatus(self: *McpServer, request_id: ?std.json.Value, args: std.json.Value) !?[]const u8 {
+        const status = try self.db.getProjectStatus(stringArg(args, "project"));
+        defer self.db.freeProjectStatus(status);
+
+        const payload = try std.fmt.allocPrint(
+            self.allocator,
+            "{{\"project\":\"{s}\",\"status\":\"{s}\",\"nodes\":{d},\"edges\":{d},\"indexed_at\":\"{s}\",\"root_path\":\"{s}\"}}",
+            .{
+                status.project,
+                projectStatusText(status.status),
+                status.nodes,
+                status.edges,
+                status.indexed_at,
+                status.root_path,
+            },
+        );
+        defer self.allocator.free(payload);
+        return self.successResponse(request_id, payload);
+    }
+
     fn successResponse(self: *McpServer, request_id: ?std.json.Value, payload: []const u8) !?[]const u8 {
         if (request_id == null) return null;
         const id = try jsonValueToString(self.allocator, request_id.?);
@@ -379,12 +474,24 @@ fn parseTraversalDirection(direction: []const u8) ?store.TraversalDirection {
     return null;
 }
 
+fn projectStatusText(status: store.ProjectStatus.Status) []const u8 {
+    return switch (status) {
+        .ready => "ready",
+        .empty => "empty",
+        .no_project => "no_project",
+        .not_found => "not_found",
+    };
+}
+
 fn SupportedToolFromString(name: []const u8) error{UnsupportedTool}!SupportedTool {
     if (std.mem.eql(u8, name, "index_repository")) return .index_repository;
     if (std.mem.eql(u8, name, "search_graph")) return .search_graph;
     if (std.mem.eql(u8, name, "query_graph")) return .query_graph;
     if (std.mem.eql(u8, name, "trace_call_path")) return .trace_call_path;
+    if (std.mem.eql(u8, name, "get_graph_schema")) return .get_graph_schema;
     if (std.mem.eql(u8, name, "list_projects")) return .list_projects;
+    if (std.mem.eql(u8, name, "delete_project")) return .delete_project;
+    if (std.mem.eql(u8, name, "index_status")) return .index_status;
     return error.UnsupportedTool;
 }
 
@@ -525,4 +632,93 @@ test "query_graph returns MCP error for unsupported query" {
     const error_obj = parsed.value.object.get("error").?.object;
     try std.testing.expectEqual(@as(i64, -32602), error_obj.get("code").?.integer);
     try std.testing.expectEqualStrings("unsupported query", error_obj.get("message").?.string);
+}
+
+test "get_graph_schema returns schema summary for indexed project" {
+    var s = try store.Store.openMemory(std.testing.allocator);
+    defer s.deinit();
+    try s.upsertProject("demo", "/tmp/demo");
+    const file_id = try s.upsertNode(.{
+        .project = "demo",
+        .label = "File",
+        .name = "main",
+        .qualified_name = "demo:main",
+        .file_path = "main.py",
+    });
+    const fn_id = try s.upsertNode(.{
+        .project = "demo",
+        .label = "Function",
+        .name = "run",
+        .qualified_name = "demo:run",
+        .file_path = "main.py",
+    });
+    _ = try s.upsertEdge(.{
+        .project = "demo",
+        .source_id = file_id,
+        .target_id = fn_id,
+        .edge_type = "CONTAINS",
+    });
+
+    var srv = McpServer.init(std.testing.allocator, &s);
+    defer srv.deinit();
+    const response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"get_graph_schema","arguments":{"project":"demo"}}}
+    )).?;
+    defer std.testing.allocator.free(response);
+
+    const parsed = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, response, .{});
+    defer parsed.deinit();
+
+    const result = parsed.value.object.get("result").?.object;
+    try std.testing.expectEqualStrings("demo", result.get("project").?.string);
+    try std.testing.expectEqualStrings("ready", result.get("status").?.string);
+    try std.testing.expect(result.get("node_labels").?.array.items.len >= 2);
+    try std.testing.expect(result.get("edge_types").?.array.items.len >= 1);
+}
+
+test "index_status and delete_project expose project lifecycle" {
+    var s = try store.Store.openMemory(std.testing.allocator);
+    defer s.deinit();
+    try s.upsertProject("demo", "/tmp/demo");
+    _ = try s.upsertNode(.{
+        .project = "demo",
+        .label = "Function",
+        .name = "run",
+        .qualified_name = "demo:run",
+        .file_path = "main.py",
+    });
+
+    var srv = McpServer.init(std.testing.allocator, &s);
+    defer srv.deinit();
+
+    const status_response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"index_status","arguments":{"project":"demo"}}}
+    )).?;
+    defer std.testing.allocator.free(status_response);
+
+    const status_parsed = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, status_response, .{});
+    defer status_parsed.deinit();
+    const status_result = status_parsed.value.object.get("result").?.object;
+    try std.testing.expectEqualStrings("ready", status_result.get("status").?.string);
+    try std.testing.expectEqual(@as(i64, 1), status_result.get("nodes").?.integer);
+
+    const delete_response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"delete_project","arguments":{"project":"demo"}}}
+    )).?;
+    defer std.testing.allocator.free(delete_response);
+
+    const delete_parsed = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, delete_response, .{});
+    defer delete_parsed.deinit();
+    const delete_result = delete_parsed.value.object.get("result").?.object;
+    try std.testing.expectEqualStrings("deleted", delete_result.get("status").?.string);
+
+    const missing_response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"index_status","arguments":{"project":"demo"}}}
+    )).?;
+    defer std.testing.allocator.free(missing_response);
+
+    const missing_parsed = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, missing_response, .{});
+    defer missing_parsed.deinit();
+    const missing_result = missing_parsed.value.object.get("result").?.object;
+    try std.testing.expectEqualStrings("not_found", missing_result.get("status").?.string);
 }
