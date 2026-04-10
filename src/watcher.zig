@@ -6,7 +6,7 @@
 
 const std = @import("std");
 
-pub const IndexFn = *const fn (project_name: []const u8, root_path: []const u8) anyerror!void;
+pub const IndexFn = *const fn (ctx: *anyopaque, project_name: []const u8, root_path: []const u8) anyerror!void;
 
 const WatchEntry = struct {
     project_name: []u8,
@@ -39,13 +39,15 @@ const CommandOutput = struct {
 pub const Watcher = struct {
     allocator: std.mem.Allocator,
     entries: std.ArrayList(WatchEntry),
+    index_ctx: ?*anyopaque = null,
     index_fn: ?IndexFn = null,
     should_stop: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
 
-    pub fn init(allocator: std.mem.Allocator, index_fn: ?IndexFn) Watcher {
+    pub fn init(allocator: std.mem.Allocator, index_ctx: ?*anyopaque, index_fn: ?IndexFn) Watcher {
         return .{
             .allocator = allocator,
             .entries = .empty,
+            .index_ctx = index_ctx,
             .index_fn = index_fn,
         };
     }
@@ -113,7 +115,11 @@ pub const Watcher = struct {
             }
 
             if (self.index_fn) |index_fn| {
-                index_fn(entry.project_name, entry.root_path) catch {
+                const index_ctx = self.index_ctx orelse {
+                    entry.next_poll_ns = now + intervalToNs(entry.interval_ms);
+                    continue;
+                };
+                index_fn(index_ctx, entry.project_name, entry.root_path) catch {
                     entry.next_poll_ns = now + intervalToNs(entry.interval_ms);
                     continue;
                 };
@@ -285,12 +291,12 @@ test "poll interval calculation" {
 
 var test_watch_hits = std.atomic.Value(u32).init(0);
 
-fn testIndexFn(_: []const u8, _: []const u8) !void {
+fn testIndexFn(_: *anyopaque, _: []const u8, _: []const u8) !void {
     _ = test_watch_hits.fetchAdd(1, .acq_rel);
 }
 
 test "watcher tracks watched projects and resets touch state" {
-    var watcher = Watcher.init(std.testing.allocator, null);
+    var watcher = Watcher.init(std.testing.allocator, null, null);
     defer watcher.deinit();
 
     try watcher.watch("demo", "/tmp/demo");
@@ -305,7 +311,8 @@ test "watcher baseline stays quiet on a clean git repo" {
     const repo = try makeGitRepo(allocator, "cbm-watcher-clean");
     defer cleanupRepo(allocator, repo);
 
-    var watcher = Watcher.init(allocator, testIndexFn);
+    var test_ctx: u8 = 0;
+    var watcher = Watcher.init(allocator, &test_ctx, testIndexFn);
     defer watcher.deinit();
     test_watch_hits.store(0, .release);
 
@@ -321,7 +328,8 @@ test "watcher reindexes when the working tree changes" {
     const repo = try makeGitRepo(allocator, "cbm-watcher-dirty");
     defer cleanupRepo(allocator, repo);
 
-    var watcher = Watcher.init(allocator, testIndexFn);
+    var test_ctx: u8 = 0;
+    var watcher = Watcher.init(allocator, &test_ctx, testIndexFn);
     defer watcher.deinit();
     test_watch_hits.store(0, .release);
 

@@ -4,7 +4,7 @@
 Break the remaining Zig port into dependency-aware phases that maximize delivered functionality per phase while keeping verification and integration risk manageable.
 
 ## Current Phase
-Phase 6
+Phase 7
 
 ## File Map
 - Create: `docs/plans/in-progress/post-readiness-zig-port-execution-plan.md`
@@ -50,11 +50,11 @@ Phase 6
 - **Status:** complete
 
 ### Phase 6: Add Runtime Lifecycle and Scale Features
-- [ ] Implement watcher-driven auto-index, then incremental indexing, in that order, so background reindex behavior is built on a stable full-index path first.
-- [ ] Implement parallel extraction and graph-buffer merge behavior only after the single-threaded indexing path and graph invariants are fully stable.
-- [ ] Bring MinHash/LSH similarity and related performance-sensitive features online after the indexing/runtime lifecycle is stable enough to benchmark meaningfully.
-- [ ] Exit this phase only when the port is functionally strong in both one-shot and long-running use, and performance work has a trustworthy baseline to optimize against.
-- **Status:** pending
+- [x] Implement watcher-driven auto-index, then incremental indexing, in that order, so background reindex behavior is built on a stable full-index path first.
+- [x] Implement parallel extraction and graph-buffer merge behavior only after the single-threaded indexing path and graph invariants are fully stable.
+- [x] Bring MinHash/LSH similarity and related performance-sensitive features online after the indexing/runtime lifecycle is stable enough to benchmark meaningfully.
+- [x] Exit this phase only when the port is functionally strong in both one-shot and long-running use, and performance work has a trustworthy baseline to optimize against.
+- **Status:** complete
 
 ### Phase 7: Finish Productization and Deferred Value Features
 - [ ] Implement CLI parity (`install`, `uninstall`, `update`, `config`, progress output) after the underlying runtime/tool surface is settled enough to avoid churn in installer-facing behavior.

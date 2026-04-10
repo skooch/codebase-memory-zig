@@ -497,14 +497,14 @@ Current state: the end-to-end vertical slice is working with parser-backed defin
 - [ ] Port `cypher/` lexer + parser + executor
 - [x] Port `mcp/` JSON-RPC server (stdio transport)
 - [ ] Wire up all MCP tools: `search_graph`, `query_graph`, `get_code_snippet`, `trace_call_path`, etc.
-- [ ] Port `watcher/` for auto-reindex
-- [ ] Exit criterion: can run as MCP server, index a repo, answer queries via Claude Code
-Current state: the readiness-slice MCP surface is live and under harness coverage for `index_repository`, `search_graph`, `query_graph`, `trace_call_path`, and `list_projects`, but the broader tool surface, watcher integration, and fuller query semantics are still incomplete.
+- [x] Port `watcher/` for auto-reindex
+- [x] Exit criterion: can run as MCP server, index a repo, answer queries via Claude Code
+Current state: the broader daily-use MCP surface is now live, the runtime uses a persistent store, and watcher-backed auto-index / auto-reindex is wired into the long-running server path. Remaining M2 work is the non-daily-use surface such as `manage_adr` and fuller Cypher parity beyond the current supported subset.
 
 ### M3 Checklist
 
-- [ ] Port parallel extraction (`pass_parallel`) using `std.Thread.Pool`
-- [ ] Port MinHash similarity detection
+- [x] Port parallel extraction (`pass_parallel`) using `std.Thread.Pool`
+- [x] Port MinHash similarity detection
 - [ ] Port CLI subcommands (`install`, `uninstall`, `update`, `config`)
 - [ ] Memory budget tracking
 - [ ] Port FQN computation
@@ -512,7 +512,7 @@ Current state: the readiness-slice MCP surface is live and under harness coverag
 
 ### M4 Checklist
 
-- [ ] Incremental re-indexing
+- [x] Incremental re-indexing
 - [ ] Git history pass (change coupling)
 - [ ] Route node creation
 - [ ] Test tagging
@@ -530,15 +530,12 @@ Complete plan/milestone slices:
 Still-open implementation slices:
 - Remaining M2 work:
   - full Cypher support
-  - remaining MCP tools
-  - watcher-based auto-reindex
-- All of M3:
-  - parallel extraction
-  - MinHash similarity integration
+  - remaining MCP tools, especially `manage_adr`
+- Remaining M3:
   - CLI parity
   - memory/performance parity work
-- All of M4:
-  - incremental/history/enrichment features
+- Remaining M4:
+  - history/enrichment features
 
 ## 9. Post-Readiness Execution Plan
 

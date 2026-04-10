@@ -6,8 +6,10 @@
 const std = @import("std");
 const discover = @import("discover.zig");
 const GraphBuffer = @import("graph_buffer.zig").GraphBuffer;
+const BufferNode = @import("graph_buffer.zig").BufferNode;
 const GraphBufferError = @import("graph_buffer.zig").GraphBufferError;
 const extractor = @import("extractor.zig");
+const minhash = @import("minhash.zig");
 const Registry = @import("registry.zig").Registry;
 const store = @import("store.zig");
 
@@ -74,6 +76,10 @@ pub const Pipeline = struct {
             return;
         }
 
+        try db.beginImmediate();
+        var committed = false;
+        errdefer if (!committed) db.rollback() catch {};
+
         const stored_hashes = try db.getFileHashes(self.project_name);
         defer db.freeFileHashes(stored_hashes);
         if (stored_hashes.len > 0 and
@@ -88,6 +94,8 @@ pub const Pipeline = struct {
                 else => return PipelineError.DiscoveryFailed,
             };
             if (used_incremental) {
+                try db.commit();
+                committed = true;
                 return;
             }
         }
@@ -112,6 +120,7 @@ pub const Pipeline = struct {
         try collectExtractions(self, discovered_files, &gb, &reg, &extractions);
 
         try resolveExtractions(&gb, &reg, extractions.items, &self.cancelled);
+        try runSimilarityPass(self.allocator, self.repo_path, &gb);
 
         try gb.dumpToStore(db);
         try persistFileHashes(db, self.project_name, discovered_files);
@@ -119,6 +128,8 @@ pub const Pipeline = struct {
             "pipeline graph buffer: {} nodes, {} edges",
             .{ gb.nodeCount(), gb.edgeCount() },
         );
+        try db.commit();
+        committed = true;
     }
 
     pub fn cancel(self: *Pipeline) void {
@@ -171,6 +182,7 @@ pub const Pipeline = struct {
         try collectExtractions(self, classification.changed_files, &gb, &reg, &extractions);
 
         try resolveExtractions(&gb, &reg, extractions.items, &self.cancelled);
+        try runSimilarityPass(self.allocator, self.repo_path, &gb);
 
         try db.deleteProject(self.project_name);
         try db.upsertProject(self.project_name, self.repo_path);
@@ -564,6 +576,226 @@ fn logExtractionDebug(extraction: extractor.FileExtraction) void {
             extraction.semantic_hints.len,
         },
     );
+}
+
+const SimilarityCandidate = struct {
+    node_id: i64,
+    file_path: []const u8,
+    file_ext: []const u8,
+    fingerprint: minhash.Fingerprint,
+};
+
+fn runSimilarityPass(
+    allocator: std.mem.Allocator,
+    repo_path: []const u8,
+    gb: *GraphBuffer,
+) error{OutOfMemory}!void {
+    var file_cache = std.StringHashMap([]u8).init(allocator);
+    defer {
+        var it = file_cache.iterator();
+        while (it.next()) |entry| {
+            allocator.free(entry.key_ptr.*);
+            allocator.free(entry.value_ptr.*);
+        }
+        file_cache.deinit();
+    }
+
+    var candidates = std.ArrayList(SimilarityCandidate).empty;
+    defer candidates.deinit(allocator);
+
+    var function_indices = std.ArrayList(usize).empty;
+    defer function_indices.deinit(allocator);
+
+    for (gb.nodes_by_id.items, 0..) |node, idx| {
+        if (!std.mem.eql(u8, node.label, "Function")) continue;
+        if (node.file_path.len == 0 or node.start_line <= 0) continue;
+        try function_indices.append(allocator, idx);
+    }
+
+    std.sort.pdq(usize, function_indices.items, gb, lessFunctionNodeIndex);
+
+    var idx: usize = 0;
+    while (idx < function_indices.items.len) : (idx += 1) {
+        const node_index = function_indices.items[idx];
+        const node = &gb.nodes_by_id.items[node_index];
+        const file_bytes = cachedFileBytes(allocator, &file_cache, repo_path, node.file_path) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => continue,
+        };
+        const end_line = nextFunctionStartLine(gb, function_indices.items, idx) orelse countLines(file_bytes);
+        if (end_line < node.start_line) continue;
+
+        const snippet = try readInlineLines(allocator, file_bytes, node.start_line, end_line);
+        defer allocator.free(snippet);
+
+        const fingerprint = (try minhash.computeFromSource(allocator, snippet)) orelse {
+            try setNodeFingerprintProperty(allocator, node, null);
+            continue;
+        };
+        try setNodeFingerprintProperty(allocator, node, fingerprint);
+        try candidates.append(allocator, .{
+            .node_id = node.id,
+            .file_path = node.file_path,
+            .file_ext = std.fs.path.extension(node.file_path),
+            .fingerprint = fingerprint,
+        });
+    }
+
+    if (candidates.items.len < 2) return;
+
+    var index = minhash.LshIndex.init(allocator);
+    defer index.deinit();
+    for (candidates.items) |candidate| {
+        _ = try index.insert(.{
+            .node_id = candidate.node_id,
+            .fingerprint = candidate.fingerprint,
+            .file_path = candidate.file_path,
+            .file_ext = candidate.file_ext,
+        });
+    }
+
+    var emitted_per_node = std.AutoHashMap(i64, usize).init(allocator);
+    defer emitted_per_node.deinit();
+
+    var candidate_indexes = std.ArrayList(usize).empty;
+    defer candidate_indexes.deinit(allocator);
+
+    for (candidates.items) |candidate| {
+        if ((emitted_per_node.get(candidate.node_id) orelse 0) >= minhash.max_edges_per_node) continue;
+
+        candidate_indexes.clearRetainingCapacity();
+        try index.query(&candidate.fingerprint, &candidate_indexes);
+        for (candidate_indexes.items) |candidate_index| {
+            const other = candidates.items[candidate_index];
+            if (other.node_id == candidate.node_id) continue;
+            if (!std.mem.eql(u8, candidate.file_ext, other.file_ext)) continue;
+            if (candidate.node_id >= other.node_id) continue;
+            if ((emitted_per_node.get(candidate.node_id) orelse 0) >= minhash.max_edges_per_node) break;
+
+            const score = minhash.jaccard(&candidate.fingerprint, &other.fingerprint);
+            if (score < minhash.jaccard_threshold) continue;
+
+            const props = try std.fmt.allocPrint(
+                allocator,
+                "{{\"jaccard\":{d:.3},\"same_file\":{s}}}",
+                .{ score, if (std.mem.eql(u8, candidate.file_path, other.file_path)) "true" else "false" },
+            );
+            defer allocator.free(props);
+            _ = gb.insertEdgeWithProperties(candidate.node_id, other.node_id, "SIMILAR_TO", props) catch |err| switch (err) {
+                GraphBufferError.DuplicateEdge => 0,
+                else => return error.OutOfMemory,
+            };
+            try emitted_per_node.put(candidate.node_id, (emitted_per_node.get(candidate.node_id) orelse 0) + 1);
+        }
+    }
+}
+
+fn lessFunctionNodeIndex(gb: *const GraphBuffer, lhs: usize, rhs: usize) bool {
+    const left = gb.nodes_by_id.items[lhs];
+    const right = gb.nodes_by_id.items[rhs];
+    const file_order = std.mem.order(u8, left.file_path, right.file_path);
+    if (file_order != .eq) {
+        return file_order == .lt;
+    }
+    if (left.start_line != right.start_line) {
+        return left.start_line < right.start_line;
+    }
+    return left.id < right.id;
+}
+
+fn nextFunctionStartLine(
+    gb: *const GraphBuffer,
+    sorted_indices: []const usize,
+    start_idx: usize,
+) ?i32 {
+    const current = gb.nodes_by_id.items[sorted_indices[start_idx]];
+    var idx = start_idx + 1;
+    while (idx < sorted_indices.len) : (idx += 1) {
+        const candidate = gb.nodes_by_id.items[sorted_indices[idx]];
+        if (!std.mem.eql(u8, candidate.file_path, current.file_path)) return null;
+        if (candidate.start_line > current.start_line) {
+            return candidate.start_line - 1;
+        }
+    }
+    return null;
+}
+
+fn cachedFileBytes(
+    allocator: std.mem.Allocator,
+    file_cache: *std.StringHashMap([]u8),
+    repo_path: []const u8,
+    rel_path: []const u8,
+) ![]const u8 {
+    if (file_cache.get(rel_path)) |bytes| {
+        return bytes;
+    }
+
+    const absolute_path = try std.fs.path.resolve(allocator, &.{ repo_path, rel_path });
+    defer allocator.free(absolute_path);
+
+    const bytes = try std.fs.cwd().readFileAlloc(allocator, absolute_path, 8 * 1024 * 1024);
+    const key = try allocator.dupe(u8, rel_path);
+    errdefer allocator.free(key);
+    try file_cache.put(key, bytes);
+    return bytes;
+}
+
+fn setNodeFingerprintProperty(
+    allocator: std.mem.Allocator,
+    node: *BufferNode,
+    fingerprint: ?minhash.Fingerprint,
+) !void {
+    allocator.free(node.properties_json);
+    if (fingerprint) |fp| {
+        var hex_buf: [minhash.k * 8]u8 = undefined;
+        minhash.toHex(&fp, &hex_buf);
+        node.properties_json = try std.fmt.allocPrint(
+            allocator,
+            "{{\"fp\":\"{s}\",\"similarity_source\":\"lexical_trigram\"}}",
+            .{hex_buf},
+        );
+    } else {
+        node.properties_json = try allocator.dupe(u8, "{}");
+    }
+}
+
+fn countLines(bytes: []const u8) i32 {
+    if (bytes.len == 0) return 0;
+    var lines: i32 = 1;
+    for (bytes) |byte| {
+        if (byte == '\n') lines += 1;
+    }
+    return lines;
+}
+
+fn readInlineLines(
+    allocator: std.mem.Allocator,
+    bytes: []const u8,
+    start_line: i32,
+    end_line: i32,
+) ![]u8 {
+    if (start_line <= 0 or end_line < start_line) return allocator.dupe(u8, "");
+
+    var line_no: i32 = 1;
+    var start_idx: ?usize = null;
+    var end_idx: usize = bytes.len;
+    var idx: usize = 0;
+
+    while (idx <= bytes.len) : (idx += 1) {
+        if (line_no == start_line and start_idx == null) {
+            start_idx = idx;
+        }
+        if (idx == bytes.len or bytes[idx] == '\n') {
+            if (line_no == end_line) {
+                end_idx = if (idx < bytes.len) idx + 1 else idx;
+                break;
+            }
+            line_no += 1;
+        }
+    }
+
+    if (start_idx == null) return allocator.dupe(u8, "");
+    return allocator.dupe(u8, bytes[start_idx.?..end_idx]);
 }
 
 fn seedRegistryFromGraphBuffer(gb: *const GraphBuffer, reg: *Registry) !void {
@@ -1343,6 +1575,84 @@ test "pipeline emits decorator and multi-target semantic edges" {
     defer db.freeEdges(worker_port_inherits);
     try std.testing.expect(edgeTargetsContain(worker_port_inherits, base_port_id));
     try std.testing.expect(edgeTargetsContain(worker_port_inherits, extra_port_id));
+}
+
+test "pipeline emits similarity edges and fingerprints for near-duplicate functions" {
+    const allocator = std.testing.allocator;
+
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(
+        allocator,
+        "/tmp/cbm-pipeline-similarity-{x}",
+        .{project_id},
+    );
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    {
+        var dir = try std.fs.cwd().openDir(project_dir, .{});
+        defer dir.close();
+
+        var first = try dir.createFile("alpha.py", .{});
+        defer first.close();
+        try first.writeAll(
+            \\def run(value):
+            \\    total = value + 1
+            \\    if total > 10:
+            \\        return total
+            \\    return value
+            \\
+        );
+
+        var second = try dir.createFile("beta.py", .{});
+        defer second.close();
+        try second.writeAll(
+            \\def run(item):
+            \\    total = item + 1
+            \\    if total > 10:
+            \\        return total
+            \\    return item
+            \\
+        );
+    }
+
+    var db = try store.Store.openMemory(allocator);
+    defer db.deinit();
+
+    var pipeline = Pipeline.init(allocator, project_dir, .full);
+    defer pipeline.deinit();
+    try pipeline.run(&db);
+
+    const project_name = std.fs.path.basename(project_dir);
+    const alpha_id = try findSingleNodeByNameInFile(&db, project_name, "Function", "run", "alpha.py");
+    const beta_id = try findSingleNodeByNameInFile(&db, project_name, "Function", "run", "beta.py");
+
+    const alpha_nodes = try db.searchNodes(.{
+        .project = project_name,
+        .label_pattern = "Function",
+        .name_pattern = "run",
+        .file_pattern = "alpha.py",
+        .limit = 1,
+    });
+    defer db.freeNodes(alpha_nodes);
+    try std.testing.expectEqual(@as(usize, 1), alpha_nodes.len);
+    try std.testing.expect(std.mem.indexOf(u8, alpha_nodes[0].properties_json, "\"fp\":\"") != null);
+
+    const similar_edges = try db.listEdges(project_name, "SIMILAR_TO");
+    defer db.freeEdges(similar_edges);
+    try std.testing.expect(similar_edges.len > 0);
+
+    var found_pair = false;
+    for (similar_edges) |edge| {
+        if ((edge.source_id == alpha_id and edge.target_id == beta_id) or
+            (edge.source_id == beta_id and edge.target_id == alpha_id))
+        {
+            found_pair = true;
+            break;
+        }
+    }
+    try std.testing.expect(found_pair);
 }
 
 fn findSingleNodeByNameInFile(

@@ -240,6 +240,18 @@ pub const Store = struct {
         }
     }
 
+    pub fn beginImmediate(self: *Store) !void {
+        try self.exec("BEGIN IMMEDIATE");
+    }
+
+    pub fn commit(self: *Store) !void {
+        try self.exec("COMMIT");
+    }
+
+    pub fn rollback(self: *Store) !void {
+        try self.exec("ROLLBACK");
+    }
+
     // --- Project CRUD -----------------------------------------------------
 
     pub fn upsertProject(self: *Store, name: []const u8, root_path: []const u8) !void {

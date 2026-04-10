@@ -74,19 +74,176 @@ pub fn main() !void {
     try runMcpServer(allocator);
 }
 
+const RuntimeState = struct {
+    allocator: std.mem.Allocator,
+    db_path: []u8,
+    index_busy: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
+
+    fn deinit(self: *RuntimeState) void {
+        self.allocator.free(self.db_path);
+    }
+
+    fn tryAcquireIndex(self: *RuntimeState) bool {
+        return self.index_busy.cmpxchgStrong(false, true, .acq_rel, .acquire) == null;
+    }
+
+    fn releaseIndex(self: *RuntimeState) void {
+        self.index_busy.store(false, .release);
+    }
+
+    fn runIndex(self: *RuntimeState, root_path: []const u8, mode: cbm.IndexMode) !void {
+        var db = try openStoreAtPath(self.allocator, self.db_path);
+        defer db.deinit();
+
+        var p = cbm.Pipeline.init(self.allocator, root_path, mode);
+        defer p.deinit();
+        try p.run(&db);
+    }
+};
+
 fn runMcpServer(allocator: std.mem.Allocator) !void {
-    var db = try cbm.Store.openMemory(allocator);
+    _ = allocator;
+    const runtime_allocator = std.heap.c_allocator;
+
+    var runtime = RuntimeState{
+        .allocator = runtime_allocator,
+        .db_path = try runtimeDbPath(runtime_allocator),
+    };
+    defer runtime.deinit();
+
+    var db = try openStoreAtPath(runtime_allocator, runtime.db_path);
     defer db.deinit();
 
-    var server = cbm.McpServer.init(allocator, &db);
+    var watcher = cbm.watcher.Watcher.init(runtime_allocator, &runtime, watcherIndexFn);
+    defer watcher.deinit();
+    try registerIndexedProjects(&db, &watcher);
+    try maybeAutoIndexOnStartup(runtime_allocator, &runtime, &db, &watcher);
+
+    const watcher_thread = try std.Thread.spawn(.{}, watcherThreadMain, .{&watcher});
+    defer {
+        watcher.stop();
+        watcher_thread.join();
+    }
+
+    var server = cbm.McpServer.init(runtime_allocator, &db);
+    server.setWatcher(&watcher);
+    server.setIndexGuard(&runtime.index_busy);
     defer server.deinit();
 
-    // MCP reads newline-delimited JSON-RPC from stdin, writes to stdout.
-    // For now, use the low-level file APIs. The MCP server handles buffering.
     const stdin_file = std.fs.File.stdin();
     const stdout_file = std.fs.File.stdout();
 
     try server.runFiles(stdin_file, stdout_file);
+}
+
+fn watcherThreadMain(watcher: *cbm.watcher.Watcher) void {
+    watcher.run(5000) catch |err| {
+        std.log.warn("watcher loop stopped: {}", .{err});
+    };
+}
+
+fn watcherIndexFn(ctx: *anyopaque, project_name: []const u8, root_path: []const u8) !void {
+    _ = project_name;
+    const runtime: *RuntimeState = @ptrCast(@alignCast(ctx));
+    if (!runtime.tryAcquireIndex()) return;
+    defer runtime.releaseIndex();
+    try runtime.runIndex(root_path, .full);
+}
+
+fn registerIndexedProjects(db: *cbm.Store, watcher: *cbm.watcher.Watcher) !void {
+    const projects = try db.listProjects();
+    defer db.freeProjects(projects);
+
+    for (projects) |project| {
+        if (project.root_path.len == 0) continue;
+        try watcher.watch(project.name, project.root_path);
+    }
+}
+
+fn maybeAutoIndexOnStartup(
+    allocator: std.mem.Allocator,
+    runtime: *RuntimeState,
+    db: *cbm.Store,
+    watcher: *cbm.watcher.Watcher,
+) !void {
+    if (!envFlagEnabled("CBM_AUTO_INDEX")) return;
+
+    const cwd = try std.fs.cwd().realpathAlloc(allocator, ".");
+    defer allocator.free(cwd);
+
+    const project_name = std.fs.path.basename(cwd);
+    if (project_name.len == 0) return;
+
+    if (try db.getProject(project_name)) |existing| {
+        defer db.freeProject(existing);
+        try watcher.watch(project_name, cwd);
+        return;
+    }
+
+    const limit = envUnsigned("CBM_AUTO_INDEX_LIMIT", 50_000);
+    const discovered = discoverIndexableFileCount(allocator, cwd) catch |err| {
+        std.log.warn("auto-index discovery failed for {s}: {}", .{ cwd, err });
+        return;
+    };
+    if (discovered == 0 or discovered > limit) {
+        return;
+    }
+
+    if (!runtime.tryAcquireIndex()) return;
+    defer runtime.releaseIndex();
+    try runtime.runIndex(cwd, .full);
+    try watcher.watch(project_name, cwd);
+}
+
+fn discoverIndexableFileCount(allocator: std.mem.Allocator, root_path: []const u8) !usize {
+    const files = try cbm.discover.discoverFiles(allocator, root_path, .{ .mode = .full });
+    defer {
+        for (files) |file| {
+            allocator.free(file.path);
+            allocator.free(file.rel_path);
+        }
+        allocator.free(files);
+    }
+    return files.len;
+}
+
+fn openStoreAtPath(allocator: std.mem.Allocator, db_path: []const u8) !cbm.Store {
+    const db_path_z = try allocator.dupeZ(u8, db_path);
+    defer allocator.free(db_path_z);
+    return cbm.Store.openPath(allocator, db_path_z);
+}
+
+fn runtimeDbPath(allocator: std.mem.Allocator) ![]u8 {
+    const cache_dir = try runtimeCacheDir(allocator);
+    defer allocator.free(cache_dir);
+    try std.fs.cwd().makePath(cache_dir);
+    return std.fs.path.join(allocator, &.{ cache_dir, "codebase-memory-zig.db" });
+}
+
+fn runtimeCacheDir(allocator: std.mem.Allocator) ![]u8 {
+    if (std.process.getEnvVarOwned(allocator, "CBM_CACHE_DIR")) |value| {
+        return value;
+    } else |_| {}
+
+    if (std.process.getEnvVarOwned(allocator, "HOME")) |home| {
+        defer allocator.free(home);
+        return std.fs.path.join(allocator, &.{ home, ".cache", "codebase-memory-zig" });
+    } else |_| {}
+
+    return std.fs.path.join(allocator, &.{ ".cache", "codebase-memory-zig" });
+}
+
+fn envFlagEnabled(name: []const u8) bool {
+    const value = std.posix.getenv(name) orelse return false;
+    return std.ascii.eqlIgnoreCase(value, "1") or
+        std.ascii.eqlIgnoreCase(value, "true") or
+        std.ascii.eqlIgnoreCase(value, "yes") or
+        std.ascii.eqlIgnoreCase(value, "on");
+}
+
+fn envUnsigned(name: []const u8, default_value: usize) usize {
+    const value = std.posix.getenv(name) orelse return default_value;
+    return std.fmt.parseUnsigned(usize, value, 10) catch default_value;
 }
 
 const CliToolRequest = struct {
@@ -140,7 +297,10 @@ fn runCliToolCall(allocator: std.mem.Allocator) !void {
     const request_payload = try request_bytes.toOwnedSlice(allocator);
     defer allocator.free(request_payload);
 
-    var db = try cbm.Store.openMemory(allocator);
+    const db_path = try runtimeDbPath(allocator);
+    defer allocator.free(db_path);
+
+    var db = try openStoreAtPath(allocator, db_path);
     defer db.deinit();
     var server = cbm.McpServer.init(allocator, &db);
     defer server.deinit();

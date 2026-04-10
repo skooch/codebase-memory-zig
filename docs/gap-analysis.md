@@ -2,7 +2,9 @@
 
 What the C codebase has that the Zig port does NOT yet have. Excludes deliberately cut features (see zig-port-plan.md Section 2 "CUT" list).
 
-Status key: **STUB** (type signatures exist, no implementation), **MISSING** (not present at all), **PARTIAL** (some logic, incomplete)
+Status key: **WORKS** (implemented for the current target contract), **STUB** (type signatures exist, no implementation), **MISSING** (not present at all), **PARTIAL** (some logic, incomplete)
+
+The detailed subsystem tables below are historical backlog references. When a table entry disagrees with the current snapshot, treat the current snapshot as the authoritative status and update the table during the next focused phase for that subsystem.
 
 ## Current Snapshot
 
@@ -34,11 +36,18 @@ Completed now:
   - `Diagnostic-only comparisons: 5`
   - `Mismatches: 0`
 
-Still to implement after the readiness gate:
+Completed after the readiness gate:
+- Runtime lifecycle and scale baseline:
+  - watcher-driven auto-index and auto-reindex
+  - incremental indexing
+  - parallel extraction and graph-buffer merge
+  - MinHash/LSH similarity edges
+
+Still to implement after Phase 6:
 - The remaining MCP tools outside the current daily-use slice, especially `manage_adr`.
 - Full Cypher parity beyond the broader day-to-day query subset now supporting node/edge reads, filtering, sorting, and counts.
 - Deeper usage/type-reference extraction parity and broader cross-language semantics beyond the current target daily-use slice.
-- Watcher, incremental indexing, CLI parity, parallelism, and MinHash/LSH.
+- CLI parity and remaining productization work.
 - Deferred history/enrichment/route/config-link features.
 
 ## Remaining Implementation Plan
@@ -56,10 +65,6 @@ Open slices:
   - broader traversal/risk/reporting parity beyond the current `detect_changes` implementation
 - Indexing/runtime expansion:
   - deeper usage/type-ref extraction parity beyond the current daily-use slice
-  - watcher-driven auto-index
-  - incremental indexing
-  - parallel extraction
-  - MinHash/LSH similarity
 - Productization:
   - CLI install/uninstall/update/config parity
   - progress sinks and richer diagnostics
@@ -153,7 +158,7 @@ The Zig stub has the 14 tool names as an enum but zero handler implementations.
 
 | Tool | C Status | Zig Status | Complexity |
 |------|----------|------------|------------|
-| `index_repository` | Full (full/fast modes, cancellation, lock, auto-index) | STUB | High — needs pipeline integration, lock, watcher registration |
+| `index_repository` | Full (full/fast modes, cancellation, lock, auto-index) | WORKS | High — remaining gap is broader contract parity, not basic availability |
 | `search_graph` | Full (regex, degree filter, pagination, sort, include_connected, exclude_entry_points) | STUB | High — complex query builder with 12+ parameters |
 | `query_graph` | Full (Cypher lex/parse/execute, max_rows, project filter) | STUB | High — depends on Cypher engine |
 | `trace_call_path` | Full (BFS, inbound/outbound/both, edge type filter, depth, risk classification) | STUB | Medium — BFS + store queries |
@@ -162,8 +167,8 @@ The Zig stub has the 14 tool names as an enum but zero handler implementations.
 | `get_architecture` | Full (languages, packages, entry points, routes, hotspots, Louvain clusters, layers, file tree, ADR) | STUB | High — many aggregate queries, clustering |
 | `search_code` | Full (grep + graph enrichment, dedup into functions, rank by importance, compact/full/files modes) | STUB | High — needs grep subprocess + graph join |
 | `list_projects` | Full (name, node/edge counts, indexed_at, root_path) | STUB | Low |
-| `delete_project` | Full (cascade delete nodes/edges, remove .db file, unwatch) | STUB | Low |
-| `index_status` | Full (in_progress/complete, node/edge counts) | STUB | Low |
+| `delete_project` | Full (cascade delete nodes/edges, remove .db file, unwatch) | WORKS | Low |
+| `index_status` | Full (in_progress/complete, node/edge counts) | WORKS | Low |
 | `detect_changes` | Full (git diff → affected symbols, blast radius via BFS, risk levels) | STUB | High — git diff parsing + store queries + BFS |
 | `manage_adr` | Full (get/update/sections modes, section parsing/rendering, validation) | STUB | Medium |
 | `ingest_traces` | Stub in C too ("not yet implemented") | STUB | N/A — cut feature |
@@ -180,7 +185,7 @@ The Zig stub has the 14 tool names as an enum but zero handler implementations.
 | MCP tools/list response | Full (14 tool schemas with descriptions, parameter types) | MISSING |
 | Tool argument extraction (string, int, bool) | Full (`cbm_mcp_get_*_arg`) | MISSING |
 | MCP text result formatting | Full (`cbm_mcp_text_result`) | MISSING |
-| Session auto-index on first tool call | Full (checks watcher, triggers if not indexed) | MISSING |
+| Session/startup auto-index wiring | Full (checks watcher, triggers if not indexed) | PARTIAL — startup auto-index is implemented via `CBM_AUTO_INDEX`, first-tool-call parity is still deferred |
 | Idle store eviction (300s timeout) | Full (`cbm_mcp_server_evict_idle`) | MISSING |
 | File URI parsing (`file://` → path) | Full (`cbm_parse_file_uri`) | MISSING |
 | Progress notifications | Full (JSON-RPC notification during indexing) | MISSING |
@@ -431,15 +436,15 @@ The Zig store has the schema (tables + indexes + pragmas) and opens in-memory DB
 
 | Feature | C | Zig |
 |---------|---|-----|
-| Watch/unwatch projects | Full | PARTIAL (list management only) |
-| Git HEAD polling (`git rev-parse HEAD`) | Full | MISSING |
-| Dirty tree check (`git status --porcelain`) | Full | MISSING |
-| Adaptive poll interval | Full | PARTIAL (formula exists, not wired to poll loop) |
-| Blocking poll loop with sleep | Full | MISSING |
-| Index callback invocation | Full | MISSING — `index_fn` stored but never called |
-| Stop signal (atomic) | Full | PARTIAL (field exists) |
-| Per-project state (last_head, last_dirty) | Full | PARTIAL (struct has last_head field) |
-| Thread-safe stop | Full | PARTIAL |
+| Watch/unwatch projects | Full | WORKS |
+| Git HEAD polling (`git rev-parse HEAD`) | Full | WORKS |
+| Dirty tree check (`git status --porcelain`) | Full | WORKS |
+| Adaptive poll interval | Full | WORKS |
+| Blocking poll loop with sleep | Full | WORKS |
+| Index callback invocation | Full | WORKS |
+| Stop signal (atomic) | Full | WORKS |
+| Per-project state (last_head, last_dirty) | Full | WORKS (tracks HEAD + baseline metadata) |
+| Thread-safe stop | Full | WORKS |
 
 ---
 

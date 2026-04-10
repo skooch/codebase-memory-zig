@@ -24,6 +24,7 @@ const discover = @import("discover.zig");
 const store = @import("store.zig");
 const pipeline = @import("pipeline.zig");
 const cypher = @import("cypher.zig");
+const watcher = @import("watcher.zig");
 
 const Store = store.Store;
 
@@ -84,6 +85,8 @@ pub const Tool = enum {
 pub const McpServer = struct {
     allocator: std.mem.Allocator,
     db: *Store,
+    watcher_ref: ?*watcher.Watcher = null,
+    index_guard: ?*std.atomic.Value(bool) = null,
 
     pub fn init(allocator: std.mem.Allocator, db: *Store) McpServer {
         return .{ .allocator = allocator, .db = db };
@@ -91,6 +94,14 @@ pub const McpServer = struct {
 
     pub fn deinit(self: *McpServer) void {
         _ = self;
+    }
+
+    pub fn setWatcher(self: *McpServer, watcher_ref: *watcher.Watcher) void {
+        self.watcher_ref = watcher_ref;
+    }
+
+    pub fn setIndexGuard(self: *McpServer, index_guard: *std.atomic.Value(bool)) void {
+        self.index_guard = index_guard;
     }
 
     pub fn handleRequest(self: *McpServer, request: []const u8) !?[]const u8 {
@@ -204,10 +215,24 @@ pub const McpServer = struct {
         const mode_raw = stringArg(args, "mode") orelse "full";
         const mode = if (std.mem.eql(u8, mode_raw, "fast")) pipeline.IndexMode.fast else pipeline.IndexMode.full;
 
-        const project_name = std.fs.path.basename(project_path);
-        var p = pipeline.Pipeline.init(self.allocator, project_path, mode);
+        const normalized_path = std.fs.cwd().realpathAlloc(self.allocator, project_path) catch try self.allocator.dupe(u8, project_path);
+        defer self.allocator.free(normalized_path);
+        const project_name = std.fs.path.basename(normalized_path);
+        if (self.index_guard) |index_guard| {
+            if (index_guard.cmpxchgStrong(false, true, .acq_rel, .acquire) != null) {
+                return self.errorResponse(request_id, -32603, "Indexing already in progress");
+            }
+        }
+        defer if (self.index_guard) |index_guard| {
+            index_guard.store(false, .release);
+        };
+
+        var p = pipeline.Pipeline.init(self.allocator, normalized_path, mode);
         defer p.deinit();
         try p.run(self.db);
+        if (self.watcher_ref) |watcher_ref| {
+            try watcher_ref.watch(project_name, normalized_path);
+        }
 
         const node_count = try self.db.countNodes(project_name);
         const edge_count = try self.db.countEdges(project_name);
@@ -464,6 +489,9 @@ pub const McpServer = struct {
 
         if (status.status != .not_found) {
             try self.db.deleteProject(project);
+            if (self.watcher_ref) |watcher_ref| {
+                watcher_ref.unwatch(project);
+            }
         }
 
         const payload = try std.fmt.allocPrint(
@@ -2019,6 +2047,56 @@ test "index_status and delete_project expose project lifecycle" {
     defer missing_parsed.deinit();
     const missing_result = missing_parsed.value.object.get("result").?.object;
     try std.testing.expectEqualStrings("not_found", missing_result.get("status").?.string);
+}
+
+test "index_repository registers watcher state and delete_project unwatches it" {
+    const allocator = std.testing.allocator;
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(allocator, "/tmp/cbm-mcp-watch-{x}", .{project_id});
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    const main_path = try std.fs.path.join(allocator, &.{ project_dir, "main.py" });
+    defer allocator.free(main_path);
+    var main_file = try std.fs.cwd().createFile(main_path, .{});
+    defer main_file.close();
+    try main_file.writeAll(
+        \\def run():
+        \\    return 1
+        \\
+    );
+
+    var s = try store.Store.openMemory(allocator);
+    defer s.deinit();
+    var srv = McpServer.init(allocator, &s);
+    defer srv.deinit();
+
+    var watcher_ref = watcher.Watcher.init(allocator, null, null);
+    defer watcher_ref.deinit();
+    srv.setWatcher(&watcher_ref);
+
+    const index_request = try std.fmt.allocPrint(
+        allocator,
+        "{{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"tools/call\",\"params\":{{\"name\":\"index_repository\",\"arguments\":{{\"project_path\":\"{s}\"}}}}}}",
+        .{project_dir},
+    );
+    defer allocator.free(index_request);
+
+    const index_response = (try srv.handleRequest(index_request)).?;
+    defer allocator.free(index_response);
+    try std.testing.expectEqual(@as(usize, 1), watcher_ref.watchCount());
+
+    const delete_request = try std.fmt.allocPrint(
+        allocator,
+        "{{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"tools/call\",\"params\":{{\"name\":\"delete_project\",\"arguments\":{{\"project\":\"{s}\"}}}}}}",
+        .{std.fs.path.basename(project_dir)},
+    );
+    defer allocator.free(delete_request);
+
+    const delete_response = (try srv.handleRequest(delete_request)).?;
+    defer allocator.free(delete_response);
+    try std.testing.expectEqual(@as(usize, 0), watcher_ref.watchCount());
 }
 
 test "get_code_snippet returns source, match metadata, and suggestions" {

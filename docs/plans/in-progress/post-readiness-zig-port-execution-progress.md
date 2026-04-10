@@ -18,7 +18,7 @@
 ### Next Phase
 - **Status:** in progress
 - Focus:
-  - Phase 6 is next, starting with runtime lifecycle and scale work now that the heavier Phase 5 query and analysis surface is in place.
+  - Phase 7 is next, focusing on CLI parity, productization, and the remaining deferred value features now that the runtime lifecycle and scale baseline is in place.
 
 ### Phase 2: Core Graph and Query Substrate
 - **Status:** in progress
@@ -87,7 +87,7 @@
   - `src/mcp.zig`
 
 ### Phase 6: Runtime Lifecycle and Scale
-- **Status:** in progress
+- **Status:** complete
 - Actions:
   - Added file-hash CRUD to `src/store.zig` so the pipeline can persist and reload per-file change metadata instead of always treating every run as a full rebuild.
   - Added graph-buffer store loading and file-slice purge support in `src/graph_buffer.zig`, giving the incremental path a way to seed from the existing graph and surgically drop changed or deleted files before re-extraction.
@@ -96,13 +96,21 @@
   - Replaced the watcher placeholder in `src/watcher.zig` with a git-backed watcher that owns its watched-project state, establishes baselines, detects HEAD or dirty-worktree changes, supports one-shot polling plus a blocking run loop, and exercises the callback path in tests against real temporary git repositories.
   - Added a parallel extraction path in `src/pipeline.zig` that extracts files into per-file local graph buffers on worker threads, merges them back into the main graph with explicit ID remapping, and falls back to the sequential path if thread setup fails.
   - Added regression coverage that forces the larger-file-count path so the parallel extraction and merge logic is exercised directly rather than only compiling.
-  - Verified the chunk with `zig build test` and `zig build`.
+  - Switched the live runtime path in `src/main.zig` from an in-memory database to a persistent SQLite store under `CBM_CACHE_DIR` or `~/.cache/codebase-memory-zig`, then started the watcher in a background thread against that durable runtime state.
+  - Added startup auto-index wiring gated by `CBM_AUTO_INDEX=1`, plus automatic watcher registration for previously indexed projects and new `index_repository` / `delete_project` watcher hooks in `src/mcp.zig`.
+  - Added an indexing guard shared between the watcher callback and the live MCP server so only one indexing run proceeds at a time, and wrapped the pipeline write path in SQLite transactions for snapshot-safe reindexing.
+  - Replaced the placeholder MinHash helper in `src/minhash.zig` with a real normalized lexical-trigram fingerprint implementation plus an LSH candidate index, then integrated it into `src/pipeline.zig` so `Function` nodes persist `fp` properties and emit `SIMILAR_TO` edges.
+  - Added regression coverage for watcher registration via MCP, fingerprint generation, LSH candidate lookup, and pipeline-level similarity edge emission.
+  - Verified the completed phase with `zig build test`, `zig build`, `bash scripts/run_interop_alignment.sh`, and a manual runtime probe that started `zig-out/bin/cbm` with `CBM_AUTO_INDEX=1` and confirmed startup auto-index persisted the current git repo into the runtime store.
 - Files modified:
   - `docs/plans/in-progress/post-readiness-zig-port-execution-progress.md`
   - `src/store.zig`
   - `src/graph_buffer.zig`
   - `src/pipeline.zig`
   - `src/watcher.zig`
+  - `src/minhash.zig`
+  - `src/mcp.zig`
+  - `src/main.zig`
 
 ## Errors
 | Timestamp | Error | Attempt | Resolution |
