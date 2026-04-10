@@ -137,6 +137,27 @@
   - [x] Update `docs/zig-port-plan.md` and `docs/gap-analysis.md` based on baseline deltas if needed.
   - [x] Keep a repeatable baseline run available for follow-up.
 
+### Phase 7: Close the Remaining First-Gate Parity Gaps
+- **Status:** pending
+- Planned focus:
+  - Reconcile fixture assertions with the observed reference baseline so the harness oracle is correct before deeper parity work continues.
+  - Bring `index_repository` / `list_projects` node and edge summaries into parity across all five readiness fixtures.
+  - Close the remaining language-specific parity gaps in TypeScript, Rust, and Zig for `search_graph`, `query_graph`, and `trace_call_path`.
+  - Re-run the harness and refresh the baseline/docs after each substantive parity reduction.
+- Known remaining mismatch buckets at phase start:
+  - `python-basic`: `index_repository`, `list_projects`
+  - `javascript-basic`: `index_repository`, `list_projects`
+  - `typescript-basic`: `search_graph`, `trace_call_path`, `index_repository`, `list_projects`
+  - `rust-basic`: `search_graph`, `query_graph`, `trace_call_path`, `index_repository`, `list_projects`
+  - `zig-basic`: `search_graph`, `trace_call_path`, `index_repository`, `list_projects`
+- Checklist status:
+  - [ ] Reconcile fixture expectations against the reference implementation output.
+  - [ ] Align summary counts for `index_repository` and `list_projects`.
+  - [ ] Close TypeScript search/traversal parity gaps.
+  - [ ] Close Rust search/query/traversal parity gaps.
+  - [ ] Close Zig search/traversal parity gaps or explicitly reclassify them.
+  - [ ] Refresh the harness baseline and docs after parity cleanup.
+
 ## Errors
 | Timestamp | Error | Attempt | Resolution |
 |-----------|-------|---------|------------|

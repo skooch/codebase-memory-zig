@@ -4,7 +4,7 @@
 Define and complete the minimum Zig-port work needed before an alignment test suite can usefully compare this implementation against the original `codebase-memory-mcp`.
 
 ## Current Phase
-Phase 6
+Phase 7
 
 ## File Map
 - Modify: `docs/plans/in-progress/interoperability-alignment-readiness-plan.md`
@@ -13,15 +13,20 @@ Phase 6
 - Modify: `docs/gap-analysis.md`
 - Modify: `src/extractor.zig`
 - Modify: `src/pipeline.zig`
+- Modify: `src/registry.zig`
+- Modify: `src/store.zig`
+- Modify: `src/graph_buffer.zig`
+- Modify: `src/cypher.zig`
+- Modify: `src/mcp.zig`
 - Modify: `src/store_test.zig`
-- Create: `testdata/interop/manifest.json`
-- Create: `testdata/interop/python-basic/main.py`
-- Create: `testdata/interop/python-basic/util.py`
-- Create: `testdata/interop/javascript-basic/index.js`
-- Create: `testdata/interop/typescript-basic/index.ts`
-- Create: `testdata/interop/rust-basic/src/lib.rs`
-- Create: `testdata/interop/zig-basic/main.zig`
-- Create: `scripts/run_interop_alignment.sh`
+- Modify: `testdata/interop/manifest.json`
+- Modify: `testdata/interop/python-basic/main.py`
+- Modify: `testdata/interop/python-basic/util.py`
+- Modify: `testdata/interop/javascript-basic/index.js`
+- Modify: `testdata/interop/typescript-basic/index.ts`
+- Modify: `testdata/interop/rust-basic/src/lib.rs`
+- Modify: `testdata/interop/zig-basic/main.zig`
+- Modify: `scripts/run_interop_alignment.sh`
 
 ## Phases
 
@@ -30,7 +35,7 @@ Phase 6
 - [x] Document that CUT and DEFER items are excluded from alignment expectations until explicitly promoted.
 - [x] Define comparison rules that normalize paths, ignore unstable internal IDs, and require deterministic result ordering.
 - [x] Update `docs/zig-port-plan.md` and `docs/gap-analysis.md` to reflect the alignment-readiness target state.
-- [ ] Record explicit “alignment mismatch contract” (allowed semantic drift) for each supported tool.
+- [x] Record explicit “alignment mismatch contract” (allowed semantic drift) for each supported tool.
 - **Status:** complete
 
 ### Phase 2: Finish Parser-Backed Extraction Parity
@@ -80,6 +85,16 @@ Phase 6
 - [x] Exit this phase only when there is a repeatable baseline run that distinguishes “contract-compliant difference” from “real interoperability defect.”
 - **Status:** complete
 
+### Phase 7: Close the Remaining First-Gate Parity Gaps
+- [ ] Reconcile `testdata/interop/manifest.json` with the observed reference baseline so fixture assertions only require behavior the original implementation actually exposes in first-gate mode.
+- [ ] In `src/pipeline.zig`, `src/store.zig`, `src/graph_buffer.zig`, and `src/mcp.zig`, align `index_repository` and `list_projects` node/edge summaries with the reference implementation for all five readiness fixtures.
+- [ ] In `src/extractor.zig`, `src/registry.zig`, `src/pipeline.zig`, and `src/store_test.zig`, close the TypeScript parity gaps so `search_graph` and `trace_call_path` match the reference fixture expectations.
+- [ ] In `src/extractor.zig`, `src/registry.zig`, `src/pipeline.zig`, `src/cypher.zig`, and `src/store_test.zig`, close the Rust parity gaps so `search_graph`, `query_graph`, and `trace_call_path` match the reference fixture expectations.
+- [ ] In `src/extractor.zig`, `src/registry.zig`, `src/pipeline.zig`, and `src/store_test.zig`, close the Zig parity gaps so `search_graph` and `trace_call_path` match the reference fixture expectations or are explicitly reclassified as tolerated drift.
+- [ ] Re-run `bash scripts/run_interop_alignment.sh`, update the baseline summary in `docs/plans/in-progress/interoperability-alignment-readiness-progress.md`, and refresh `docs/zig-port-plan.md` / `docs/gap-analysis.md` if any remaining differences are reclassified.
+- [ ] Exit this phase only when the current 17 baseline mismatches are either eliminated or explicitly documented as tolerated first-gate drift with no undocumented gaps left.
+- **Status:** pending
+
 ## Decisions
 | Decision | Rationale |
 |----------|-----------|
@@ -93,6 +108,7 @@ Phase 6
 - **Phase 4 (complete):** Comparison rules are detailed enough that a harness can score pass/fail without hand-written interpretation.
 - **Phase 5 (complete):** A committed cross-language fixture corpus exists with a manifest that states what each fixture proves.
 - **Phase 6 (complete):** A repeatable harness run exists and the first mismatch categories have been recorded.
+- **Phase 7 (pending):** The remaining first-gate mismatches are resolved or explicitly reclassified, and the harness baseline is trustworthy enough to use as an ongoing parity gate.
 
 ## Plan Checklist
 - [x] **Phase 1 complete** — interoperability scope, exclusions, and deterministic comparison rules are documented.
@@ -104,6 +120,7 @@ Phase 6
 - [x] **Phase 4 contract complete** — per-tool comparison rules and tolerated drift are documented at harness-ready fidelity.
 - [x] **Phase 5 fixtures complete** — the first cross-language fixture corpus and manifest are committed.
 - [x] **Phase 6 baseline complete** — the alignment harness runs both implementations and records the initial mismatch categories.
+- [ ] **Phase 7 parity cleanup complete** — the remaining baseline mismatches are eliminated or explicitly accepted by the documented first-gate contract.
 - [x] **Runtime stability checkpoint** — the tree-sitter header/runtime compatibility crash is fixed and the current Zig test suite passes again.
 
 ## Errors
