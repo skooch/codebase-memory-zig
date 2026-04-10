@@ -4,11 +4,13 @@
 Break the remaining Zig port into dependency-aware phases that maximize delivered functionality per phase while keeping verification and integration risk manageable.
 
 ## Current Phase
-Phase 7
+Complete
 
 ## File Map
-- Create: `docs/plans/in-progress/post-readiness-zig-port-execution-plan.md`
-- Create: `docs/plans/in-progress/post-readiness-zig-port-execution-progress.md`
+- Original tracked plan: `docs/plans/in-progress/post-readiness-zig-port-execution-plan.md`
+- Original tracked progress log: `docs/plans/in-progress/post-readiness-zig-port-execution-progress.md`
+- Final implemented plan: `docs/plans/implemented/post-readiness-zig-port-execution-plan.md`
+- Final implemented progress log: `docs/plans/implemented/post-readiness-zig-port-execution-progress.md`
 - Modify: `docs/zig-port-plan.md`
 - Modify: `docs/gap-analysis.md`
 
@@ -57,11 +59,11 @@ Phase 7
 - **Status:** complete
 
 ### Phase 7: Finish Productization and Deferred Value Features
-- [ ] Implement CLI parity (`install`, `uninstall`, `update`, `config`, progress output) after the underlying runtime/tool surface is settled enough to avoid churn in installer-facing behavior.
-- [ ] Reassess deferred-but-valuable features such as route nodes, test tagging, config-linking, git-history coupling, and decorator enrichment, and promote only the ones that still align with product goals.
-- [ ] Refresh `docs/zig-port-plan.md` and `docs/gap-analysis.md` to distinguish completed parity, intentionally deferred work, and remaining long-tail gaps.
-- [ ] Exit this phase only when the remaining backlog is either intentionally deferred or clearly outside the project’s target parity scope.
-- **Status:** pending
+- [x] Implement CLI parity for the current target contract: persisted runtime config, `install`, `uninstall`, `update`, `config`, and `cli --progress`, with installer support for Codex CLI and Claude Code.
+- [x] Reassess deferred-but-valuable features such as route nodes, test tagging, config-linking, git-history coupling, decorator enrichment, and `manage_adr`, and keep them explicitly deferred because they are outside the current target contract for an interoperable higher-performance daily-use port.
+- [x] Refresh `docs/zig-port-plan.md` and `docs/gap-analysis.md` to distinguish completed parity, intentionally deferred work, and remaining optional long-tail gaps.
+- [x] Exit this phase only when the remaining backlog is either intentionally deferred or clearly outside the project’s target parity scope.
+- **Status:** complete
 
 ## Decisions
 | Decision | Rationale |
@@ -71,6 +73,8 @@ Phase 7
 | Delay watcher/incremental/parallel work until after single-threaded correctness and graph invariants are stronger | Concurrency and lifecycle work multiplies debugging cost if the underlying indexing semantics are still moving. |
 | Treat CLI/productization as a late phase | Installer/config UX is cheaper to finalize once the runtime/tool contracts are more stable. |
 | Treat deeper local-dataflow usage inference, override inference, and non-target-language semantic parity as explicit post-Phase-4 work | The current daily-use slice now has durable call/import/usage/semantic coverage for Python, JS/TS/TSX, Rust, and Zig, while the remaining fidelity gaps are broader parity work rather than blockers for Phase 5 query expansion. |
+| Treat the end of Phase 7 as the completion point for the current target contract | The project goal is an interoperable, higher-performance, more reliable daily-use port, not exhaustive parity for every historical or optional feature in the C codebase. |
+| Keep `manage_adr`, deeper Cypher parity, and deferred enrichment/history features outside the completed Phase 7 contract | They remain valuable future slices, but they are not required for the completed daily-use target and would otherwise keep the execution plan artificially open-ended. |
 
 ## Errors
 | Error | Attempt | Resolution |

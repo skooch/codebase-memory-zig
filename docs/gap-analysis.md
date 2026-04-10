@@ -42,13 +42,18 @@ Completed after the readiness gate:
   - incremental indexing
   - parallel extraction and graph-buffer merge
   - MinHash/LSH similarity edges
+- CLI and productization baseline:
+  - persisted runtime config
+  - `install`, `uninstall`, `update`, and `config`
+  - `cli --progress`
+  - installer support for Codex CLI and Claude Code
 
-Still to implement after Phase 6:
+Intentionally deferred after Phase 7:
 - The remaining MCP tools outside the current daily-use slice, especially `manage_adr`.
 - Full Cypher parity beyond the broader day-to-day query subset now supporting node/edge reads, filtering, sorting, and counts.
 - Deeper usage/type-reference extraction parity and broader cross-language semantics beyond the current target daily-use slice.
-- CLI parity and remaining productization work.
-- Deferred history/enrichment/route/config-link features.
+- Git-history coupling, route nodes, test tagging, config-linking, and richer decorator/enrichment follow-ons.
+- Broader installer/self-update behavior beyond the current source-build-friendly Codex CLI / Claude Code support.
 
 ## Remaining Implementation Plan
 
@@ -56,8 +61,11 @@ Complete slices:
 - First-gate interoperability readiness plan
 - Readiness-scope extractor/pipeline/registry/store/MCP vertical slice
 - First fixture corpus and alignment harness
+- Post-readiness execution Phases 2-7
+- Runtime lifecycle and scale baseline
+- CLI/productization baseline for the current target contract
 
-Open slices:
+Deferred or optional future slices:
 - Public surface expansion:
   - `manage_adr`
 - Query/runtime expansion:
@@ -65,13 +73,19 @@ Open slices:
   - broader traversal/risk/reporting parity beyond the current `detect_changes` implementation
 - Indexing/runtime expansion:
   - deeper usage/type-ref extraction parity beyond the current daily-use slice
-- Productization:
-  - CLI install/uninstall/update/config parity
-  - progress sinks and richer diagnostics
+- Metadata and enrichment:
+  - git-history coupling
+  - route nodes
+  - test tagging
+  - config-linking
+  - richer decorator/enrichment promotion
+- Productization beyond the current contract:
+  - broader installer/self-update behavior
+  - richer progress sinks and diagnostics
 
 ### Recommended Sequencing
 
-Use this order for the remaining backlog:
+If future work is promoted out of the deferred bucket, use this order:
 
 1. **Shared substrate first**
    - store/search/traversal/schema helpers
@@ -86,8 +100,8 @@ Use this order for the remaining backlog:
    - status: complete for the current daily-use slice
 5. **Lifecycle and scale fifth**
    - watcher, incremental indexing, parallel extraction, similarity
-6. **Productization and selective deferred features last**
-   - CLI parity plus any deferred features that still make sense after the core runtime settles
+6. **Selective deferred features last**
+   - promote only the deferred features that still make sense after the core runtime settles
 
 This order is recommended because it maximizes shared reuse, keeps early verification cheap, and avoids layering concurrency or installer behavior on top of still-moving indexing semantics.
 

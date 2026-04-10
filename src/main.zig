@@ -1,6 +1,7 @@
 const std = @import("std");
 const cbm = @import("cbm");
 const build_options = @import("build_options");
+const cli = @import("cli.zig");
 
 const usage =
     \\Usage: cbm [COMMAND] [OPTIONS]
@@ -9,9 +10,9 @@ const usage =
     \\
     \\Commands:
     \\  cli <tool> [json]       Run a single tool call
-    \\  install [-y|-n]         Install MCP server config for supported agents
-    \\  uninstall [-y|-n]       Remove MCP server config
-    \\  update [-y|-n]          Update to latest version
+    \\  install [-y|-n]         Install MCP config for Codex CLI and Claude Code
+    \\  uninstall [-y|-n]       Remove installed MCP config entries
+    \\  update [-y|-n]          Refresh installed agent config to current binary path
     \\  config <list|get|set>   Manage runtime configuration
     \\
     \\Options:
@@ -50,19 +51,19 @@ pub fn main() !void {
             return;
         }
         if (std.mem.eql(u8, arg, "install")) {
-            std.debug.print("install not yet implemented\n", .{});
+            try runInstallCommand(allocator);
             return;
         }
         if (std.mem.eql(u8, arg, "uninstall")) {
-            std.debug.print("uninstall not yet implemented\n", .{});
+            try runUninstallCommand(allocator);
             return;
         }
         if (std.mem.eql(u8, arg, "update")) {
-            std.debug.print("update not yet implemented\n", .{});
+            try runUpdateCommand(allocator);
             return;
         }
         if (std.mem.eql(u8, arg, "config")) {
-            std.debug.print("config not yet implemented\n", .{});
+            try runConfigCommand(allocator);
             return;
         }
         std.debug.print("Error: unknown command \"{s}\"\n", .{arg});
@@ -166,7 +167,10 @@ fn maybeAutoIndexOnStartup(
     db: *cbm.Store,
     watcher: *cbm.watcher.Watcher,
 ) !void {
-    if (!envFlagEnabled("CBM_AUTO_INDEX")) return;
+    var config = cli.loadConfig(allocator) catch cli.AppConfig{};
+    defer config.deinit(allocator);
+    const auto_index_enabled = config.auto_index or envFlagEnabled("CBM_AUTO_INDEX");
+    if (!auto_index_enabled) return;
 
     const cwd = try std.fs.cwd().realpathAlloc(allocator, ".");
     defer allocator.free(cwd);
@@ -180,7 +184,10 @@ fn maybeAutoIndexOnStartup(
         return;
     }
 
-    const limit = envUnsigned("CBM_AUTO_INDEX_LIMIT", 50_000);
+    const limit = if (std.posix.getenv("CBM_AUTO_INDEX_LIMIT") != null)
+        envUnsigned("CBM_AUTO_INDEX_LIMIT", config.auto_index_limit)
+    else
+        config.auto_index_limit;
     const discovered = discoverIndexableFileCount(allocator, cwd) catch |err| {
         std.log.warn("auto-index discovery failed for {s}: {}", .{ cwd, err });
         return;
@@ -214,23 +221,10 @@ fn openStoreAtPath(allocator: std.mem.Allocator, db_path: []const u8) !cbm.Store
 }
 
 fn runtimeDbPath(allocator: std.mem.Allocator) ![]u8 {
-    const cache_dir = try runtimeCacheDir(allocator);
+    const cache_dir = try cli.runtimeCacheDir(allocator);
     defer allocator.free(cache_dir);
     try std.fs.cwd().makePath(cache_dir);
     return std.fs.path.join(allocator, &.{ cache_dir, "codebase-memory-zig.db" });
-}
-
-fn runtimeCacheDir(allocator: std.mem.Allocator) ![]u8 {
-    if (std.process.getEnvVarOwned(allocator, "CBM_CACHE_DIR")) |value| {
-        return value;
-    } else |_| {}
-
-    if (std.process.getEnvVarOwned(allocator, "HOME")) |home| {
-        defer allocator.free(home);
-        return std.fs.path.join(allocator, &.{ home, ".cache", "codebase-memory-zig" });
-    } else |_| {}
-
-    return std.fs.path.join(allocator, &.{ ".cache", "codebase-memory-zig" });
 }
 
 fn envFlagEnabled(name: []const u8) bool {
@@ -260,19 +254,30 @@ const CliToolParams = struct {
 
 fn runCliToolCall(allocator: std.mem.Allocator) !void {
     const stdout_file = std.fs.File.stdout();
+    const stderr_file = std.fs.File.stderr();
 
     var args_iter = try std.process.argsWithAllocator(allocator);
     defer args_iter.deinit();
     _ = args_iter.next(); // skip argv[0]
     _ = args_iter.next(); // skip "cli"
 
-    const tool_name = args_iter.next() orelse {
+    var progress = false;
+    var positional = std.ArrayList([]const u8).empty;
+    defer positional.deinit(allocator);
+    while (args_iter.next()) |arg| {
+        if (std.mem.eql(u8, arg, "--progress")) {
+            progress = true;
+            continue;
+        }
+        try positional.append(allocator, arg);
+    }
+
+    const tool_name = if (positional.items.len > 0) positional.items[0] else {
         try stdout_file.writeAll("Error: cli requires <tool>\n");
         std.process.exit(1);
     };
-
-    const raw_args = args_iter.next() orelse "{}";
-    if (args_iter.next()) |_| {
+    const raw_args = if (positional.items.len > 1) positional.items[1] else "{}";
+    if (positional.items.len > 2) {
         try stdout_file.writeAll("Error: too many cli arguments\n");
         std.process.exit(1);
     }
@@ -305,9 +310,312 @@ fn runCliToolCall(allocator: std.mem.Allocator) !void {
     var server = cbm.McpServer.init(allocator, &db);
     defer server.deinit();
 
+    if (progress) {
+        try printFile(stderr_file, "{{\"event\":\"tool_start\",\"tool\":{f}}}\n", .{
+            std.json.fmt(tool_name, .{}),
+        });
+    }
     if (try server.handleRequest(request_payload)) |resp| {
         defer allocator.free(resp);
         try stdout_file.writeAll(resp);
         try stdout_file.writeAll("\n");
+        if (progress) {
+            try printFile(stderr_file, "{{\"event\":\"tool_done\",\"tool\":{f},\"ok\":true}}\n", .{
+                std.json.fmt(tool_name, .{}),
+            });
+        }
     }
+}
+
+const AutoAnswer = enum { ask, yes, no };
+
+fn runConfigCommand(allocator: std.mem.Allocator) !void {
+    const stdout_file = std.fs.File.stdout();
+
+    var args_iter = try std.process.argsWithAllocator(allocator);
+    defer args_iter.deinit();
+    _ = args_iter.next();
+    _ = args_iter.next();
+
+    const action = args_iter.next() orelse "list";
+    var config = try cli.loadConfig(allocator);
+    defer config.deinit(allocator);
+
+    if (std.mem.eql(u8, action, "list") or std.mem.eql(u8, action, "ls")) {
+        try printFile(
+            stdout_file,
+            "auto_index = {s}\nauto_index_limit = {d}\ndownload_url = {s}\n",
+            .{
+                if (config.auto_index) "true" else "false",
+                config.auto_index_limit,
+                config.download_url orelse "",
+            },
+        );
+        return;
+    }
+
+    const key = args_iter.next() orelse {
+        try stdout_file.writeAll("Usage: cbm config <list|get|set|reset> [key] [value]\n");
+        std.process.exit(1);
+    };
+
+    if (std.mem.eql(u8, action, "get")) {
+        try writeConfigValue(stdout_file, key, config);
+        return;
+    }
+
+    if (std.mem.eql(u8, action, "reset")) {
+        try resetConfigKey(allocator, &config, key);
+        try cli.saveConfig(allocator, config);
+        try printFile(stdout_file, "{s} reset to default\n", .{key});
+        return;
+    }
+
+    if (std.mem.eql(u8, action, "set")) {
+        const value = args_iter.next() orelse {
+            try stdout_file.writeAll("Usage: cbm config set <key> <value>\n");
+            std.process.exit(1);
+        };
+        try setConfigKey(allocator, &config, key, value);
+        try cli.saveConfig(allocator, config);
+        try writeConfigValue(stdout_file, key, config);
+        return;
+    }
+
+    try printFile(stdout_file, "Unknown config command: {s}\n", .{action});
+    std.process.exit(1);
+}
+
+fn runInstallCommand(allocator: std.mem.Allocator) !void {
+    const stdout_file = std.fs.File.stdout();
+    const args = try collectSubcommandArgs(allocator, "install");
+    defer freeArgList(allocator, args);
+
+    const parsed = parseActionFlags(args);
+    if (!try confirmAction("Install MCP configs for detected agents?", parsed.answer)) {
+        try stdout_file.writeAll("Install cancelled.\n");
+        std.process.exit(1);
+    }
+
+    const home = try cli.homeDir(allocator);
+    defer allocator.free(home);
+    const binary_path = try std.fs.selfExePathAlloc(allocator);
+    defer allocator.free(binary_path);
+
+    const report = try cli.installAgentConfigs(allocator, home, .{
+        .binary_path = binary_path,
+        .dry_run = parsed.dry_run,
+        .force = parsed.force,
+    });
+    try printInstallReport(stdout_file, "Install", report, parsed.dry_run);
+    if (report.codex == .skipped and report.claude == .skipped and !parsed.force) {
+        try stdout_file.writeAll("No supported agents detected. Use --force to create config files.\n");
+        std.process.exit(1);
+    }
+}
+
+fn runUninstallCommand(allocator: std.mem.Allocator) !void {
+    const stdout_file = std.fs.File.stdout();
+    const args = try collectSubcommandArgs(allocator, "uninstall");
+    defer freeArgList(allocator, args);
+
+    const parsed = parseActionFlags(args);
+    if (!try confirmAction("Remove installed MCP configs from supported agents?", parsed.answer)) {
+        try stdout_file.writeAll("Uninstall cancelled.\n");
+        std.process.exit(1);
+    }
+
+    const home = try cli.homeDir(allocator);
+    defer allocator.free(home);
+    const report = try cli.uninstallAgentConfigs(allocator, home, parsed.dry_run);
+    try printInstallReport(stdout_file, "Uninstall", report, parsed.dry_run);
+}
+
+fn runUpdateCommand(allocator: std.mem.Allocator) !void {
+    const stdout_file = std.fs.File.stdout();
+    const args = try collectSubcommandArgs(allocator, "update");
+    defer freeArgList(allocator, args);
+
+    const parsed = parseActionFlags(args);
+    if (!try confirmAction("Refresh installed MCP configs to the current binary path?", parsed.answer)) {
+        try stdout_file.writeAll("Update cancelled.\n");
+        std.process.exit(1);
+    }
+
+    var config = try cli.loadConfig(allocator);
+    defer config.deinit(allocator);
+    const home = try cli.homeDir(allocator);
+    defer allocator.free(home);
+    const binary_path = try std.fs.selfExePathAlloc(allocator);
+    defer allocator.free(binary_path);
+
+    const report = try cli.installAgentConfigs(allocator, home, .{
+        .binary_path = binary_path,
+        .dry_run = parsed.dry_run,
+        .force = false,
+    });
+    try printInstallReport(stdout_file, "Update", report, parsed.dry_run);
+    if (config.download_url) |_| {
+        try stdout_file.writeAll("download_url is configured, but binary self-replacement is intentionally deferred for source builds.\n");
+    } else {
+        try stdout_file.writeAll("Agent configs were refreshed to the current binary path.\n");
+    }
+}
+
+const ParsedActionFlags = struct {
+    answer: AutoAnswer = .ask,
+    dry_run: bool = false,
+    force: bool = false,
+};
+
+fn parseActionFlags(args: []const []const u8) ParsedActionFlags {
+    var parsed = ParsedActionFlags{};
+    for (args) |arg| {
+        if (std.mem.eql(u8, arg, "-y") or std.mem.eql(u8, arg, "--yes")) parsed.answer = .yes;
+        if (std.mem.eql(u8, arg, "-n") or std.mem.eql(u8, arg, "--no")) parsed.answer = .no;
+        if (std.mem.eql(u8, arg, "--dry-run")) parsed.dry_run = true;
+        if (std.mem.eql(u8, arg, "--force")) parsed.force = true;
+    }
+    return parsed;
+}
+
+fn collectSubcommandArgs(allocator: std.mem.Allocator, command_name: []const u8) ![][]const u8 {
+    var args_iter = try std.process.argsWithAllocator(allocator);
+    defer args_iter.deinit();
+
+    var found = false;
+    var collected = std.ArrayList([]const u8).empty;
+    errdefer {
+        for (collected.items) |arg| allocator.free(arg);
+        collected.deinit(allocator);
+    }
+
+    while (args_iter.next()) |arg| {
+        if (!found) {
+            if (std.mem.eql(u8, arg, command_name)) {
+                found = true;
+            }
+            continue;
+        }
+        try collected.append(allocator, try allocator.dupe(u8, arg));
+    }
+    return collected.toOwnedSlice(allocator);
+}
+
+fn freeArgList(allocator: std.mem.Allocator, args: [][]const u8) void {
+    for (args) |arg| allocator.free(arg);
+    allocator.free(args);
+}
+
+fn confirmAction(question: []const u8, answer: AutoAnswer) !bool {
+    const stdout_file = std.fs.File.stdout();
+    const stderr_file = std.fs.File.stderr();
+    switch (answer) {
+        .yes => {
+            try printFile(stdout_file, "{s} (y/n): y (auto)\n", .{question});
+            return true;
+        },
+        .no => {
+            try printFile(stdout_file, "{s} (y/n): n (auto)\n", .{question});
+            return false;
+        },
+        .ask => {},
+    }
+
+    if (!std.posix.isatty(std.posix.STDIN_FILENO)) {
+        try stderr_file.writeAll("error: interactive prompt requires a terminal. Use -y or -n.\n");
+        return false;
+    }
+
+    try printFile(stdout_file, "{s} (y/n): ", .{question});
+    var buf: [32]u8 = undefined;
+    const stdin_file = std.fs.File.stdin();
+    const bytes = try stdin_file.read(&buf);
+    const response = std.mem.trim(u8, buf[0..bytes], " \t\r\n");
+    return response.len > 0 and (response[0] == 'y' or response[0] == 'Y');
+}
+
+fn printInstallReport(
+    stdout_file: std.fs.File,
+    label: []const u8,
+    report: cli.InstallReport,
+    dry_run: bool,
+) !void {
+    try printFile(
+        stdout_file,
+        "{s}{s}\n  Codex CLI: {s}\n  Claude Code: {s}\n",
+        .{
+            label,
+            if (dry_run) " (dry run)" else "",
+            @tagName(report.codex),
+            @tagName(report.claude),
+        },
+    );
+}
+
+fn writeConfigValue(stdout_file: std.fs.File, key: []const u8, config: cli.AppConfig) !void {
+    if (std.mem.eql(u8, key, "auto_index")) {
+        try printFile(stdout_file, "{s}\n", .{if (config.auto_index) "true" else "false"});
+        return;
+    }
+    if (std.mem.eql(u8, key, "auto_index_limit")) {
+        try printFile(stdout_file, "{d}\n", .{config.auto_index_limit});
+        return;
+    }
+    if (std.mem.eql(u8, key, "download_url")) {
+        try printFile(stdout_file, "{s}\n", .{config.download_url orelse ""});
+        return;
+    }
+    try printFile(stdout_file, "Unknown config key: {s}\n", .{key});
+    std.process.exit(1);
+}
+
+fn setConfigKey(allocator: std.mem.Allocator, config: *cli.AppConfig, key: []const u8, value: []const u8) !void {
+    if (std.mem.eql(u8, key, "auto_index")) {
+        config.auto_index = parseBool(value) orelse {
+            std.process.exit(1);
+        };
+        return;
+    }
+    if (std.mem.eql(u8, key, "auto_index_limit")) {
+        config.auto_index_limit = std.fmt.parseUnsigned(usize, value, 10) catch {
+            std.process.exit(1);
+        };
+        return;
+    }
+    if (std.mem.eql(u8, key, "download_url")) {
+        if (config.download_url) |existing| allocator.free(existing);
+        config.download_url = if (value.len == 0) null else try allocator.dupe(u8, value);
+        return;
+    }
+    std.process.exit(1);
+}
+
+fn resetConfigKey(allocator: std.mem.Allocator, config: *cli.AppConfig, key: []const u8) !void {
+    if (std.mem.eql(u8, key, "auto_index")) {
+        config.auto_index = false;
+        return;
+    }
+    if (std.mem.eql(u8, key, "auto_index_limit")) {
+        config.auto_index_limit = 50_000;
+        return;
+    }
+    if (std.mem.eql(u8, key, "download_url")) {
+        if (config.download_url) |existing| allocator.free(existing);
+        config.download_url = null;
+        return;
+    }
+    std.process.exit(1);
+}
+
+fn parseBool(value: []const u8) ?bool {
+    if (std.ascii.eqlIgnoreCase(value, "true") or std.ascii.eqlIgnoreCase(value, "1") or std.ascii.eqlIgnoreCase(value, "yes") or std.ascii.eqlIgnoreCase(value, "on")) return true;
+    if (std.ascii.eqlIgnoreCase(value, "false") or std.ascii.eqlIgnoreCase(value, "0") or std.ascii.eqlIgnoreCase(value, "no") or std.ascii.eqlIgnoreCase(value, "off")) return false;
+    return null;
+}
+
+fn printFile(file: std.fs.File, comptime fmt: []const u8, args: anytype) !void {
+    var buf: [4096]u8 = undefined;
+    const rendered = try std.fmt.bufPrint(&buf, fmt, args);
+    try file.writeAll(rendered);
 }

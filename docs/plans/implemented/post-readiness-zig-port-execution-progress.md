@@ -16,9 +16,10 @@
   - `docs/gap-analysis.md`
 
 ### Next Phase
-- **Status:** in progress
+- **Status:** complete
 - Focus:
-  - Phase 7 is next, focusing on CLI parity, productization, and the remaining deferred value features now that the runtime lifecycle and scale baseline is in place.
+  - The tracked seven-phase post-readiness execution plan is complete.
+  - No active implementation phase remains in this plan; future work is now optional follow-on backlog rather than in-plan required work.
 
 ### Phase 2: Core Graph and Query Substrate
 - **Status:** in progress
@@ -111,6 +112,29 @@
   - `src/minhash.zig`
   - `src/mcp.zig`
   - `src/main.zig`
+
+### Phase 7: Productization and Deferred Value Review
+- **Status:** complete
+- Actions:
+  - Added a real CLI productization layer in `src/cli.zig` for persisted runtime config, runtime cache-path discovery, agent detection, and Codex CLI / Claude Code config install and uninstall flows.
+  - Replaced the Phase 6 placeholder subcommands in `src/main.zig` with working `install`, `uninstall`, `update`, and `config` handlers, and added `cli --progress` event emission for one-shot tool execution.
+  - Wired startup auto-index so persisted config values can enable it without requiring the environment variable path, while still allowing env overrides such as `CBM_AUTO_INDEX_LIMIT`.
+  - Verified config persistence and installer behavior against temporary HOME/cache roots rather than touching live user agent configs.
+  - Reassessed the remaining deferred backlog and explicitly kept `manage_adr`, broader Cypher parity, git-history coupling, route nodes, test tagging, config-linking, and decorator-enrichment follow-ons outside the completed target contract.
+  - Refreshed the top-level planning docs so the broader Zig port status reflects a completed target contract with an intentionally deferred long tail rather than an ambiguously unfinished Phase 7.
+- Files modified:
+  - `docs/plans/in-progress/post-readiness-zig-port-execution-plan.md`
+  - `docs/plans/in-progress/post-readiness-zig-port-execution-progress.md`
+  - `docs/zig-port-plan.md`
+  - `docs/gap-analysis.md`
+  - `src/cli.zig`
+  - `src/main.zig`
+- Verification:
+  - `zig build test`
+  - `zig build`
+  - `bash scripts/run_interop_alignment.sh`
+  - Manual temp-HOME CLI checks for `config`, `install`, `update`, and `uninstall`
+  - Manual `zig-out/bin/cbm cli --progress list_projects`
 
 ## Errors
 | Timestamp | Error | Attempt | Resolution |

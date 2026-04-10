@@ -1,6 +1,6 @@
 # Zig Port of codebase-memory-mcp
 
-## Status: Query And Analysis Surface Complete / Broader Port Still In Progress
+## Status: Current Target Contract Complete / Deferred Enhancements Remain
 
 ### Current Snapshot
 
@@ -31,17 +31,27 @@ Completed now:
   - `Strict matches: 20`
   - `Diagnostic-only comparisons: 5`
   - `Mismatches: 0`
+- Runtime lifecycle and scale are implemented for the current target contract:
+  - watcher-driven auto-index and auto-reindex
+  - incremental indexing
+  - parallel extraction and graph-buffer merge
+  - MinHash/LSH similarity edges
+- CLI and productization are implemented for the current target contract:
+  - persisted runtime config
+  - `install`, `uninstall`, `update`, and `config`
+  - `cli --progress`
+  - installer support for Codex CLI and Claude Code
 
-Still to implement after the readiness gate:
-- Remaining MCP surface beyond the current daily-use slice, especially `manage_adr` and the later productization/runtime features.
+Intentionally deferred after Phase 7:
+- Remaining MCP surface beyond the current daily-use slice, especially `manage_adr`.
 - Full Cypher parity beyond the broader day-to-day query subset now used by `query_graph`, `get_architecture`, and `detect_changes`.
 - Deeper usage/type-ref parity and broader extraction semantics beyond the current daily-use slice for Python, JS/TS/TSX, Rust, and Zig.
-- Watcher-driven reindexing, incremental indexing, and broader CLI parity.
-- Parallel indexing, MinHash/LSH, and the deferred enrichment/history features.
+- Git-history coupling, route nodes, test tagging, config-linking, and richer decorator/enrichment follow-ons.
+- Broader installer or self-update behavior beyond the current source-build-friendly CLI contract.
 
 ### Recommended Execution Order
 
-The most effective next order is:
+The completed execution order for the current target contract was:
 
 1. **Core graph/query substrate**
    - finish shared store, graph-buffer, traversal, schema, and registry/FQN primitives first
@@ -60,7 +70,7 @@ The most effective next order is:
    - watcher, incremental indexing, parallel extraction, similarity
    - reason: lifecycle/concurrency work is much easier once single-threaded semantics are stable
 6. **Productization and deferred features**
-   - CLI parity, install/update/config flows, and selective promotion of deferred features
+   - CLI parity, install/update/config flows, and selective defer decisions
    - reason: user-facing packaging and long-tail features should settle after core runtime behavior stops shifting
 
 ---
@@ -505,9 +515,9 @@ Current state: the broader daily-use MCP surface is now live, the runtime uses a
 
 - [x] Port parallel extraction (`pass_parallel`) using `std.Thread.Pool`
 - [x] Port MinHash similarity detection
-- [ ] Port CLI subcommands (`install`, `uninstall`, `update`, `config`)
+- [x] Port CLI subcommands (`install`, `uninstall`, `update`, `config`)
 - [ ] Memory budget tracking
-- [ ] Port FQN computation
+- [x] Port FQN computation
 - [ ] Exit criterion: performance parity with C version on a large repo, CLI works
 
 ### M4 Checklist
@@ -523,25 +533,27 @@ Current state: the broader daily-use MCP surface is now live, the runtime uses a
 
 Complete plan/milestone slices:
 - Interoperability-readiness Phases 1-7
+- Post-readiness execution Phases 1-7
 - M0 exit criterion
 - M1 exit criterion for a single-threaded readiness slice
-- M2 readiness subset only
+- M2 daily-use slice
+- M3 CLI subcommand slice
+- Current target contract for runtime lifecycle and productization
 
-Still-open implementation slices:
+Deferred or optional follow-on implementation slices:
 - Remaining M2 work:
   - full Cypher support
   - remaining MCP tools, especially `manage_adr`
 - Remaining M3:
-  - CLI parity
   - memory/performance parity work
 - Remaining M4:
   - history/enrichment features
 
 ## 9. Post-Readiness Execution Plan
 
-The tracked plan for the next stage of work now lives at:
+The completed tracked plan for the broader execution stage now lives at:
 
-- [post-readiness-zig-port-execution-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/post-readiness-zig-port-execution-plan.md)
-- [post-readiness-zig-port-execution-progress.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/post-readiness-zig-port-execution-progress.md)
+- [post-readiness-zig-port-execution-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/post-readiness-zig-port-execution-plan.md)
+- [post-readiness-zig-port-execution-progress.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/post-readiness-zig-port-execution-progress.md)
 
-That plan replaces the older assumption that the remaining work should simply proceed M2 -> M3 -> M4 as written. The new sequencing is dependency-driven and should reduce churn while still delivering useful public-surface growth early.
+That plan replaced the older assumption that the remaining work should simply proceed M2 -> M3 -> M4 as written. The dependency-driven sequencing is now complete for the current target contract; future work should promote only the deferred slices that still fit the project goals.
