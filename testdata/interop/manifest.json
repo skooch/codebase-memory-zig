@@ -1,0 +1,342 @@
+{
+  "schema_version": "0.1",
+  "plan_phase": 5,
+  "goal": "Define readiness fixtures for first cross-language interoperability alignment checks",
+  "fixtures": [
+    {
+      "id": "python-basic",
+      "path": "testdata/interop/python-basic",
+      "project": "python-basic",
+      "language": "python",
+      "scope_tools": [
+        "index_repository",
+        "search_graph",
+        "query_graph",
+        "trace_call_path",
+        "list_projects"
+      ],
+      "assertions": {
+        "index_repository": {
+          "expect": {
+            "nodes_min": 4,
+            "edges_min": 2
+          }
+        },
+        "search_graph": [
+          {
+            "args": {
+              "project": "python-basic",
+              "label": "Function"
+            },
+            "expect": {
+              "required_names": ["main", "helper"]
+            }
+          }
+        ],
+        "query_graph": [
+          {
+            "args": {
+              "query": "MATCH (n) WHERE n.label = \"Function\" RETURN count(n)",
+              "project": "python-basic",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["count"],
+              "required_rows_min": 1
+            }
+          }
+        ],
+        "trace_call_path": [
+          {
+            "args": {
+              "project": "python-basic",
+              "start_node_name_hint": "main",
+              "direction": "out",
+              "depth": 3
+            },
+            "expect": {
+              "required_edge_types": ["CALLS"]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "javascript-basic",
+      "path": "testdata/interop/javascript-basic",
+      "project": "javascript-basic",
+      "language": "javascript",
+      "scope_tools": [
+        "index_repository",
+        "search_graph",
+        "query_graph",
+        "trace_call_path",
+        "list_projects"
+      ],
+      "assertions": {
+        "index_repository": {
+          "expect": {
+            "nodes_min": 5,
+            "edges_min": 2
+          }
+        },
+        "search_graph": [
+          {
+            "args": {
+              "project": "javascript-basic",
+              "label": "Class"
+            },
+            "expect": {
+              "required_names": ["BaseLogger", "TraceLogger"]
+            }
+          },
+          {
+            "args": {
+              "project": "javascript-basic",
+              "label": "Function"
+            },
+            "expect": {
+              "required_names": ["emit", "run"]
+            }
+          }
+        ],
+        "query_graph": [
+          {
+            "args": {
+              "query": "MATCH (n) WHERE n.label = \"Class\" RETURN count(n)",
+              "project": "javascript-basic",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["count"],
+              "required_rows_min": 1
+            }
+          }
+        ],
+        "trace_call_path": [
+          {
+            "args": {
+              "project": "javascript-basic",
+              "start_node_name_hint": "run",
+              "direction": "out",
+              "depth": 4
+            },
+            "expect": {
+              "required_edge_types": ["CALLS"]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "typescript-basic",
+      "path": "testdata/interop/typescript-basic",
+      "project": "typescript-basic",
+      "language": "typescript",
+      "scope_tools": [
+        "index_repository",
+        "search_graph",
+        "query_graph",
+        "trace_call_path",
+        "list_projects"
+      ],
+      "assertions": {
+        "index_repository": {
+          "expect": {
+            "nodes_min": 6,
+            "edges_min": 3
+          }
+        },
+        "search_graph": [
+          {
+            "args": {
+              "project": "typescript-basic",
+              "label": "Class"
+            },
+            "expect": {
+              "required_names": ["WorkerImpl", "Worker"]
+            }
+          },
+          {
+            "args": {
+              "project": "typescript-basic",
+              "label": "Function"
+            },
+            "expect": {
+              "required_names": ["run"]
+            }
+          }
+        ],
+        "query_graph": [
+          {
+            "args": {
+              "query": "MATCH (n) WHERE n.label = \"Function\" RETURN count(n)",
+              "project": "typescript-basic",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["count"],
+              "required_rows_min": 1
+            }
+          }
+        ],
+        "trace_call_path": [
+          {
+            "args": {
+              "project": "typescript-basic",
+              "start_node_name_hint": "run",
+              "direction": "out",
+              "depth": 4
+            },
+            "expect": {
+              "required_edge_types": ["CALLS", "INHERITS"]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "rust-basic",
+      "path": "testdata/interop/rust-basic",
+      "project": "rust-basic",
+      "language": "rust",
+      "scope_tools": [
+        "index_repository",
+        "search_graph",
+        "query_graph",
+        "trace_call_path",
+        "list_projects"
+      ],
+      "assertions": {
+        "index_repository": {
+          "expect": {
+            "nodes_min": 8,
+            "edges_min": 4
+          }
+        },
+        "search_graph": [
+          {
+            "args": {
+              "project": "rust-basic",
+              "label": "Class"
+            },
+            "expect": {
+            "required_names": ["Counter", "Notifier"]
+            }
+          },
+          {
+            "args": {
+              "project": "rust-basic",
+              "label": "Function"
+            },
+            "expect": {
+              "required_names": ["emit", "build"]
+            }
+          }
+        ],
+        "query_graph": [
+          {
+            "args": {
+              "query": "MATCH (n) WHERE n.label = \"Class\" RETURN count(n)",
+              "project": "rust-basic",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["count"],
+              "required_rows_min": 1
+            }
+          }
+        ],
+        "trace_call_path": [
+          {
+            "args": {
+              "project": "rust-basic",
+              "start_node_name_hint": "build",
+              "direction": "out",
+              "depth": 6
+            },
+            "expect": {
+              "required_edge_types": ["CALLS"]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "zig-basic",
+      "path": "testdata/interop/zig-basic",
+      "project": "zig-basic",
+      "language": "zig",
+      "scope_tools": [
+        "index_repository",
+        "search_graph",
+        "query_graph",
+        "trace_call_path",
+        "list_projects"
+      ],
+      "assertions": {
+        "index_repository": {
+          "expect": {
+            "nodes_min": 5,
+            "edges_min": 1
+          }
+        },
+        "search_graph": [
+          {
+            "args": {
+              "project": "zig-basic",
+              "label": "Function"
+            },
+            "expect": {
+              "required_names": ["add", "run"]
+            }
+          },
+          {
+            "args": {
+              "project": "zig-basic",
+              "label": "Class"
+            },
+            "expect": {
+              "required_names": ["Settings"]
+            }
+          },
+          {
+            "args": {
+              "project": "zig-basic",
+              "label": "Constant"
+            },
+            "expect": {
+              "required_names": ["retry_limit"]
+            }
+          }
+        ],
+        "query_graph": [
+          {
+            "args": {
+              "query": "MATCH (n) WHERE n.label = \"Function\" RETURN count(n)",
+              "project": "zig-basic",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["count"],
+              "required_rows_min": 1
+            }
+          }
+        ],
+        "trace_call_path": [
+          {
+            "args": {
+              "project": "zig-basic",
+              "start_node_name_hint": "run",
+              "direction": "out",
+              "depth": 4
+            },
+            "expect": {
+              "required_edge_types": ["CONTAINS"]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

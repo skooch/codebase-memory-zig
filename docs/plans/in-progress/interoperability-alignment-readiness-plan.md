@@ -4,7 +4,7 @@
 Define and complete the minimum Zig-port work needed before an alignment test suite can usefully compare this implementation against the original `codebase-memory-mcp`.
 
 ## Current Phase
-Phase 4
+Phase 5
 
 ## File Map
 - Modify: `docs/plans/in-progress/interoperability-alignment-readiness-plan.md`
@@ -62,14 +62,14 @@ Phase 4
 - **Status:** complete
 
 ### Phase 5: Create the First Alignment Fixture Corpus
-- [ ] Create `testdata/interop/python-basic/main.py` and `testdata/interop/python-basic/util.py` to cover module imports, function definitions, and a resolved call edge.
-- [ ] Create `testdata/interop/javascript-basic/index.js` to cover function/class discovery and inheritance or import-driven call resolution in the JS family.
-- [ ] Create `testdata/interop/typescript-basic/index.ts` to cover TS-specific declaration forms that must still normalize to the readiness-scope graph contract.
-- [ ] Create `testdata/interop/rust-basic/src/lib.rs` to cover `fn`, `struct`, `trait`, and `impl ... for ...` extraction expectations.
-- [ ] Create `testdata/interop/zig-basic/main.zig` to cover function declarations, `@import`, and basic container/type extraction.
-- [ ] Create `testdata/interop/manifest.json` that maps each fixture to the tools, graph facts, and comparison assertions it is expected to exercise.
-- [ ] Exit this phase only when every target language has at least one committed fixture repo and the manifest states which graph behaviors each fixture must prove.
-- **Status:** pending
+- [x] Create `testdata/interop/python-basic/main.py` and `testdata/interop/python-basic/util.py` to cover module imports, function definitions, and a resolved call edge.
+- [x] Create `testdata/interop/javascript-basic/index.js` to cover function/class discovery and inheritance or import-driven call resolution in the JS family.
+- [x] Create `testdata/interop/typescript-basic/index.ts` to cover TS-specific declaration forms that must still normalize to the readiness-scope graph contract.
+- [x] Create `testdata/interop/rust-basic/src/lib.rs` to cover `fn`, `struct`, `trait`, and `impl ... for ...` extraction expectations.
+- [x] Create `testdata/interop/zig-basic/main.zig` to cover function declarations, `@import`, and basic container/type extraction.
+- [x] Create `testdata/interop/manifest.json` that maps each fixture to the tools, graph facts, and comparison assertions it is expected to exercise.
+- [x] Exit this phase only when every target language has at least one committed fixture repo and the manifest states which graph behaviors each fixture must prove.
+- [x] **Status:** complete
 
 ### Phase 6: Automate the Alignment Diff and Record the Baseline
 - [ ] Create `scripts/run_interop_alignment.sh` to run the Zig port and the original `codebase-memory-mcp` against the same fixture corpus using the readiness-scope tools.
@@ -91,18 +91,18 @@ Phase 4
 - **Phase 2 (complete):** Parser-backed extraction is now the default readiness path for target languages and is covered by parser-regression assertions.
 - **Phase 3 (done):** Command entrypoints and MCP tools are callable for readiness-level alignment smoke checks.
 - **Phase 4 (complete):** Comparison rules are detailed enough that a harness can score pass/fail without hand-written interpretation.
-- **Phase 5 (pending):** A committed cross-language fixture corpus exists with a manifest that states what each fixture proves.
+- **Phase 5 (complete):** A committed cross-language fixture corpus exists with a manifest that states what each fixture proves.
 - **Phase 6 (pending):** A repeatable harness run exists and the first mismatch categories have been recorded.
 
 ## Plan Checklist
 - [x] **Phase 1 complete** — interoperability scope, exclusions, and deterministic comparison rules are documented.
-- [ ] **Phase 1 stretch goal complete** — per-tool alignment mismatch contract is still not explicitly written down.
+- [x] **Phase 1 stretch goal complete** — per-tool alignment mismatch contract is explicitly written down.
 - [x] **Phase 2 vertical slice works** — discovery, extraction retention, registry resolution, and persisted call/import/semantic edges are working end-to-end.
 - [x] **Phase 2 hardening landed** — cross-file call-edge regression coverage exists and graph-buffer ID / allocation rollback bugs found during review have been fixed.
 - [x] **Phase 2 parity complete** — parser-backed definitions are the default for target languages, and language-specific regression coverage plus explicit deferred-parsing notes exist.
 - [x] **Phase 3 complete** — the five readiness-scope MCP tools and automation entrypoints are available.
 - [x] **Phase 4 contract complete** — per-tool comparison rules and tolerated drift are documented at harness-ready fidelity.
-- [ ] **Phase 5 fixtures complete** — the first cross-language fixture corpus and manifest are committed.
+- [x] **Phase 5 fixtures complete** — the first cross-language fixture corpus and manifest are committed.
 - [ ] **Phase 6 baseline complete** — the alignment harness runs both implementations and records the initial mismatch categories.
 - [x] **Runtime stability checkpoint** — the tree-sitter header/runtime compatibility crash is fixed and the current Zig test suite passes again.
 

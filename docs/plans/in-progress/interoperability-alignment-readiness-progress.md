@@ -89,14 +89,15 @@
   - [x] Define harness-ready pass/fail criteria.
 
 ### Phase 5: Create the First Alignment Fixture Corpus
-- **Status:** not_started
+- **Status:** complete
 - Actions:
-  - No committed interop fixture corpus exists yet.
-  - No manifest maps fixtures to expected graph behaviors yet.
+  - Added `testdata/interop/python-basic`, `javascript-basic`, `typescript-basic`, `rust-basic`, and `zig-basic` fixtures.
+  - Added `testdata/interop/manifest.json` with per-fixture tool coverage and expected graph behaviors.
+  - Updated readiness plan/checklist status to mark Phase 5 as complete.
 - Checklist status:
-  - [ ] Create Python, JavaScript, TypeScript, Rust, and Zig readiness fixtures.
-  - [ ] Add a fixture manifest with expected coverage/assertions.
-  - [ ] Ensure every target language is represented by at least one committed fixture repo.
+  - [x] Create Python, JavaScript, TypeScript, Rust, and Zig readiness fixtures.
+  - [x] Add a fixture manifest with expected coverage/assertions.
+  - [x] Ensure every target language is represented by at least one committed fixture repo.
 
 ### Phase 6: Automate the Alignment Diff and Record the Baseline
 - **Status:** not_started
