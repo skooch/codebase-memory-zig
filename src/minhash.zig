@@ -348,11 +348,11 @@ fn scanPunctuation(source: []const u8, start: usize) usize {
 
 fn isKeyword(token: []const u8) bool {
     const keywords = [_][]const u8{
-        "async",   "await",   "break",   "case",     "catch",   "class",   "const",
-        "continue","def",     "else",    "enum",     "export",  "fn",      "for",
-        "from",    "function","if",      "impl",     "import",  "in",      "interface",
-        "let",     "match",   "new",     "pub",      "return",  "struct",  "switch",
-        "trait",   "try",     "type",    "use",      "var",     "while",
+        "async",    "await",    "break", "case", "catch",  "class",  "const",
+        "continue", "def",      "else",  "enum", "export", "fn",     "for",
+        "from",     "function", "if",    "impl", "import", "in",     "interface",
+        "let",      "match",    "new",   "pub",  "return", "struct", "switch",
+        "trait",    "try",      "type",  "use",  "var",    "while",
     };
     for (keywords) |keyword| {
         if (std.mem.eql(u8, token, keyword)) return true;

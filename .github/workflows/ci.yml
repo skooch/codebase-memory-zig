@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - name: Format check
+        run: zig fmt --check src/ build.zig
+
+      - name: Build
+        run: zig build
+
+      - name: Run tests
+        run: zig build test
+
+      - name: Install zlint
+        run: |
+          curl -fsSL -o zlint https://github.com/DonIsaac/zlint/releases/download/v0.7.9/zlint-linux-x86_64
+          chmod +x zlint
+
+      - name: Run zlint
+        run: find src -name '*.zig' | ./zlint -S

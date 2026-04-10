@@ -41,13 +41,14 @@ src/
 
 ## Conventions
 
-- Zig 0.15.x (minimum 0.15.1)
+- Zig 0.15.x (minimum 0.15.2)
 - Explicit allocator passing everywhere
 - `std.heap.DebugAllocator` in debug, consider `std.heap.c_allocator` for release
 - Arena allocators for per-file extraction lifetimes
 - Error unions with inferred error sets where possible
 - Tests live in `*_test.zig` files alongside their module
 - `zig fmt` for formatting (enforced)
+- `find src -name '*.zig' | zlint -S` for Zig lint checks
 - If `git commit` or `git add` fails because `.git/index.lock` already exists, treat it as a stale lock, remove it with a non-interactive `rm -f .git/index.lock`, and retry the git command.
 
 ## Porting from C
