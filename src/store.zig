@@ -38,6 +38,27 @@ pub const Project = struct {
     root_path: []const u8 = "",
 };
 
+pub const ProjectStatus = struct {
+    project: []const u8,
+    indexed_at: []const u8 = "",
+    root_path: []const u8 = "",
+    nodes: i32 = 0,
+    edges: i32 = 0,
+    status: Status,
+
+    pub const Status = enum {
+        ready,
+        empty,
+        no_project,
+        not_found,
+    };
+};
+
+pub const NodeDegree = struct {
+    callers: i32 = 0,
+    callees: i32 = 0,
+};
+
 pub const NodeSearchFilter = struct {
     project: []const u8 = "",
     label_pattern: ?[]const u8 = null,
@@ -253,6 +274,43 @@ pub const Store = struct {
         _ = try self.stepNoResult(stmt);
     }
 
+    pub fn getProjectStatus(self: *Store, name: ?[]const u8) !ProjectStatus {
+        if (name == null or name.?.len == 0) {
+            return .{
+                .project = try self.allocator.dupe(u8, ""),
+                .status = .no_project,
+            };
+        }
+
+        const project_name = name.?;
+        const project = try self.getProject(project_name);
+        if (project == null) {
+            return .{
+                .project = try self.allocator.dupe(u8, project_name),
+                .status = .not_found,
+            };
+        }
+
+        const owned_project = project.?;
+        errdefer self.freeProject(owned_project);
+        const node_count = try self.countNodes(project_name);
+        const edge_count = try self.countEdges(project_name);
+        return .{
+            .project = owned_project.name,
+            .indexed_at = owned_project.indexed_at,
+            .root_path = owned_project.root_path,
+            .nodes = node_count,
+            .edges = edge_count,
+            .status = if (node_count > 0) .ready else .empty,
+        };
+    }
+
+    pub fn freeProjectStatus(self: *Store, status: ProjectStatus) void {
+        self.allocator.free(status.project);
+        self.allocator.free(status.indexed_at);
+        self.allocator.free(status.root_path);
+    }
+
     // --- Node CRUD -------------------------------------------------------
 
     pub fn upsertNode(self: *Store, node: Node) !i64 {
@@ -318,6 +376,35 @@ pub const Store = struct {
         if (rc != c.SQLITE_ROW) return StoreError.SqlError;
         const id = c.sqlite3_column_int64(stmt, 0);
         return id;
+    }
+
+    pub fn findNodesByQualifiedNameSuffix(
+        self: *Store,
+        project: []const u8,
+        qualified_name_suffix: []const u8,
+        limit: usize,
+    ) ![]Node {
+        const stmt = try self.prepare(
+            "SELECT id, project, label, name, qualified_name, file_path, start_line, end_line, properties " ++
+                "FROM nodes WHERE project = ?1 AND qualified_name LIKE ?2 ORDER BY qualified_name ASC LIMIT ?3",
+        );
+        defer self.finalize(stmt);
+
+        const suffix_like = try std.fmt.allocPrint(self.allocator, "%{s}", .{qualified_name_suffix});
+        defer self.allocator.free(suffix_like);
+
+        try self.bindText(stmt, 1, project);
+        try self.bindText(stmt, 2, suffix_like);
+        try self.bindInt(stmt, 3, @as(i64, @intCast(if (limit == 0) 25 else limit)));
+
+        var out = std.ArrayList(Node).empty;
+        while (true) {
+            const rc = c.sqlite3_step(stmt);
+            if (rc == c.SQLITE_DONE) break;
+            if (rc != c.SQLITE_ROW) return StoreError.SqlError;
+            try out.append(self.allocator, try self.rowToNode(stmt));
+        }
+        return out.toOwnedSlice(self.allocator);
     }
 
     pub fn searchNodes(self: *Store, filter: NodeSearchFilter) ![]Node {
@@ -392,14 +479,18 @@ pub const Store = struct {
 
     pub fn freeNodes(self: *Store, nodes: []Node) void {
         for (nodes) |n| {
-            self.allocator.free(n.project);
-            self.allocator.free(n.label);
-            self.allocator.free(n.name);
-            self.allocator.free(n.qualified_name);
-            self.allocator.free(n.file_path);
-            self.allocator.free(n.properties_json);
+            self.freeNode(n);
         }
         self.allocator.free(nodes);
+    }
+
+    pub fn freeNode(self: *Store, node: Node) void {
+        self.allocator.free(node.project);
+        self.allocator.free(node.label);
+        self.allocator.free(node.name);
+        self.allocator.free(node.qualified_name);
+        self.allocator.free(node.file_path);
+        self.allocator.free(node.properties_json);
     }
 
     pub fn countNodes(self: *Store, project: []const u8) !i32 {
@@ -532,6 +623,25 @@ pub const Store = struct {
         const rc = c.sqlite3_step(stmt);
         if (rc != c.SQLITE_ROW) return StoreError.SqlError;
         return @intCast(c.sqlite3_column_int64(stmt, 0));
+    }
+
+    pub fn getNodeDegree(self: *Store, project: []const u8, node_id: i64) !NodeDegree {
+        const callers_stmt = try self.prepare("SELECT COUNT(*) FROM edges WHERE project = ?1 AND target_id = ?2");
+        defer self.finalize(callers_stmt);
+        try self.bindText(callers_stmt, 1, project);
+        try self.bindInt(callers_stmt, 2, node_id);
+        if (c.sqlite3_step(callers_stmt) != c.SQLITE_ROW) return StoreError.SqlError;
+
+        const callees_stmt = try self.prepare("SELECT COUNT(*) FROM edges WHERE project = ?1 AND source_id = ?2");
+        defer self.finalize(callees_stmt);
+        try self.bindText(callees_stmt, 1, project);
+        try self.bindInt(callees_stmt, 2, node_id);
+        if (c.sqlite3_step(callees_stmt) != c.SQLITE_ROW) return StoreError.SqlError;
+
+        return .{
+            .callers = @intCast(c.sqlite3_column_int64(callers_stmt, 0)),
+            .callees = @intCast(c.sqlite3_column_int64(callees_stmt, 0)),
+        };
     }
 
     pub fn traverseEdgesBreadthFirst(
@@ -945,4 +1055,56 @@ test "store breadth-first traversal reuses shared edge traversal logic" {
     const both = try s.traverseEdgesBreadthFirst("p2", middle_id, .both, 1, null);
     defer s.freeTraversalEdges(both);
     try std.testing.expectEqual(@as(usize, 3), both.len);
+}
+
+test "store project status and suffix helpers support phase 3 tools" {
+    var s = try Store.openMemory(std.testing.allocator);
+    defer s.deinit();
+
+    const no_project = try s.getProjectStatus(null);
+    defer s.freeProjectStatus(no_project);
+    try std.testing.expectEqual(ProjectStatus.Status.no_project, no_project.status);
+
+    const missing = try s.getProjectStatus("missing");
+    defer s.freeProjectStatus(missing);
+    try std.testing.expectEqual(ProjectStatus.Status.not_found, missing.status);
+    try std.testing.expectEqualStrings("missing", missing.project);
+
+    try s.upsertProject("phase3", "/tmp/phase3");
+    const run_id = try s.upsertNode(.{
+        .project = "phase3",
+        .label = "Function",
+        .name = "run",
+        .qualified_name = "phase3.main.run",
+        .file_path = "src/main.py",
+    });
+    const helper_id = try s.upsertNode(.{
+        .project = "phase3",
+        .label = "Function",
+        .name = "helper",
+        .qualified_name = "phase3.helpers.helper",
+        .file_path = "src/helpers.py",
+    });
+    _ = try s.upsertEdge(.{
+        .project = "phase3",
+        .source_id = run_id,
+        .target_id = helper_id,
+        .edge_type = "CALLS",
+    });
+
+    const status = try s.getProjectStatus("phase3");
+    defer s.freeProjectStatus(status);
+    try std.testing.expectEqual(ProjectStatus.Status.ready, status.status);
+    try std.testing.expectEqual(@as(i32, 2), status.nodes);
+    try std.testing.expectEqual(@as(i32, 1), status.edges);
+    try std.testing.expectEqualStrings("/tmp/phase3", status.root_path);
+
+    const suffix = try s.findNodesByQualifiedNameSuffix("phase3", "main.run", 10);
+    defer s.freeNodes(suffix);
+    try std.testing.expectEqual(@as(usize, 1), suffix.len);
+    try std.testing.expectEqualStrings("phase3.main.run", suffix[0].qualified_name);
+
+    const degree = try s.getNodeDegree("phase3", run_id);
+    try std.testing.expectEqual(@as(i32, 0), degree.callers);
+    try std.testing.expectEqual(@as(i32, 1), degree.callees);
 }
