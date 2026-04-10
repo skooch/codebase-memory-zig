@@ -4,7 +4,10 @@ What the C codebase has that the Zig port does NOT yet have. Excludes deliberate
 
 Status key: **WORKS** (implemented for the current target contract), **STUB** (type signatures exist, no implementation), **MISSING** (not present at all), **PARTIAL** (some logic, incomplete)
 
-The detailed subsystem tables below are historical backlog references. When a table entry disagrees with the current snapshot, treat the current snapshot as the authoritative status and update the table during the next focused phase for that subsystem.
+For the most readable current-state comparison against the original implementation, see:
+- [port-comparison.md](/Users/skooch/projects/codebase-memory-zig/docs/port-comparison.md)
+
+The detailed subsystem tables below are historical backlog references. When a table entry disagrees with the current snapshot, treat the current snapshot and [port-comparison.md](/Users/skooch/projects/codebase-memory-zig/docs/port-comparison.md) as authoritative, and update the table during the next focused phase for that subsystem.
 
 ## Current Snapshot
 
@@ -107,7 +110,19 @@ This order is recommended because it maximizes shared reuse, keeps early verific
 
 ## Note On Detailed Matrix
 
-The detailed subsystem matrix below predates the completed readiness milestone and is best read as a broad backlog inventory rather than the authoritative status of the readiness slice. Use the snapshot and plan sections above for the current complete-vs-remaining split.
+The detailed subsystem matrix below predates the completed readiness milestone and much of the completed post-readiness work.
+
+Read it as:
+- a historical backlog inventory
+- a rough subsystem checklist for future follow-on work
+
+Do not read it as:
+- the current shipped status of the Zig port
+- the authoritative parity comparison with the original
+
+For the current complete-vs-deferred split, use:
+- the snapshot and plan sections above
+- [port-comparison.md](/Users/skooch/projects/codebase-memory-zig/docs/port-comparison.md)
 
 ---
 

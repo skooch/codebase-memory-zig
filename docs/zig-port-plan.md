@@ -557,3 +557,9 @@ The completed tracked plan for the broader execution stage now lives at:
 - [post-readiness-zig-port-execution-progress.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/post-readiness-zig-port-execution-progress.md)
 
 That plan replaced the older assumption that the remaining work should simply proceed M2 -> M3 -> M4 as written. The dependency-driven sequencing is now complete for the current target contract; future work should promote only the deferred slices that still fit the project goals.
+
+## 10. Port Comparison
+
+For a source-backed feature and capability comparison between the Zig port and the original C implementation, see:
+
+- [port-comparison.md](/Users/skooch/projects/codebase-memory-zig/docs/port-comparison.md)
