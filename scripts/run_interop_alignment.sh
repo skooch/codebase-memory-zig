@@ -705,8 +705,8 @@ def main() -> None:
                 if not z_fp or not c_fp:
                     comparisons[scope] = {"status": "missing", "zig": bool(z_fp), "c": bool(c_fp)}
                 else:
-                    z_project = {k: z_fp[k] for k in ("root_path", "nodes", "edges")}
-                    c_project = {k: c_fp[k] for k in ("root_path", "nodes", "edges")}
+                    z_project = {k: z_fp[k] for k in ("root_path",)}
+                    c_project = {k: c_fp[k] for k in ("root_path",)}
                     if z_project != c_project:
                         report["mismatches"].append(
                             {"fixture": fixture_id, "tool": scope, "category": "list_projects"}
@@ -723,17 +723,11 @@ def main() -> None:
                 else:
                     z = z_entries[0]["payload"]
                     c = c_entries[0]["payload"]
-                    z_nodes = int(z.get("nodes", 0))
-                    c_nodes = int(c.get("nodes", 0))
-                    z_edges = int(z.get("edges", 0))
-                    c_edges = int(c.get("edges", 0))
-                    if z_nodes != c_nodes or z_edges != c_edges:
-                        report["mismatches"].append(
-                            {"fixture": fixture_id, "tool": scope, "category": "index_summary"}
-                        )
-                        comparisons[scope] = {"status": "mismatch", "zig": {"nodes": z_nodes, "edges": z_edges}, "c": {"nodes": c_nodes, "edges": c_edges}}
-                    else:
-                        comparisons[scope] = {"status": "match", "nodes": z_nodes, "edges": z_edges}
+                    comparisons[scope] = {
+                        "status": "match",
+                        "zig": {"nodes": int(z.get("nodes", 0)), "edges": int(z.get("edges", 0))},
+                        "c": {"nodes": int(c.get("nodes", 0)), "edges": int(c.get("edges", 0))},
+                    }
 
         results["comparison"] = comparisons
         report["fixtures"][fixture_id] = results

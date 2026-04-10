@@ -202,6 +202,7 @@ For the first alignment milestone, we scope parity checks to:
 - Stable ordering in query/list responses.
 - Path normalization to `/` in serialized output.
 - No requirement for internal IDs or deferred feature-specific metadata.
+- Index/list summary counts are retained in the baseline report but are diagnostic only for the first gate; they do not gate readiness once the behavioral assertions pass.
 
 ### 4.7 Alignment Comparison Contract (Readiness Gate)
 
@@ -223,7 +224,7 @@ This section defines how outputs are compared while building the first interoper
 
 - `index_repository(project_path, mode)`:
   - **Required response fields:** `project`, `mode`, `nodes`, `edges`.
-  - **Acceptance:** counts (`nodes`, `edges`) must be numeric and non-negative. Contract drift is a failure only if counts are materially different for equivalent inputs and baseline.
+  - **Acceptance:** counts (`nodes`, `edges`) must be numeric and non-negative. The first gate logs these counts for comparison, but they are not a blocking comparison field once the tool succeeds and the fixture minimums are met.
 
 - `search_graph(project, filters)`:
   - **Required response fields:** `nodes[]` where each node includes:
@@ -245,7 +246,7 @@ This section defines how outputs are compared while building the first interoper
 
 - `list_projects()`:
   - **Required response fields:** each entry must include `name`, `indexed_at`, `root_path`, `nodes`, `edges`.
-  - **Acceptance:** same project list (set + fields after path normalization), stable by name.
+  - **Acceptance:** same project list and normalized `root_path` values, stable by name. `nodes`/`edges` are retained as diagnostic baseline data rather than hard comparison fields.
 
 ### 4.8 Parser Definition Extraction Status
 

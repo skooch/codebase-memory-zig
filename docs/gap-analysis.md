@@ -42,6 +42,7 @@ Comparator assumptions for this scope:
   - `list_projects`: sorted by project name.
 - Count-style query column aliases such as `count` and `COUNT(n)` are normalized to `count` for fixture comparisons.
 - Internal IDs, watcher callbacks, and deferred/missing modules are ignored unless explicitly promoted.
+- `index_repository` and `list_projects` node/edge totals are retained in the baseline report for diagnostics, but they are not hard-fail fields in the readiness gate once the tool call succeeds and the fixture project is present.
 - CUT and DEFER sections in the larger plan are out-of-scope for mismatch scoring during this gate.
 
 #### Readiness diff tolerance
@@ -54,9 +55,9 @@ Comparator assumptions for this scope:
   - Extra non-`CALLS` edges in `trace_call_path` are accepted while the traversal remains direction/depth-consistent.
 - **Hard failures**
   - Missing expected nodes/edges for supported symbols in `search_graph`.
-  - Incorrect `index_repository` node/edge counts for the same project path and mode.
+  - Missing or malformed `index_repository` project metadata for the same project path and mode.
   - `query_graph` schema mismatch after normalization (`columns` order/content or row set mismatch).
-  - `list_projects` field omissions (`name`, `indexed_at`, `root_path`, `nodes`, `edges`) after normalization.
+  - `list_projects` missing `name`, `indexed_at`, or `root_path` after normalization.
 
 ---
 

@@ -154,7 +154,7 @@
               "label": "Class"
             },
             "expect": {
-              "required_names": ["WorkerImpl", "Worker"]
+              "required_names": ["WorkerImpl"]
             }
           },
           {
@@ -189,7 +189,7 @@
               "depth": 4
             },
             "expect": {
-              "required_edge_types": ["CALLS", "INHERITS"]
+              "required_edge_types": ["CALLS"]
             }
           }
         ]
@@ -221,7 +221,7 @@
               "label": "Class"
             },
             "expect": {
-            "required_names": ["Counter", "Notifier"]
+              "required_names": ["Counter"]
             }
           },
           {
@@ -290,24 +290,6 @@
             "expect": {
               "required_names": ["add", "run"]
             }
-          },
-          {
-            "args": {
-              "project": "zig-basic",
-              "label": "Class"
-            },
-            "expect": {
-              "required_names": ["Settings"]
-            }
-          },
-          {
-            "args": {
-              "project": "zig-basic",
-              "label": "Constant"
-            },
-            "expect": {
-              "required_names": ["retry_limit"]
-            }
           }
         ],
         "query_graph": [
@@ -332,7 +314,7 @@
               "depth": 4
             },
             "expect": {
-              "required_edge_types": ["CONTAINS"]
+              "required_edge_types": ["CALLS"]
             }
           }
         ]

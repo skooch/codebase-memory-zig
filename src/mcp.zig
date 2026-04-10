@@ -310,7 +310,7 @@ pub const McpServer = struct {
             const next_depth = next.depth + 1;
             if (next_depth > max_depth) break;
 
-            if (std.mem.eql(u8, direction, "out") or std.mem.eql(u8, direction, "both")) {
+            if (isOutboundDirection(direction)) {
                 const outgoing = try self.db.findEdgesBySource(project, next.id, null);
                 defer self.db.freeEdges(outgoing);
                 for (outgoing) |edge| {
@@ -330,7 +330,7 @@ pub const McpServer = struct {
                 }
             }
 
-            if (std.mem.eql(u8, direction, "in") or std.mem.eql(u8, direction, "both")) {
+            if (isInboundDirection(direction)) {
                 const incoming = try self.db.findEdgesByTarget(project, next.id, null);
                 defer self.db.freeEdges(incoming);
                 for (incoming) |edge| {
@@ -370,6 +370,18 @@ pub const McpServer = struct {
         const owned_payload = try payload.toOwnedSlice(self.allocator);
         defer self.allocator.free(owned_payload);
         return self.successResponse(request_id, owned_payload);
+    }
+
+    fn isOutboundDirection(direction: []const u8) bool {
+        return std.mem.eql(u8, direction, "out") or
+            std.mem.eql(u8, direction, "outbound") or
+            std.mem.eql(u8, direction, "both");
+    }
+
+    fn isInboundDirection(direction: []const u8) bool {
+        return std.mem.eql(u8, direction, "in") or
+            std.mem.eql(u8, direction, "inbound") or
+            std.mem.eql(u8, direction, "both");
     }
 
     fn handleListProjects(self: *McpServer, request_id: ?std.json.Value) !?[]const u8 {
@@ -549,7 +561,7 @@ test "trace_call_path returns qualified names" {
     defer srv.deinit();
 
     const response = (try srv.handleRequest(
-        \\{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"trace_call_path","arguments":{"project":"demo","start_node_qn":"demo:start","direction":"out","depth":2}}}
+        \\{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"trace_call_path","arguments":{"project":"demo","start_node_qn":"demo:start","direction":"outbound","depth":2}}}
     )).?;
     defer std.testing.allocator.free(response);
 

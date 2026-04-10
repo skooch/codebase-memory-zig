@@ -95,11 +95,12 @@ pub fn execute(
     errdefer db.freeNodes(nodes);
 
     var columns = std.ArrayList([]const u8).empty;
-    try columns.append(allocator, "id");
-    try columns.append(allocator, "label");
-    try columns.append(allocator, "name");
-    try columns.append(allocator, "qualified_name");
-    try columns.append(allocator, "file_path");
+    defer columns.deinit(allocator);
+    try columns.append(allocator, try allocator.dupe(u8, "id"));
+    try columns.append(allocator, try allocator.dupe(u8, "label"));
+    try columns.append(allocator, try allocator.dupe(u8, "name"));
+    try columns.append(allocator, try allocator.dupe(u8, "qualified_name"));
+    try columns.append(allocator, try allocator.dupe(u8, "file_path"));
     const out_rows = try allocator.alloc([][]const u8, nodes.len);
     for (nodes, 0..) |node, idx| {
         var row = std.ArrayList([]const u8).empty;

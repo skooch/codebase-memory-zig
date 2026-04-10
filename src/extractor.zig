@@ -204,10 +204,12 @@ pub fn extractFile(
                 .qualified_name = try allocator.dupe(u8, symbol_qn),
                 .file_path = try allocator.dupe(u8, rel),
             });
-            try scope_markers.append(allocator, .{
-                .symbol_id = symbol_id,
-                .line_no = def.start_line,
-            });
+            if (isDeclarationLabel(def.label)) {
+                try scope_markers.append(allocator, .{
+                    .symbol_id = symbol_id,
+                    .line_no = def.start_line,
+                });
+            }
         }
         allocator.free(symbol_qn);
     }
@@ -231,39 +233,34 @@ pub fn extractFile(
             scope_index += 1;
         }
 
-        if (!supportsTreeSitterDefs(file.language)) {
-            if (parseSymbol(file.language, clean_line)) |sym| {
-                const symbol_qn = try std.fmt.allocPrint(
-                    allocator,
-                    "{s}:{s}:{s}:symbol:{s}:{s}",
-                    .{ project_name, qn_base, @tagName(file.language), @tagName(file.language), sym.name },
-                );
-                const symbol_id = try gb.upsertNode(
-                    sym.label,
-                    sym.name,
-                    symbol_qn,
-                    rel,
-                    line_no,
-                    line_no,
-                );
-                if (symbol_id > 0 and gb.findNodeById(module_id) != null) {
-                    _ = gb.insertEdge(module_id, symbol_id, "CONTAINS") catch |err| switch (err) {
-                        graph_buffer.GraphBufferError.DuplicateEdge => {},
-                        else => {
-                            allocator.free(symbol_qn);
-                            return err;
-                        },
-                    };
-                    try symbols.append(allocator, .{
-                        .id = symbol_id,
-                        .label = try allocator.dupe(u8, sym.label),
-                        .name = try allocator.dupe(u8, sym.name),
-                        .qualified_name = try allocator.dupe(u8, symbol_qn),
-                        .file_path = try allocator.dupe(u8, rel),
-                    });
-                    current_scope_id = symbol_id;
+        const parsed_symbol = parseSymbol(file.language, clean_line);
+        if (parsed_symbol) |sym| {
+            const symbol_qn = try std.fmt.allocPrint(
+                allocator,
+                "{s}:{s}:{s}:symbol:{s}:{s}",
+                .{ project_name, qn_base, @tagName(file.language), @tagName(file.language), sym.name },
+            );
+            defer allocator.free(symbol_qn);
+
+            addSymbolFromParsed(
+                allocator,
+                project_name,
+                qn_base,
+                rel,
+                file.language,
+                line_no,
+                sym,
+                gb,
+                module_id,
+                &symbols,
+            ) catch |err| switch (err) {
+                error.OutOfMemory => return err,
+                else => {},
+            };
+            if (sym.label.len > 0 and isDeclarationLabel(sym.label)) {
+                if (gb.findNodeByQualifiedName(symbol_qn)) |decl_node| {
+                    current_scope_id = decl_node.id;
                 }
-                allocator.free(symbol_qn);
             }
         }
         try parseImports(
@@ -286,7 +283,12 @@ pub fn extractFile(
             }
         }
 
-        const callee_names = collectCalls(allocator, clean_line, file.language) catch |err| switch (err) {
+        const callee_names = collectCalls(
+            allocator,
+            clean_line,
+            file.language,
+            parsed_symbol,
+        ) catch |err| switch (err) {
             error.OutOfMemory => return err,
         };
         if (callee_names) |names| {
@@ -497,9 +499,15 @@ fn collectCalls(
     allocator: std.mem.Allocator,
     line: []const u8,
     language: discover.Language,
+    parsed_symbol: ?ParsedSymbol,
 ) !?[]const []const u8 {
     if (line.len == 0) return null;
-    if (isDeclarationLine(language, line)) return null;
+    if (parsed_symbol) |sym| {
+        if (isDeclarationLabel(sym.label)) return null;
+    } else if (isDeclarationLine(language, line)) {
+        return null;
+    }
+
     var names: std.ArrayList([]const u8) = .empty;
     errdefer freePendingStringSlices(allocator, &names);
     var i: usize = 0;
@@ -560,6 +568,60 @@ fn parseSymbol(language: discover.Language, line: []const u8) ?ParsedSymbol {
         .zig => parseZigDefs(line),
         else => null,
     };
+}
+
+fn isDeclarationLabel(label: []const u8) bool {
+    return std.mem.eql(u8, label, "Function") or
+        std.mem.eql(u8, label, "Class") or
+        std.mem.eql(u8, label, "Struct") or
+        std.mem.eql(u8, label, "Trait") or
+        std.mem.eql(u8, label, "Interface") or
+        std.mem.eql(u8, label, "Test");
+}
+
+fn addSymbolFromParsed(
+    allocator: std.mem.Allocator,
+    project_name: []const u8,
+    qn_base: []const u8,
+    rel: []const u8,
+    language: discover.Language,
+    line_no: i32,
+    symbol: ParsedSymbol,
+    gb: *graph_buffer.GraphBuffer,
+    module_id: i64,
+    symbols: *std.ArrayList(ExtractedSymbol),
+) !void {
+    const symbol_qn = try std.fmt.allocPrint(
+        allocator,
+        "{s}:{s}:{s}:symbol:{s}:{s}",
+        .{ project_name, qn_base, @tagName(language), @tagName(language), symbol.name },
+    );
+    defer allocator.free(symbol_qn);
+
+    const exists = gb.findNodeByQualifiedName(symbol_qn) != null;
+    const symbol_id = try gb.upsertNode(
+        symbol.label,
+        symbol.name,
+        symbol_qn,
+        rel,
+        line_no,
+        line_no,
+    );
+    if (symbol_id > 0 and gb.findNodeById(module_id) != null and !exists) {
+        _ = gb.insertEdge(module_id, symbol_id, "CONTAINS") catch |err| switch (err) {
+            graph_buffer.GraphBufferError.DuplicateEdge => {},
+            else => {
+                return err;
+            },
+        };
+        try symbols.append(allocator, .{
+            .id = symbol_id,
+            .label = try allocator.dupe(u8, symbol.label),
+            .name = try allocator.dupe(u8, symbol.name),
+            .qualified_name = try allocator.dupe(u8, symbol_qn),
+            .file_path = try allocator.dupe(u8, rel),
+        });
+    }
 }
 
 fn supportsTreeSitterDefs(language: discover.Language) bool {
@@ -641,7 +703,7 @@ fn tsNodeLabel(language: discover.Language, kind: []const u8) ?[]const u8 {
             std.mem.eql(u8, kind, "interface_declaration") or
             std.mem.eql(u8, kind, "type_alias_declaration") or
             std.mem.eql(u8, kind, "internal_module"))
-            "Class"
+            "Interface"
         else
             null,
         .rust => if (std.mem.eql(u8, kind, "function_item") or
@@ -654,7 +716,7 @@ fn tsNodeLabel(language: discover.Language, kind: []const u8) ?[]const u8 {
             std.mem.eql(u8, kind, "trait_item") or
             std.mem.eql(u8, kind, "type_item") or
             std.mem.eql(u8, kind, "impl_item"))
-            "Class"
+            if (std.mem.eql(u8, kind, "trait_item")) "Trait" else "Class"
         else
             null,
         .zig => if (std.mem.eql(u8, kind, "function_declaration") or
@@ -663,7 +725,7 @@ fn tsNodeLabel(language: discover.Language, kind: []const u8) ?[]const u8 {
         else if (std.mem.eql(u8, kind, "struct_declaration") or
             std.mem.eql(u8, kind, "enum_declaration") or
             std.mem.eql(u8, kind, "union_declaration"))
-            "Class"
+            "Struct"
         else if (std.mem.eql(u8, kind, "variable_declaration"))
             "Constant"
         else
@@ -814,7 +876,7 @@ fn parseRustDefs(line: []const u8) ?ParsedSymbol {
         return .{ .label = "Class", .name = name };
     }
     if (extractPrefixName(line, "trait ")) |name| {
-        return .{ .label = "Class", .name = name };
+        return .{ .label = "Trait", .name = name };
     }
     if (parseRustImpl(line)) |name| {
         return .{ .label = "Class", .name = name };
@@ -1017,7 +1079,10 @@ fn parseRustImplParts(line: []const u8) ?struct {
 }
 
 fn isDeclarationLine(language: discover.Language, line: []const u8) bool {
-    return parseSymbol(language, line) != null;
+    if (parseSymbol(language, line)) |sym| {
+        return isDeclarationLabel(sym.label);
+    }
+    return false;
 }
 
 fn stripComments(language: discover.Language, line: []const u8) []const u8 {
@@ -1194,6 +1259,11 @@ test "extractor parses definitions for core languages" {
     try std.testing.expect(parseSymbol(.rust, "impl Display for Foo") != null);
 }
 
+test "extractor parseSymbol captures top-level rust functions" {
+    try std.testing.expect(parseSymbol(.rust, "pub fn emit(notifier: &impl Notifier, msg: &str) {") != null);
+    try std.testing.expect(parseSymbol(.rust, "pub fn build(counter: &mut Counter) {") != null);
+}
+
 test "tree-sitter extracts python definitions with labels and line numbers" {
     var defs = std.ArrayList(TsDefinition).empty;
     defer freePendingTsDefinitions(std.testing.allocator, &defs);
@@ -1272,7 +1342,7 @@ test "tree-sitter extracts typescript definitions with labels and line numbers" 
         &defs,
     );
 
-    try std.testing.expect(definitionPresent(defs.items, "Class", "ServicePort", 1));
+    try std.testing.expect(definitionPresent(defs.items, "Interface", "ServicePort", 1));
     try std.testing.expect(definitionPresent(defs.items, "Function", "helper", 5));
     try std.testing.expect(definitionPresent(defs.items, "Class", "Service", 9));
 }
@@ -1298,7 +1368,7 @@ test "tree-sitter extracts tsx definitions with labels and line numbers" {
         &defs,
     );
 
-    try std.testing.expect(definitionPresent(defs.items, "Class", "Props", 3));
+    try std.testing.expect(definitionPresent(defs.items, "Interface", "Props", 3));
     try std.testing.expect(definitionPresent(defs.items, "Function", "View", 5));
 }
 
@@ -1332,10 +1402,60 @@ test "tree-sitter extracts rust definitions with labels and line numbers" {
     );
 
     try std.testing.expect(definitionPresent(defs.items, "Class", "Service", 1));
-    try std.testing.expect(definitionPresent(defs.items, "Class", "Handler", 5));
+    try std.testing.expect(definitionPresent(defs.items, "Trait", "Handler", 5));
     try std.testing.expect(definitionPresent(defs.items, "Function", "helper", 7));
     try std.testing.expect(definitionPresent(defs.items, "Function", "main", 11));
     try std.testing.expect(definitionPresent(defs.items, "Class", "Service", 15));
+}
+
+test "line parser captures Rust top-level funcs despite traits" {
+    const source =
+        \\pub const VERSION: u32 = 1;
+        \\
+        \\pub struct Counter {
+        \\    pub value: i32,
+        \\}
+        \\
+        \\pub trait Notifier {
+        \\    fn notify(&self, msg: &str);
+        \\}
+        \\
+        \\impl Counter {
+        \\    pub fn new(value: i32) -> Self {
+        \\        Self { value }
+        \\    }
+        \\
+        \\    pub fn bump(&mut self) {
+        \\        self.value += 1;
+        \\    }
+        \\}
+        \\
+        \\impl Notifier for Counter {
+        \\    fn notify(&self, msg: &str) {
+        \\        println!("{msg}");
+        \\    }
+        \\}
+        \\
+        \\pub fn emit(notifier: &impl Notifier, msg: &str) {
+        \\    notifier.notify(msg);
+        \\}
+        \\
+        \\pub fn build(counter: &mut Counter) {
+        \\    counter.bump();
+        \\    emit(counter, "ready");
+        \\}
+        \\
+        ;
+    var lines = std.mem.splitAny(u8, source, "\n\r");
+    var line_no: u32 = 1;
+    while (lines.next()) |line_raw| : (line_no += 1) {
+        const line = std.mem.trim(u8, line_raw, " \t");
+        if (line.len == 0) continue;
+        const symbol = parseSymbol(.rust, line);
+        if (symbol) |sym| {
+            std.debug.print("line {}: {s} {s}\n", .{ line_no, sym.label, sym.name });
+        }
+    }
 }
 
 test "tree-sitter extracts zig definitions with labels and line numbers" {
@@ -1390,12 +1510,22 @@ test "rust impl parsing keeps target and trait roles straight" {
 }
 
 test "call collection skips declaration lines" {
-    try std.testing.expect((try collectCalls(std.testing.allocator, "fn main() void {}", .zig)) == null);
-    try std.testing.expect((try collectCalls(std.testing.allocator, "def hello(x):", .python)) == null);
-    try std.testing.expect((try collectCalls(std.testing.allocator, "class Foo(Base):", .python)) == null);
+    try std.testing.expect((try collectCalls(std.testing.allocator, "fn main() void {}", .zig, null)) == null);
+    try std.testing.expect((try collectCalls(std.testing.allocator, "def hello(x):", .python, null)) == null);
+    try std.testing.expect((try collectCalls(std.testing.allocator, "class Foo(Base):", .python, null)) == null);
 
-    const calls = (try collectCalls(std.testing.allocator, "result = helper(value)", .python)) orelse return error.TestUnexpectedResult;
+    const calls = (try collectCalls(std.testing.allocator, "result = helper(value)", .python, null)) orelse return error.TestUnexpectedResult;
     defer freeStringSlices(std.testing.allocator, calls);
     try std.testing.expectEqual(@as(usize, 1), calls.len);
     try std.testing.expectEqualStrings("helper", calls[0]);
+
+    const const_calls = (try collectCalls(
+        std.testing.allocator,
+        "const doubled = add(value, 1)",
+        .zig,
+        null,
+    )) orelse return error.TestUnexpectedResult;
+    defer freeStringSlices(std.testing.allocator, const_calls);
+    try std.testing.expectEqual(@as(usize, 1), const_calls.len);
+    try std.testing.expectEqualStrings("add", const_calls[0]);
 }
