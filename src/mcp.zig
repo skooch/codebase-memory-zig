@@ -268,13 +268,6 @@ pub const McpServer = struct {
     }
 
     fn handleTraceCallPath(self: *McpServer, request_id: ?std.json.Value, args: std.json.Value) !?[]const u8 {
-        const TraceEdge = struct {
-            id: i64,
-            source_id: i64,
-            target_id: i64,
-            edge_type: []u8,
-        };
-
         const project = stringArg(args, "project") orelse return self.errorResponse(request_id, -32602, "Missing project");
         const start_node_qn = stringArg(args, "start_node_qn") orelse return self.errorResponse(request_id, -32602, "Missing start_node_qn");
         const direction = stringArg(args, "direction") orelse "out";
@@ -284,70 +277,14 @@ pub const McpServer = struct {
             return self.errorResponse(request_id, -32602, "Unknown start_node_qn");
         defer freeOwnedNode(self.allocator, start);
 
-        var frontier = std.ArrayList(struct { id: i64, depth: u32 }).empty;
-        defer frontier.deinit(self.allocator);
-        var visited = std.AutoHashMap(i64, void).init(self.allocator);
-        defer visited.deinit();
-        var edges = std.ArrayList(TraceEdge).empty;
-        defer {
-            for (edges.items) |edge| self.allocator.free(edge.edge_type);
-            edges.deinit(self.allocator);
-        }
-        var seen_edges = std.AutoHashMap(i64, void).init(self.allocator);
-        defer seen_edges.deinit();
-
-        try frontier.append(self.allocator, .{ .id = start.id, .depth = 0 });
-        try visited.put(start.id, {});
-
-        while (frontier.items.len > 0) {
-            const next = frontier.orderedRemove(0);
-            const next_depth = next.depth + 1;
-            if (next_depth > max_depth) break;
-
-            if (isOutboundDirection(direction)) {
-                const outgoing = try self.db.findEdgesBySource(project, next.id, null);
-                defer self.db.freeEdges(outgoing);
-                for (outgoing) |edge| {
-                    if (!seen_edges.contains(edge.id)) {
-                        try seen_edges.put(edge.id, {});
-                        try edges.append(self.allocator, .{
-                            .id = edge.id,
-                            .source_id = edge.source_id,
-                            .target_id = edge.target_id,
-                            .edge_type = try self.allocator.dupe(u8, edge.edge_type),
-                        });
-                    }
-                    if (!visited.contains(edge.target_id)) {
-                        try visited.put(edge.target_id, {});
-                        try frontier.append(self.allocator, .{ .id = edge.target_id, .depth = next_depth });
-                    }
-                }
-            }
-
-            if (isInboundDirection(direction)) {
-                const incoming = try self.db.findEdgesByTarget(project, next.id, null);
-                defer self.db.freeEdges(incoming);
-                for (incoming) |edge| {
-                    if (!seen_edges.contains(edge.id)) {
-                        try seen_edges.put(edge.id, {});
-                        try edges.append(self.allocator, .{
-                            .id = edge.id,
-                            .source_id = edge.source_id,
-                            .target_id = edge.target_id,
-                            .edge_type = try self.allocator.dupe(u8, edge.edge_type),
-                        });
-                    }
-                    if (!visited.contains(edge.source_id)) {
-                        try visited.put(edge.source_id, {});
-                        try frontier.append(self.allocator, .{ .id = edge.source_id, .depth = next_depth });
-                    }
-                }
-            }
-        }
+        const traversal_direction = parseTraversalDirection(direction) orelse
+            return self.errorResponse(request_id, -32602, "Invalid direction");
+        const edges = try self.db.traverseEdgesBreadthFirst(project, start.id, traversal_direction, max_depth, null);
+        defer self.db.freeTraversalEdges(edges);
 
         var payload = std.ArrayList(u8).empty;
         try payload.appendSlice(self.allocator, "{\"edges\":[");
-        for (edges.items, 0..) |edge, idx| {
+        for (edges, 0..) |edge, idx| {
             if (idx > 0) try payload.append(self.allocator, ',');
             const source = (try self.db.findNodeById(project, edge.source_id)) orelse
                 return self.errorResponse(request_id, -32603, "Trace edge source missing");
@@ -364,18 +301,6 @@ pub const McpServer = struct {
         const owned_payload = try payload.toOwnedSlice(self.allocator);
         defer self.allocator.free(owned_payload);
         return self.successResponse(request_id, owned_payload);
-    }
-
-    fn isOutboundDirection(direction: []const u8) bool {
-        return std.mem.eql(u8, direction, "out") or
-            std.mem.eql(u8, direction, "outbound") or
-            std.mem.eql(u8, direction, "both");
-    }
-
-    fn isInboundDirection(direction: []const u8) bool {
-        return std.mem.eql(u8, direction, "in") or
-            std.mem.eql(u8, direction, "inbound") or
-            std.mem.eql(u8, direction, "both");
     }
 
     fn handleListProjects(self: *McpServer, request_id: ?std.json.Value) !?[]const u8 {
@@ -439,6 +364,19 @@ fn freeOwnedNode(allocator: std.mem.Allocator, node: store.Node) void {
     allocator.free(node.qualified_name);
     allocator.free(node.file_path);
     allocator.free(node.properties_json);
+}
+
+fn parseTraversalDirection(direction: []const u8) ?store.TraversalDirection {
+    if (std.mem.eql(u8, direction, "out") or std.mem.eql(u8, direction, "outbound")) {
+        return .outbound;
+    }
+    if (std.mem.eql(u8, direction, "in") or std.mem.eql(u8, direction, "inbound")) {
+        return .inbound;
+    }
+    if (std.mem.eql(u8, direction, "both")) {
+        return .both;
+    }
+    return null;
 }
 
 fn SupportedToolFromString(name: []const u8) error{UnsupportedTool}!SupportedTool {

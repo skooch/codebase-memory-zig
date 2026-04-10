@@ -16,9 +16,22 @@
   - `docs/gap-analysis.md`
 
 ### Next Phase
-- **Status:** pending
+- **Status:** in progress
 - Focus:
-  - Phase 2 will finish the shared graph/query substrate before additional public-surface growth starts.
+  - Phase 2 is now underway, starting with shared breadth-first graph traversal in `Store` so later tools can reuse durable traversal/query behavior instead of keeping BFS logic inside MCP handlers.
+
+### Phase 2: Core Graph and Query Substrate
+- **Status:** in progress
+- Actions:
+  - Re-read the current `Store`, `GraphBuffer`, `Registry`, `Pipeline`, and MCP tool handlers to compare the planned substrate backlog against what the repository already implements.
+  - Confirmed that basic project/node/edge CRUD, schema summaries, graph-buffer deduplication, and registry-backed resolution are already present, so the first substrate slice should target reusable traversal behavior rather than redoing existing primitives.
+  - Selected shared breadth-first edge traversal as the first Phase 2 chunk because it directly supports `trace_call_path` today and future connected-node, architecture, and analysis work later in the plan.
+  - Added a shared breadth-first traversal API in `src/store.zig`, refactored `trace_call_path` in `src/mcp.zig` to use it, and added regression coverage for outbound, inbound, and bidirectional traversal behavior.
+  - Verified the chunk with `zig build test` and `zig build`.
+- Files modified:
+  - `docs/plans/in-progress/post-readiness-zig-port-execution-progress.md`
+  - `src/store.zig`
+  - `src/mcp.zig`
 
 ## Errors
 | Timestamp | Error | Attempt | Resolution |

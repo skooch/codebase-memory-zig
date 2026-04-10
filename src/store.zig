@@ -47,6 +47,22 @@ pub const NodeSearchFilter = struct {
     limit: usize = 100,
 };
 
+pub const TraversalDirection = enum {
+    outbound,
+    inbound,
+    both,
+};
+
+pub const TraversalEdge = struct {
+    id: i64 = 0,
+    project: []const u8 = "",
+    source_id: i64 = 0,
+    target_id: i64 = 0,
+    edge_type: []const u8 = "",
+    properties_json: []const u8 = "{}",
+    depth: u32 = 0,
+};
+
 pub const SchemaSummary = struct {
     labels: []const LabelCount,
     edge_types: []const EdgeTypeCount,
@@ -518,6 +534,72 @@ pub const Store = struct {
         return @intCast(c.sqlite3_column_int64(stmt, 0));
     }
 
+    pub fn traverseEdgesBreadthFirst(
+        self: *Store,
+        project: []const u8,
+        start_node_id: i64,
+        direction: TraversalDirection,
+        max_depth: u32,
+        edge_type: ?[]const u8,
+    ) ![]TraversalEdge {
+        var frontier = std.ArrayList(struct { id: i64, depth: u32 }).empty;
+        defer frontier.deinit(self.allocator);
+
+        var visited = std.AutoHashMap(i64, void).init(self.allocator);
+        defer visited.deinit();
+
+        var seen_edges = std.AutoHashMap(i64, void).init(self.allocator);
+        defer seen_edges.deinit();
+
+        var out = std.ArrayList(TraversalEdge).empty;
+        errdefer {
+            self.freeTraversalEdgeItems(out.items);
+            out.deinit(self.allocator);
+        }
+
+        try frontier.append(self.allocator, .{ .id = start_node_id, .depth = 0 });
+        try visited.put(start_node_id, {});
+
+        while (frontier.items.len > 0) {
+            const next = frontier.orderedRemove(0);
+            const next_depth = next.depth + 1;
+            if (next_depth > max_depth) continue;
+
+            if (direction == .outbound or direction == .both) {
+                const outgoing = try self.findEdgesBySource(project, next.id, edge_type);
+                defer self.freeEdges(outgoing);
+
+                for (outgoing) |edge| {
+                    try self.collectTraversalEdge(&out, &seen_edges, edge, next_depth);
+                    if (!visited.contains(edge.target_id)) {
+                        try visited.put(edge.target_id, {});
+                        try frontier.append(self.allocator, .{ .id = edge.target_id, .depth = next_depth });
+                    }
+                }
+            }
+
+            if (direction == .inbound or direction == .both) {
+                const incoming = try self.findEdgesByTarget(project, next.id, edge_type);
+                defer self.freeEdges(incoming);
+
+                for (incoming) |edge| {
+                    try self.collectTraversalEdge(&out, &seen_edges, edge, next_depth);
+                    if (!visited.contains(edge.source_id)) {
+                        try visited.put(edge.source_id, {});
+                        try frontier.append(self.allocator, .{ .id = edge.source_id, .depth = next_depth });
+                    }
+                }
+            }
+        }
+
+        return out.toOwnedSlice(self.allocator);
+    }
+
+    pub fn freeTraversalEdges(self: *Store, edges: []TraversalEdge) void {
+        self.freeTraversalEdgeItems(edges);
+        self.allocator.free(edges);
+    }
+
     pub fn getSchema(self: *Store, project: []const u8) !SchemaSummary {
         var labels = std.ArrayList(LabelCount).empty;
         var edge_types = std.ArrayList(EdgeTypeCount).empty;
@@ -664,6 +746,47 @@ pub const Store = struct {
         };
     }
 
+    fn collectTraversalEdge(
+        self: *Store,
+        out: *std.ArrayList(TraversalEdge),
+        seen_edges: *std.AutoHashMap(i64, void),
+        edge: Edge,
+        depth: u32,
+    ) !void {
+        if (seen_edges.contains(edge.id)) return;
+
+        try seen_edges.put(edge.id, {});
+        errdefer _ = seen_edges.remove(edge.id);
+
+        try out.append(self.allocator, try self.duplicateTraversalEdge(edge, depth));
+    }
+
+    fn duplicateTraversalEdge(self: *Store, edge: Edge, depth: u32) !TraversalEdge {
+        const project = try self.allocator.dupe(u8, edge.project);
+        errdefer self.allocator.free(project);
+        const edge_type = try self.allocator.dupe(u8, edge.edge_type);
+        errdefer self.allocator.free(edge_type);
+        const properties_json = try self.allocator.dupe(u8, edge.properties_json);
+
+        return .{
+            .id = edge.id,
+            .project = project,
+            .source_id = edge.source_id,
+            .target_id = edge.target_id,
+            .edge_type = edge_type,
+            .properties_json = properties_json,
+            .depth = depth,
+        };
+    }
+
+    fn freeTraversalEdgeItems(self: *Store, edges: []TraversalEdge) void {
+        for (edges) |edge| {
+            self.allocator.free(edge.project);
+            self.allocator.free(edge.edge_type);
+            self.allocator.free(edge.properties_json);
+        }
+    }
+
     fn exec(self: *Store, sql: [*:0]const u8) !void {
         var err_msg: [*c]u8 = null;
         const rc = c.sqlite3_exec(self.db, sql, null, null, &err_msg);
@@ -749,4 +872,77 @@ test "store open and basic node/edge operations" {
     });
     try std.testing.expectEqual(@as(usize, 1), nodes.len);
     s.freeNodes(nodes);
+}
+
+test "store breadth-first traversal reuses shared edge traversal logic" {
+    var s = try Store.openMemory(std.testing.allocator);
+    defer s.deinit();
+
+    try s.upsertProject("p2", "/tmp/p2");
+
+    const start_id = try s.upsertNode(.{
+        .project = "p2",
+        .label = "Function",
+        .name = "start",
+        .qualified_name = "p2:start",
+        .file_path = "src/main.zig",
+    });
+    const middle_id = try s.upsertNode(.{
+        .project = "p2",
+        .label = "Function",
+        .name = "middle",
+        .qualified_name = "p2:middle",
+        .file_path = "src/main.zig",
+    });
+    const end_id = try s.upsertNode(.{
+        .project = "p2",
+        .label = "Function",
+        .name = "end",
+        .qualified_name = "p2:end",
+        .file_path = "src/main.zig",
+    });
+    const helper_id = try s.upsertNode(.{
+        .project = "p2",
+        .label = "Function",
+        .name = "helper",
+        .qualified_name = "p2:helper",
+        .file_path = "src/main.zig",
+    });
+
+    _ = try s.upsertEdge(.{
+        .project = "p2",
+        .source_id = start_id,
+        .target_id = middle_id,
+        .edge_type = "CALLS",
+    });
+    _ = try s.upsertEdge(.{
+        .project = "p2",
+        .source_id = middle_id,
+        .target_id = end_id,
+        .edge_type = "CALLS",
+    });
+    _ = try s.upsertEdge(.{
+        .project = "p2",
+        .source_id = helper_id,
+        .target_id = middle_id,
+        .edge_type = "REFERENCES",
+    });
+
+    const outbound = try s.traverseEdgesBreadthFirst("p2", start_id, .outbound, 2, "CALLS");
+    defer s.freeTraversalEdges(outbound);
+    try std.testing.expectEqual(@as(usize, 2), outbound.len);
+    try std.testing.expectEqual(@as(i64, start_id), outbound[0].source_id);
+    try std.testing.expectEqual(@as(i64, middle_id), outbound[0].target_id);
+    try std.testing.expectEqual(@as(u32, 1), outbound[0].depth);
+    try std.testing.expectEqual(@as(i64, middle_id), outbound[1].source_id);
+    try std.testing.expectEqual(@as(i64, end_id), outbound[1].target_id);
+    try std.testing.expectEqual(@as(u32, 2), outbound[1].depth);
+
+    const inbound = try s.traverseEdgesBreadthFirst("p2", middle_id, .inbound, 1, null);
+    defer s.freeTraversalEdges(inbound);
+    try std.testing.expectEqual(@as(usize, 2), inbound.len);
+
+    const both = try s.traverseEdgesBreadthFirst("p2", middle_id, .both, 1, null);
+    defer s.freeTraversalEdges(both);
+    try std.testing.expectEqual(@as(usize, 3), both.len);
 }
