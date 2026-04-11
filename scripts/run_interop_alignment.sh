@@ -25,6 +25,21 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+SHARED_TOOL_NAMES = [
+    "delete_project",
+    "detect_changes",
+    "get_architecture",
+    "get_code_snippet",
+    "get_graph_schema",
+    "index_repository",
+    "index_status",
+    "list_projects",
+    "query_graph",
+    "search_code",
+    "search_graph",
+    "trace_call_path",
+]
+
 
 def to_unix_path(path: str) -> str:
     return str(Path(path).as_posix())
@@ -190,6 +205,115 @@ def canonical_list_projects(payload: Any) -> list[dict[str, Any]]:
     return normalized
 
 
+def canonical_tools_list(payload: Any) -> list[str]:
+    if not isinstance(payload, dict):
+        return []
+    tools = payload.get("tools", [])
+    if not isinstance(tools, list):
+        return []
+    normalized: list[str] = []
+    for tool in tools:
+        if not isinstance(tool, dict):
+            continue
+        name = str(tool.get("name", ""))
+        if name == "trace_path":
+            name = "trace_call_path"
+        if name:
+            normalized.append(name)
+    normalized.sort()
+    return normalized
+
+
+def canonical_architecture(payload: Any) -> dict[str, list[str]]:
+    if not isinstance(payload, dict):
+        return {"node_labels": [], "edge_types": [], "languages": [], "entry_points": []}
+
+    def collect_named(entries: Any, key: str) -> list[str]:
+        if not isinstance(entries, list):
+            return []
+        out: list[str] = []
+        for entry in entries:
+            if isinstance(entry, dict) and entry.get(key):
+                out.append(str(entry[key]))
+        return sorted(set(out))
+
+    return {
+        "node_labels": collect_named(payload.get("node_labels"), "label"),
+        "edge_types": collect_named(payload.get("edge_types"), "type"),
+        "languages": collect_named(payload.get("languages"), "language"),
+        "entry_points": collect_named(payload.get("entry_points"), "name"),
+    }
+
+
+def canonical_search_code(payload: Any) -> list[dict[str, str]]:
+    if not isinstance(payload, dict):
+        return []
+    results = payload.get("results", [])
+    if not isinstance(results, list):
+        return []
+    normalized: list[dict[str, str]] = []
+    for row in results:
+        if not isinstance(row, dict):
+            continue
+        normalized.append(
+            {
+                "file_path": normalize_path_for_manifest(str(row.get("file_path", row.get("file", "")))),
+                "name": str(row.get("name", row.get("node", ""))),
+                "label": str(row.get("label", "")),
+            }
+        )
+    normalized.sort(key=lambda item: (item["name"], item["file_path"], item["label"]))
+    return normalized
+
+
+def canonical_detect_changes(payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        return {"changed_files": [], "changed_count": 0, "impacted_symbols": [], "blast_radius": []}
+
+    changed_files = payload.get("changed_files", [])
+    impacted_symbols = payload.get("impacted_symbols", [])
+    blast_radius = payload.get("blast_radius", [])
+
+    normalized_impacted = []
+    if isinstance(impacted_symbols, list):
+        for item in impacted_symbols:
+            if not isinstance(item, dict):
+                continue
+            normalized_impacted.append(
+                {
+                    "name": str(item.get("name", "")),
+                    "label": str(item.get("label", "")),
+                    "file_path": normalize_path_for_manifest(str(item.get("file_path", item.get("file", "")))),
+                }
+            )
+    normalized_impacted.sort(key=lambda item: (item["name"], item["file_path"], item["label"]))
+
+    normalized_blast = []
+    if isinstance(blast_radius, list):
+        for item in blast_radius:
+            if not isinstance(item, dict):
+                continue
+            normalized_blast.append(
+                {
+                    "name": str(item.get("name", "")),
+                    "file_path": normalize_path_for_manifest(str(item.get("file_path", item.get("file", "")))),
+                    "hop": str(item.get("hop", "")),
+                }
+            )
+    normalized_blast.sort(key=lambda item: (item["name"], item["file_path"], item["hop"]))
+
+    normalized_files = []
+    if isinstance(changed_files, list):
+        normalized_files = sorted(normalize_path_for_manifest(str(path)) for path in changed_files)
+
+    return {
+        "changed_files": normalized_files,
+        "changed_count": int(payload.get("changed_count", len(normalized_files)) or 0),
+        "impacted_symbols": normalized_impacted,
+        "blast_radius": normalized_blast,
+    }
+
+
 def send_rpc_request(process: subprocess.Popen[str], request: dict[str, Any]) -> tuple[dict[str, Any], str]:
     assert process.stdin is not None
     assert process.stdout is not None
@@ -197,14 +321,21 @@ def send_rpc_request(process: subprocess.Popen[str], request: dict[str, Any]) ->
     process.stdin.write(json.dumps(request) + "\n")
     process.stdin.flush()
 
+    buffer = ""
     while True:
         line = process.stdout.readline()
         if line == "":
             raise ValueError(f"missing response for request id {request.get('id')}")
-        stripped = line.strip()
+        if not line.strip():
+            continue
+        buffer += line
+        stripped = buffer.strip()
         if not stripped:
             continue
-        return json.loads(stripped), stripped
+        try:
+            return json.loads(stripped), stripped
+        except json.JSONDecodeError:
+            continue
 
 
 def resolve_qualified_name(
@@ -362,6 +493,15 @@ def build_requests(root: Path, fixture: dict[str, Any], impl: str) -> tuple[list
             "request": {
                 "jsonrpc": "2.0",
                 "id": 2,
+                "method": "tools/list",
+                "params": {},
+            },
+            "compare_key": "tools_list",
+        },
+        {
+            "request": {
+                "jsonrpc": "2.0",
+                "id": 3,
                 "method": "tools/call",
                 "params": {
                     "name": "index_repository",
@@ -376,7 +516,7 @@ def build_requests(root: Path, fixture: dict[str, Any], impl: str) -> tuple[list
         },
     ]
 
-    tool_id = 3
+    tool_id = 4
     assertions = fixture.get("assertions", {})
     for assertion in assertions.get("search_graph", []):
         args = dict(assertion.get("args", {}))
@@ -462,6 +602,66 @@ def build_requests(root: Path, fixture: dict[str, Any], impl: str) -> tuple[list
         )
         tool_id += 1
 
+    for assertion in assertions.get("get_architecture", []):
+        args = dict(assertion.get("args", {}))
+        args["project"] = project_name if impl == "zig" else c_project_name
+        requests.append(
+            {
+                "request": {
+                    "jsonrpc": "2.0",
+                    "id": tool_id,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "get_architecture",
+                        "arguments": args,
+                    },
+                },
+                "compare_key": "get_architecture",
+                "assertion": assertion,
+            }
+        )
+        tool_id += 1
+
+    for assertion in assertions.get("search_code", []):
+        args = dict(assertion.get("args", {}))
+        args["project"] = project_name if impl == "zig" else c_project_name
+        requests.append(
+            {
+                "request": {
+                    "jsonrpc": "2.0",
+                    "id": tool_id,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "search_code",
+                        "arguments": args,
+                    },
+                },
+                "compare_key": "search_code",
+                "assertion": assertion,
+            }
+        )
+        tool_id += 1
+
+    for assertion in assertions.get("detect_changes", []):
+        args = dict(assertion.get("args", {}))
+        args["project"] = project_name if impl == "zig" else c_project_name
+        requests.append(
+            {
+                "request": {
+                    "jsonrpc": "2.0",
+                    "id": tool_id,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "detect_changes",
+                        "arguments": args,
+                    },
+                },
+                "compare_key": "detect_changes",
+                "assertion": assertion,
+            }
+        )
+        tool_id += 1
+
     requests.append(
         {
             "request": {
@@ -484,6 +684,14 @@ def check_assertions(tool_name: str, tool_payload: Any, assertions: list[dict[st
     failures = []
     for assertion in assertions:
         expected = assertion.get("expect", {})
+        if tool_name == "tools_list":
+            required = set(expected.get("required_tools", []))
+            available = set(canonical_tools_list(tool_payload or {}))
+            missing = sorted(required.difference(available))
+            if missing:
+                failures.append(f"tools_list missing {missing}")
+            continue
+
         if tool_name == "index_repository":
             if not isinstance(tool_payload, dict):
                 failures.append("index result missing")
@@ -520,6 +728,55 @@ def check_assertions(tool_name: str, tool_payload: Any, assertions: list[dict[st
             missing = sorted(required_edges.difference(edge_types))
             if missing:
                 failures.append(f"trace edges missing {missing}")
+            continue
+
+        if tool_name == "get_architecture":
+            architecture = canonical_architecture(tool_payload or {})
+            for key in ("required_node_labels", "required_edge_types", "required_languages", "required_entry_points"):
+                expected_values = set(expected.get(key, []))
+                actual_key = {
+                    "required_node_labels": "node_labels",
+                    "required_edge_types": "edge_types",
+                    "required_languages": "languages",
+                    "required_entry_points": "entry_points",
+                }[key]
+                available_values = set(architecture.get(actual_key, []))
+                missing = sorted(expected_values.difference(available_values))
+                if missing:
+                    failures.append(f"{tool_name} missing {actual_key} {missing}")
+            continue
+
+        if tool_name == "search_code":
+            results = canonical_search_code(tool_payload or {})
+            for required_result in expected.get("required_results", []):
+                if not isinstance(required_result, dict):
+                    continue
+                matched = False
+                for result in results:
+                    if required_result.get("name") and result["name"] != required_result["name"]:
+                        continue
+                    if required_result.get("file_path") and result["file_path"] != required_result["file_path"]:
+                        continue
+                    if required_result.get("label") and result["label"] != required_result["label"]:
+                        continue
+                    matched = True
+                    break
+                if not matched:
+                    failures.append(f"search_code missing {required_result}")
+            continue
+
+        if tool_name == "detect_changes":
+            changes = canonical_detect_changes(tool_payload or {})
+            if "changed_count" in expected and changes["changed_count"] != expected["changed_count"]:
+                failures.append(f"detect_changes changed_count {changes['changed_count']} != {expected['changed_count']}")
+            required_files = set(expected.get("required_changed_files", []))
+            missing_files = sorted(required_files.difference(changes["changed_files"]))
+            if missing_files:
+                failures.append(f"detect_changes missing changed_files {missing_files}")
+            if expected.get("require_empty_impacted_symbols") and changes["impacted_symbols"]:
+                failures.append("detect_changes impacted_symbols not empty")
+            if expected.get("require_empty_blast_radius") and changes["blast_radius"]:
+                failures.append("detect_changes blast_radius not empty")
             continue
 
         if tool_name == "list_projects":
@@ -583,7 +840,21 @@ def main() -> None:
                         {"tool": "index_repository", "failures": failures}
                     )
 
-            for scope_tool in ("search_graph", "query_graph", "trace_call_path"):
+            tools_list_payload = (impl_payloads.get("tools_list") or [{"payload": {}}])[0]["payload"]
+            tools_list_assertions = [
+                {
+                    "expect": {
+                        "required_tools": SHARED_TOOL_NAMES,
+                    }
+                }
+            ]
+            failures = check_assertions("tools_list", tools_list_payload, tools_list_assertions)
+            if failures:
+                results[impl].setdefault("assertion_failures", []).append(
+                    {"tool": "tools_list", "failures": failures}
+                )
+
+            for scope_tool in ("search_graph", "query_graph", "trace_call_path", "get_architecture", "search_code", "detect_changes"):
                 assertion_key = scope_tool
                 for index, assertion in enumerate(assertions.get(assertion_key, [])):
                     entries = impl_payloads.get(scope_tool) or []
@@ -616,7 +887,41 @@ def main() -> None:
             return results[impl_name].get("tool", {}).get(tool_name, [])
 
         comparisons = {}
-        for scope in ("search_graph", "query_graph", "trace_call_path", "list_projects", "index_repository"):
+        for scope in (
+            "tools_list",
+            "search_graph",
+            "query_graph",
+            "trace_call_path",
+            "get_architecture",
+            "search_code",
+            "detect_changes",
+            "list_projects",
+            "index_repository",
+        ):
+            if scope == "tools_list":
+                z_entries = get_entries("zig", scope)
+                c_entries = get_entries("c", scope)
+                if not z_entries or not c_entries:
+                    comparisons[scope] = {"status": "missing", "zig": bool(z_entries), "c": bool(c_entries)}
+                else:
+                    expected_tools = sorted(SHARED_TOOL_NAMES)
+                    z_tools = set(canonical_tools_list(z_entries[0]["payload"]))
+                    c_tools = set(canonical_tools_list(c_entries[0]["payload"]))
+                    z_missing = sorted(set(expected_tools).difference(z_tools))
+                    c_missing = sorted(set(expected_tools).difference(c_tools))
+                    if z_missing or c_missing:
+                        report["mismatches"].append(
+                            {"fixture": fixture_id, "tool": scope, "category": "shared_tools"}
+                        )
+                        comparisons[scope] = {
+                            "status": "mismatch",
+                            "required_tools": expected_tools,
+                            "zig_missing": z_missing,
+                            "c_missing": c_missing,
+                        }
+                    else:
+                        comparisons[scope] = {"status": "match", "count": len(expected_tools)}
+
             if scope == "search_graph":
                 z_entries = get_entries("zig", scope)
                 c_entries = get_entries("c", scope)
@@ -697,6 +1002,120 @@ def main() -> None:
                     else:
                         comparisons[scope] = {"status": "match", "count": len(cases)}
 
+            if scope == "get_architecture":
+                z_entries = get_entries("zig", scope)
+                c_entries = get_entries("c", scope)
+                if not z_entries and not c_entries:
+                    comparisons[scope] = {"status": "not_requested"}
+                elif not z_entries or not c_entries:
+                    comparisons[scope] = {"status": "missing", "zig": bool(z_entries), "c": bool(c_entries)}
+                else:
+                    cases = []
+                    has_mismatch = False
+                    for index, assertion in enumerate(assertions.get("get_architecture", [])):
+                        expected = assertion.get("expect", {})
+                        z_arch = canonical_architecture(z_entries[index]["payload"])
+                        c_arch = canonical_architecture(c_entries[index]["payload"])
+                        case = {}
+                        for expected_key, actual_key in (
+                            ("required_node_labels", "node_labels"),
+                            ("required_edge_types", "edge_types"),
+                            ("required_languages", "languages"),
+                            ("required_entry_points", "entry_points"),
+                        ):
+                            required = sorted(set(expected.get(expected_key, [])))
+                            z_missing = sorted(set(required).difference(z_arch.get(actual_key, [])))
+                            c_missing = sorted(set(required).difference(c_arch.get(actual_key, [])))
+                            case[expected_key] = required
+                            case[f"zig_missing_{actual_key}"] = z_missing
+                            case[f"c_missing_{actual_key}"] = c_missing
+                            if z_missing or c_missing:
+                                has_mismatch = True
+                        cases.append(case)
+                    if has_mismatch:
+                        report["mismatches"].append(
+                            {"fixture": fixture_id, "tool": scope, "category": "architecture_contract"}
+                        )
+                        comparisons[scope] = {"status": "mismatch", "cases": cases}
+                    else:
+                        comparisons[scope] = {"status": "match", "count": len(cases)}
+
+            if scope == "search_code":
+                z_entries = get_entries("zig", scope)
+                c_entries = get_entries("c", scope)
+                if not z_entries and not c_entries:
+                    comparisons[scope] = {"status": "not_requested"}
+                elif not z_entries or not c_entries:
+                    comparisons[scope] = {"status": "missing", "zig": bool(z_entries), "c": bool(c_entries)}
+                else:
+                    cases = []
+                    has_mismatch = False
+                    for index, assertion in enumerate(assertions.get("search_code", [])):
+                        expected_rows = assertion.get("expect", {}).get("required_results", [])
+                        z_rows = canonical_search_code(z_entries[index]["payload"])
+                        c_rows = canonical_search_code(c_entries[index]["payload"])
+                        case_rows = []
+                        for expected_row in expected_rows:
+                            z_match = any(
+                                row["name"] == expected_row.get("name", row["name"])
+                                and row["file_path"] == expected_row.get("file_path", row["file_path"])
+                                and row["label"] == expected_row.get("label", row["label"])
+                                for row in z_rows
+                            )
+                            c_match = any(
+                                row["name"] == expected_row.get("name", row["name"])
+                                and row["file_path"] == expected_row.get("file_path", row["file_path"])
+                                and row["label"] == expected_row.get("label", row["label"])
+                                for row in c_rows
+                            )
+                            case_rows.append(
+                                {
+                                    "expected": expected_row,
+                                    "zig_match": z_match,
+                                    "c_match": c_match,
+                                }
+                            )
+                            if not z_match or not c_match:
+                                has_mismatch = True
+                        cases.append({"required_results": case_rows})
+                    if has_mismatch:
+                        report["mismatches"].append(
+                            {"fixture": fixture_id, "tool": scope, "category": "search_code_contract"}
+                        )
+                        comparisons[scope] = {"status": "mismatch", "cases": cases}
+                    else:
+                        comparisons[scope] = {"status": "match", "count": len(cases)}
+
+            if scope == "detect_changes":
+                z_entries = get_entries("zig", scope)
+                c_entries = get_entries("c", scope)
+                if not z_entries and not c_entries:
+                    comparisons[scope] = {"status": "not_requested"}
+                elif not z_entries or not c_entries:
+                    comparisons[scope] = {"status": "missing", "zig": bool(z_entries), "c": bool(c_entries)}
+                else:
+                    cases = []
+                    has_mismatch = False
+                    for index, assertion in enumerate(assertions.get("detect_changes", [])):
+                        expected = assertion.get("expect", {})
+                        z_changes = canonical_detect_changes(z_entries[index]["payload"])
+                        c_changes = canonical_detect_changes(c_entries[index]["payload"])
+                        case = {
+                            "expected": expected,
+                            "zig": z_changes,
+                            "c": c_changes,
+                        }
+                        if z_changes != c_changes:
+                            has_mismatch = True
+                        cases.append(case)
+                    if has_mismatch:
+                        report["mismatches"].append(
+                            {"fixture": fixture_id, "tool": scope, "category": "detect_changes_result"}
+                        )
+                        comparisons[scope] = {"status": "mismatch", "cases": cases}
+                    else:
+                        comparisons[scope] = {"status": "match", "count": len(cases)}
+
             if scope == "list_projects":
                 z_fp = results["zig"].get("fixture_project", {})
                 c_fp = results["c"].get("fixture_project", {})
@@ -739,7 +1158,12 @@ def main() -> None:
     total_fixtures = len(report["fixtures"])
     total_matches = sum(1 for r in report["fixtures"].values() for cmp in r.get("comparison", {}).values() if isinstance(cmp, dict) and cmp.get("status") == "match")
     total_diagnostics = sum(1 for r in report["fixtures"].values() for cmp in r.get("comparison", {}).values() if isinstance(cmp, dict) and cmp.get("status") == "diagnostic")
-    total_comparisons = total_fixtures * 5
+    total_comparisons = sum(
+        1
+        for r in report["fixtures"].values()
+        for cmp in r.get("comparison", {}).values()
+        if isinstance(cmp, dict) and cmp.get("status") != "not_requested"
+    )
     mismatch_count = len(report["mismatches"])
 
     lines = [

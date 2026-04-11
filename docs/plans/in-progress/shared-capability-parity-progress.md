@@ -20,6 +20,12 @@
   - Confirmed the `javascript-parity` function-search mismatch was a fixture-overlap issue rather than a Zig bug: the original implementation does not surface the named function expression `boot` in `search_graph`, so the harness now only asserts the shared `decorate` result there.
   - Relabeled Rust `trait` extraction from `Trait` to `Interface` in the Zig extractor/test surface so `search_graph` and `query_graph` use the same shared label contract as the original implementation.
   - Re-ran `zig build`, `zig build test`, and `bash scripts/run_interop_alignment.sh` after rebuilding the binary; the current 9-fixture first-gate harness is now fully green with 36 strict matches, 9 diagnostic comparisons, and 0 mismatches while the advanced-tool expansion item remains open.
+  - Finished the advanced-tool harness expansion in `scripts/run_interop_alignment.sh`: the run now normalizes and scores `tools/list`, `get_architecture`, `search_code`, and `detect_changes`, and the manifest now carries parity-fixture expectations for those shared surfaces.
+  - Re-ran `zig build`, `zig build test`, and `bash scripts/run_interop_alignment.sh`; the expanded report now covers 66 comparisons with 52 strict matches, 9 diagnostic comparisons, and 5 real mismatches.
+  - Confirmed the shared tool inventory contract is aligned after normalizing `trace_path` to `trace_call_path`; `tools/list` is now green across the fixture corpus without counting missing-only original tools against the Zig port.
+  - Confirmed `get_architecture` parity on the newly asserted shared subsets for the parity fixtures; the current advanced mismatches are narrower than the full tool set and are now isolated to `search_code` and `detect_changes`.
+  - Captured one shared `search_code` mismatch in `javascript-parity`: Zig surfaces `boot` as a `Function` hit while the original surfaces it as a `Variable`, so the new contract intentionally leaves that row red until label parity is resolved.
+  - Captured four shared `detect_changes` mismatches across the parity fixtures: under the current dirty worktree, Zig returns the expected fixture-scoped empty result while the original still reports repo-local changed files outside the requested fixture scope. This is recorded as observed behavior, not yet a confirmed root cause.
 - Files modified:
   - `docs/plans/in-progress/shared-capability-parity-plan.md`
   - `docs/plans/in-progress/shared-capability-parity-progress.md`

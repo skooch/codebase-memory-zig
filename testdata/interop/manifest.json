@@ -384,6 +384,50 @@
               "required_edge_types": ["CALLS"]
             }
           }
+        ],
+        "get_architecture": [
+          {
+            "args": {},
+            "expect": {
+              "required_node_labels": ["Class", "File", "Function", "Module"],
+              "required_edge_types": ["CALLS", "DECORATES", "IMPORTS"]
+            }
+          }
+        ],
+        "search_code": [
+          {
+            "args": {
+              "pattern": "trace|bootstrap",
+              "regex": true,
+              "limit": 20
+            },
+            "expect": {
+              "required_results": [
+                {
+                  "name": "trace",
+                  "file_path": "models.py",
+                  "label": "Function"
+                },
+                {
+                  "name": "bootstrap",
+                  "file_path": "main.py",
+                  "label": "Function"
+                }
+              ]
+            }
+          }
+        ],
+        "detect_changes": [
+          {
+            "args": {
+              "scope": "testdata/interop/python-parity/"
+            },
+            "expect": {
+              "changed_count": 0,
+              "require_empty_impacted_symbols": true,
+              "require_empty_blast_radius": true
+            }
+          }
         ]
       }
     },
@@ -449,6 +493,50 @@
             },
             "expect": {
               "required_edge_types": ["CALLS"]
+            }
+          }
+        ],
+        "get_architecture": [
+          {
+            "args": {},
+            "expect": {
+              "required_node_labels": ["Class", "File", "Function", "Module"],
+              "required_edge_types": ["CALLS"]
+            }
+          }
+        ],
+        "search_code": [
+          {
+            "args": {
+              "pattern": "decorate|boot",
+              "regex": true,
+              "limit": 20
+            },
+            "expect": {
+              "required_results": [
+                {
+                  "name": "decorate",
+                  "file_path": "index.js",
+                  "label": "Function"
+                },
+                {
+                  "name": "boot",
+                  "file_path": "index.js",
+                  "label": "Function"
+                }
+              ]
+            }
+          }
+        ],
+        "detect_changes": [
+          {
+            "args": {
+              "scope": "testdata/interop/javascript-parity/"
+            },
+            "expect": {
+              "changed_count": 0,
+              "require_empty_impacted_symbols": true,
+              "require_empty_blast_radius": true
             }
           }
         ]
@@ -527,6 +615,50 @@
               "required_edge_types": ["CALLS"]
             }
           }
+        ],
+        "get_architecture": [
+          {
+            "args": {},
+            "expect": {
+              "required_node_labels": ["Class", "File", "Function", "Interface", "Module"],
+              "required_edge_types": ["CALLS"]
+            }
+          }
+        ],
+        "search_code": [
+          {
+            "args": {
+              "pattern": "annotate|boot",
+              "regex": true,
+              "limit": 20
+            },
+            "expect": {
+              "required_results": [
+                {
+                  "name": "annotate",
+                  "file_path": "index.ts",
+                  "label": "Function"
+                },
+                {
+                  "name": "boot",
+                  "file_path": "index.ts",
+                  "label": "Function"
+                }
+              ]
+            }
+          }
+        ],
+        "detect_changes": [
+          {
+            "args": {
+              "scope": "testdata/interop/typescript-parity/"
+            },
+            "expect": {
+              "changed_count": 0,
+              "require_empty_impacted_symbols": true,
+              "require_empty_blast_radius": true
+            }
+          }
         ]
       }
     },
@@ -601,6 +733,50 @@
             },
             "expect": {
               "required_edge_types": ["CALLS"]
+            }
+          }
+        ],
+        "get_architecture": [
+          {
+            "args": {},
+            "expect": {
+              "required_node_labels": ["Class", "File", "Function", "Interface", "Module"],
+              "required_edge_types": ["CALLS", "USAGE"]
+            }
+          }
+        ],
+        "search_code": [
+          {
+            "args": {
+              "pattern": "decorate|boot",
+              "regex": true,
+              "limit": 20
+            },
+            "expect": {
+              "required_results": [
+                {
+                  "name": "decorate",
+                  "file_path": "src/lib.rs",
+                  "label": "Function"
+                },
+                {
+                  "name": "boot",
+                  "file_path": "src/lib.rs",
+                  "label": "Function"
+                }
+              ]
+            }
+          }
+        ],
+        "detect_changes": [
+          {
+            "args": {
+              "scope": "testdata/interop/rust-parity/"
+            },
+            "expect": {
+              "changed_count": 0,
+              "require_empty_impacted_symbols": true,
+              "require_empty_blast_radius": true
             }
           }
         ]
