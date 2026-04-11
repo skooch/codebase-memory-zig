@@ -102,6 +102,8 @@
   - Extended the Python parity fixture with a two-token config key and matching code symbol (`max_connections` ↔ `get_max_connections`) so the shared `CONFIGURES` overlap is now exercised by the harness instead of remaining theoretical.
   - Added a direct `src/pipeline.zig` regression proving the `CONFIGURES` edge is emitted for the minimal YAML/Python case, and expanded `testdata/interop/manifest.json` with an exact `query_graph` comparison for `CONFIGURES` rows on the Python parity fixture.
   - Re-ran `zig build`, `zig build test`, and `bash scripts/run_interop_alignment.sh`; the baseline remains green at `67` comparisons, `58` strict matches, `9` diagnostic comparisons, `0` mismatches, and `cli_progress: match`.
+  - Tightened the shared call-resolution evidence in `testdata/interop/manifest.json` by switching the parity-fixture `CALLS` queries from unordered sample rows to exact ordered row-set comparisons, so the harness now protects the actual overlapping call edges instead of only “some calls exist” assertions.
+  - Re-ran `bash scripts/run_interop_alignment.sh`; the baseline remains green at `67` comparisons, `58` strict matches, `9` diagnostic comparisons, `0` mismatches, and `cli_progress: match`.
 - Files modified:
   - `docs/plans/in-progress/shared-capability-parity-plan.md`
   - `docs/plans/in-progress/shared-capability-parity-progress.md`

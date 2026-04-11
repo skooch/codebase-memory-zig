@@ -384,7 +384,7 @@
           },
           {
             "args": {
-              "query": "MATCH (a)-[r:CALLS]->(b) RETURN a.name, b.name LIMIT 5",
+              "query": "MATCH (a)-[r:CALLS]->(b) RETURN a.name, b.name ORDER BY a.name, b.name",
               "project": "python-parity",
               "max_rows": 20
             },
@@ -574,7 +574,7 @@
           },
           {
             "args": {
-              "query": "MATCH (a)-[r:CALLS]->(b) RETURN a.name, b.name LIMIT 5",
+              "query": "MATCH (a)-[r:CALLS]->(b) RETURN a.name, b.name ORDER BY a.name, b.name",
               "project": "javascript-parity",
               "max_rows": 20
             },
@@ -733,7 +733,7 @@
           },
           {
             "args": {
-              "query": "MATCH (a)-[r:CALLS]->(b) RETURN a.name, b.name LIMIT 5",
+              "query": "MATCH (a)-[r:CALLS]->(b) RETURN a.name, b.name ORDER BY a.name, b.name",
               "project": "typescript-parity",
               "max_rows": 20
             },
@@ -891,7 +891,7 @@
           },
           {
             "args": {
-              "query": "MATCH (a)-[r:CALLS]->(b) RETURN a.name, b.name LIMIT 5",
+              "query": "MATCH (a)-[r:CALLS]->(b) RETURN a.name, b.name ORDER BY a.name, b.name",
               "project": "rust-parity",
               "max_rows": 20
             },
