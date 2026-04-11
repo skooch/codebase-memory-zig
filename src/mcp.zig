@@ -659,12 +659,22 @@ pub const McpServer = struct {
         const scope = stringArg(args, "scope");
         const depth = intArg(args, "depth") orelse 3;
 
-        const changed_files = try collectChangedFiles(self.allocator, status.root_path, base_branch, scope);
+        const want_symbols = scope == null or
+            std.mem.eql(u8, scope.?, "symbols") or
+            std.mem.eql(u8, scope.?, "impact");
+
+        const changed_files = try collectChangedFiles(self.allocator, status.root_path, base_branch);
         defer freeOwnedStrings(self.allocator, changed_files);
-        const impacted = try collectImpactedSymbols(self.allocator, self.db, project, changed_files);
-        defer freeChangeSymbols(self.allocator, impacted);
-        const blast_radius = try collectBlastRadius(self.allocator, self.db, project, impacted, depth);
-        defer freeBlastItems(self.allocator, blast_radius);
+        const impacted = if (want_symbols)
+            try collectImpactedSymbols(self.allocator, self.db, project, changed_files)
+        else
+            &[_]ChangeSymbol{};
+        defer if (want_symbols) freeChangeSymbols(self.allocator, impacted);
+        const blast_radius = if (want_symbols)
+            try collectBlastRadius(self.allocator, self.db, project, impacted, depth)
+        else
+            &[_]BlastItem{};
+        defer if (want_symbols) freeBlastItems(self.allocator, blast_radius);
 
         var payload = std.ArrayList(u8).empty;
         try payload.appendSlice(self.allocator, "{");
@@ -1415,7 +1425,6 @@ fn collectChangedFiles(
     allocator: std.mem.Allocator,
     root_path: []const u8,
     base_branch: []const u8,
-    scope: ?[]const u8,
 ) ![][]u8 {
     const branch_spec = try std.fmt.allocPrint(allocator, "{s}...HEAD", .{base_branch});
     defer allocator.free(branch_spec);
@@ -1442,8 +1451,8 @@ fn collectChangedFiles(
         seen.deinit();
     }
 
-    try appendChangedLines(allocator, &out, &seen, diff_base.stdout, scope);
-    try appendChangedLines(allocator, &out, &seen, diff_worktree.stdout, scope);
+    try appendChangedLines(allocator, &out, &seen, diff_base.stdout);
+    try appendChangedLines(allocator, &out, &seen, diff_worktree.stdout);
     return out.toOwnedSlice(allocator);
 }
 
@@ -1452,15 +1461,11 @@ fn appendChangedLines(
     out: *std.ArrayList([]u8),
     seen: *std.StringHashMap(void),
     text: []const u8,
-    scope: ?[]const u8,
 ) !void {
     var iter = std.mem.splitAny(u8, text, "\n\r");
     while (iter.next()) |line| {
         const trimmed = std.mem.trim(u8, line, " \t");
         if (trimmed.len == 0) continue;
-        if (scope) |scope_value| {
-            if (!std.mem.startsWith(u8, trimmed, scope_value)) continue;
-        }
         const key = try allocator.dupe(u8, trimmed);
         if (seen.contains(key)) {
             allocator.free(key);
@@ -2524,6 +2529,18 @@ test "detect_changes maps git diffs to impacted symbols and blast radius" {
     try std.testing.expect(result.get("changed_files").?.array.items.len >= 1);
     try std.testing.expect(result.get("impacted_symbols").?.array.items.len >= 2);
     try std.testing.expect(result.get("blast_radius").?.array.items.len >= 1);
+
+    const files_only_response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"detect_changes","arguments":{"project":"demo","base_branch":"main","scope":"files","depth":2}}}
+    )).?;
+    defer allocator.free(files_only_response);
+
+    const files_only_parsed = try std.json.parseFromSlice(std.json.Value, allocator, files_only_response, .{});
+    defer files_only_parsed.deinit();
+    const files_only_result = files_only_parsed.value.object.get("result").?.object;
+    try std.testing.expectEqual(@as(i64, 1), files_only_result.get("changed_count").?.integer);
+    try std.testing.expectEqual(@as(usize, 0), files_only_result.get("impacted_symbols").?.array.items.len);
+    try std.testing.expectEqual(@as(usize, 0), files_only_result.get("blast_radius").?.array.items.len);
 }
 
 fn runTestCommand(allocator: std.mem.Allocator, argv: []const []const u8) !void {

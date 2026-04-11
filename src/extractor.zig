@@ -1016,7 +1016,7 @@ fn collectTsDefinitions(
     node: ts.Node,
     out: *std.ArrayList(TsDefinition),
 ) !void {
-    if (tsNodeLabel(language, node.kind())) |label| {
+    if (tsNodeLabel(language, node)) |label| {
         if (try extractTsName(allocator, language, bytes, node)) |name| {
             try out.append(allocator, .{
                 .label = try allocator.dupe(u8, label),
@@ -1035,7 +1035,8 @@ fn collectTsDefinitions(
     }
 }
 
-fn tsNodeLabel(language: discover.Language, kind: []const u8) ?[]const u8 {
+fn tsNodeLabel(language: discover.Language, node: ts.Node) ?[]const u8 {
+    const kind = node.kind();
     return switch (language) {
         .python => if (std.mem.eql(u8, kind, "function_definition"))
             "Function"
@@ -1044,11 +1045,16 @@ fn tsNodeLabel(language: discover.Language, kind: []const u8) ?[]const u8 {
         else
             null,
         .javascript, .typescript, .tsx => if (std.mem.eql(u8, kind, "function_declaration") or
-            std.mem.eql(u8, kind, "generator_function_declaration") or
-            std.mem.eql(u8, kind, "function_expression") or
-            std.mem.eql(u8, kind, "arrow_function") or
-            std.mem.eql(u8, kind, "method_definition"))
+            std.mem.eql(u8, kind, "generator_function_declaration"))
             "Function"
+        else if (std.mem.eql(u8, kind, "method_definition"))
+            "Method"
+        else if (std.mem.eql(u8, kind, "function_expression"))
+            if (jsTsFunctionExpressionIsDefinition(node)) "Function" else null
+        else if (std.mem.eql(u8, kind, "arrow_function"))
+            if (jsTsArrowFunctionIsDefinition(node)) "Function" else null
+        else if (std.mem.eql(u8, kind, "variable_declarator"))
+            if (jsTsVariableDeclaratorLabel(node)) |label| label else null
         else if (std.mem.eql(u8, kind, "class_declaration") or
             std.mem.eql(u8, kind, "class"))
             "Class"
@@ -1088,12 +1094,51 @@ fn tsNodeLabel(language: discover.Language, kind: []const u8) ?[]const u8 {
     };
 }
 
+fn jsTsVariableDeclaratorLabel(node: ts.Node) ?[]const u8 {
+    const value_node = node.childByFieldName("value") orelse return "Variable";
+    const value_kind = value_node.kind();
+    if (std.mem.eql(u8, value_kind, "arrow_function") or
+        std.mem.eql(u8, value_kind, "function_expression") or
+        std.mem.eql(u8, value_kind, "generator_function"))
+    {
+        return null;
+    }
+    return "Variable";
+}
+
+fn jsTsFunctionExpressionIsDefinition(node: ts.Node) bool {
+    const parent = node.parent() orelse return false;
+    return std.mem.eql(u8, parent.kind(), "variable_declarator");
+}
+
+fn jsTsArrowFunctionIsDefinition(node: ts.Node) bool {
+    const parent = node.parent() orelse return false;
+    const parent_kind = parent.kind();
+    return std.mem.eql(u8, parent_kind, "variable_declarator") or
+        std.mem.eql(u8, parent_kind, "public_field_definition") or
+        std.mem.eql(u8, parent_kind, "field_definition");
+}
+
 fn extractTsName(
     allocator: std.mem.Allocator,
     language: discover.Language,
     bytes: []const u8,
     node: ts.Node,
 ) !?[]const u8 {
+    if (language == .javascript or language == .typescript or language == .tsx) {
+        if (std.mem.eql(u8, node.kind(), "variable_declarator")) {
+            const name_node = node.childByFieldName("name") orelse return null;
+            return try copyTsNodeText(allocator, bytes, name_node);
+        }
+        if (std.mem.eql(u8, node.kind(), "arrow_function")) {
+            if (try extractJsTsParentAssignedName(allocator, bytes, node)) |name| return name;
+            return null;
+        }
+        if (std.mem.eql(u8, node.kind(), "function_expression")) {
+            if (!jsTsFunctionExpressionIsDefinition(node)) return null;
+        }
+    }
+
     if (language == .rust and std.mem.eql(u8, node.kind(), "impl_item")) {
         const start = @as(usize, @intCast(node.startByte()));
         const end = @as(usize, @intCast(node.endByte()));
@@ -1112,11 +1157,41 @@ fn extractTsName(
             if (extractPrefixName(src, "const ")) |name| return try allocator.dupe(u8, name);
             if (extractPrefixName(src, "var ")) |name| return try allocator.dupe(u8, name);
         }
+        if ((language == .javascript or language == .typescript or language == .tsx) and
+            std.mem.eql(u8, node.kind(), "function_expression"))
+        {
+            if (try extractJsTsParentAssignedName(allocator, bytes, node)) |name| return name;
+        }
         return null;
     };
+    return try copyTsNodeText(allocator, bytes, name_node);
+}
 
-    const start = @as(usize, @intCast(name_node.startByte()));
-    const end = @as(usize, @intCast(name_node.endByte()));
+fn extractJsTsParentAssignedName(
+    allocator: std.mem.Allocator,
+    bytes: []const u8,
+    node: ts.Node,
+) !?[]const u8 {
+    const parent = node.parent() orelse return null;
+    const parent_kind = parent.kind();
+    if (std.mem.eql(u8, parent_kind, "variable_declarator")) {
+        const name_node = parent.childByFieldName("name") orelse return null;
+        return try copyTsNodeText(allocator, bytes, name_node);
+    }
+    if (std.mem.eql(u8, parent_kind, "public_field_definition")) {
+        const name_node = parent.childByFieldName("name") orelse return null;
+        return try copyTsNodeText(allocator, bytes, name_node);
+    }
+    if (std.mem.eql(u8, parent_kind, "field_definition")) {
+        const property_node = parent.childByFieldName("property") orelse return null;
+        return try copyTsNodeText(allocator, bytes, property_node);
+    }
+    return null;
+}
+
+fn copyTsNodeText(allocator: std.mem.Allocator, bytes: []const u8, node: ts.Node) !?[]const u8 {
+    const start = @as(usize, @intCast(node.startByte()));
+    const end = @as(usize, @intCast(node.endByte()));
     if (start >= bytes.len or end > bytes.len or start >= end) return null;
     return try allocator.dupe(u8, bytes[start..end]);
 }
@@ -2036,6 +2111,35 @@ test "tree-sitter extracts javascript definitions with labels and line numbers" 
     try std.testing.expect(definitionPresent(defs.items, "Function", "main", 11));
 }
 
+test "tree-sitter keeps javascript decorator-assigned named functions as variables" {
+    var defs = std.ArrayList(TsDefinition).empty;
+    defer freePendingTsDefinitions(std.testing.allocator, &defs);
+
+    try collectDefinitionsWithTreeSitter(
+        std.testing.allocator,
+        \\function decorate(fn) {
+        \\    return fn;
+        \\}
+        \\
+        \\const boot = decorate(function boot() {
+        \\    return 1;
+        \\});
+        \\
+        \\const run = () => {
+        \\    return boot();
+        \\};
+        \\
+    ,
+        .javascript,
+        &defs,
+    );
+
+    try std.testing.expect(definitionPresent(defs.items, "Function", "decorate", 1));
+    try std.testing.expect(definitionPresent(defs.items, "Variable", "boot", 5));
+    try std.testing.expect(definitionPresent(defs.items, "Function", "run", 9));
+    try std.testing.expect(!definitionPresent(defs.items, "Function", "boot", 5));
+}
+
 test "tree-sitter extracts typescript definitions with labels and line numbers" {
     var defs = std.ArrayList(TsDefinition).empty;
     defer freePendingTsDefinitions(std.testing.allocator, &defs);
@@ -2062,6 +2166,7 @@ test "tree-sitter extracts typescript definitions with labels and line numbers" 
     try std.testing.expect(definitionPresent(defs.items, "Interface", "ServicePort", 1));
     try std.testing.expect(definitionPresent(defs.items, "Function", "helper", 5));
     try std.testing.expect(definitionPresent(defs.items, "Class", "Service", 9));
+    try std.testing.expect(definitionPresent(defs.items, "Method", "read", 10));
 }
 
 test "tree-sitter extracts tsx definitions with labels and line numbers" {

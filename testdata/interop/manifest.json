@@ -420,13 +420,9 @@
         "detect_changes": [
           {
             "args": {
-              "scope": "testdata/interop/python-parity/"
+              "scope": "impact"
             },
-            "expect": {
-              "changed_count": 0,
-              "require_empty_impacted_symbols": true,
-              "require_empty_blast_radius": true
-            }
+            "expect": {}
           }
         ]
       }
@@ -467,6 +463,15 @@
             },
             "expect": {
               "required_names": ["decorate"]
+            }
+          },
+          {
+            "args": {
+              "project": "javascript-parity",
+              "label": "Variable"
+            },
+            "expect": {
+              "required_names": ["boot"]
             }
           }
         ],
@@ -522,7 +527,7 @@
                 {
                   "name": "boot",
                   "file_path": "index.js",
-                  "label": "Function"
+                  "label": "Variable"
                 }
               ]
             }
@@ -531,13 +536,9 @@
         "detect_changes": [
           {
             "args": {
-              "scope": "testdata/interop/javascript-parity/"
+              "scope": "impact"
             },
-            "expect": {
-              "changed_count": 0,
-              "require_empty_impacted_symbols": true,
-              "require_empty_blast_radius": true
-            }
+            "expect": {}
           }
         ]
       }
@@ -651,13 +652,9 @@
         "detect_changes": [
           {
             "args": {
-              "scope": "testdata/interop/typescript-parity/"
+              "scope": "impact"
             },
-            "expect": {
-              "changed_count": 0,
-              "require_empty_impacted_symbols": true,
-              "require_empty_blast_radius": true
-            }
+            "expect": {}
           }
         ]
       }
@@ -771,13 +768,9 @@
         "detect_changes": [
           {
             "args": {
-              "scope": "testdata/interop/rust-parity/"
+              "scope": "impact"
             },
-            "expect": {
-              "changed_count": 0,
-              "require_empty_impacted_symbols": true,
-              "require_empty_blast_radius": true
-            }
+            "expect": {}
           }
         ]
       }

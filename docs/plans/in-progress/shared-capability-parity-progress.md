@@ -26,6 +26,10 @@
   - Confirmed `get_architecture` parity on the newly asserted shared subsets for the parity fixtures; the current advanced mismatches are narrower than the full tool set and are now isolated to `search_code` and `detect_changes`.
   - Captured one shared `search_code` mismatch in `javascript-parity`: Zig surfaces `boot` as a `Function` hit while the original surfaces it as a `Variable`, so the new contract intentionally leaves that row red until label parity is resolved.
   - Captured four shared `detect_changes` mismatches across the parity fixtures: under the current dirty worktree, Zig returns the expected fixture-scoped empty result while the original still reports repo-local changed files outside the requested fixture scope. This is recorded as observed behavior, not yet a confirmed root cause.
+  - Confirmed and fixed the `javascript-parity` `search_code` root cause: the original treats `const boot = decorate(function boot() { ... })` as a `Variable` definition, so the Zig tree-sitter extractor now suppresses nested call-argument `function_expression` definitions and indexes the surrounding `variable_declarator` instead.
+  - Confirmed and fixed the `detect_changes` contract mismatch: the original uses `scope` as a mode selector (`files` vs `symbols`/`impact`), not as a path-prefix filter, so Zig `detect_changes` now mirrors that behavior and the parity manifest no longer hardcodes a clean-worktree assumption.
+  - Tightened the JS/TS tree-sitter label split to match the original more closely: class `method_definition` nodes now surface as `Method` rather than `Function`, which removed the temporary `typescript-basic` query parity regression introduced during the JavaScript fix.
+  - Re-ran `zig build`, `zig build test`, and `bash scripts/run_interop_alignment.sh`; the current report now shows 66 comparisons, 57 strict matches, 9 diagnostic comparisons, and 0 mismatches.
 - Files modified:
   - `docs/plans/in-progress/shared-capability-parity-plan.md`
   - `docs/plans/in-progress/shared-capability-parity-progress.md`
