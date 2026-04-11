@@ -29,7 +29,10 @@
               "label": "Function"
             },
             "expect": {
-              "required_names": ["main", "helper"]
+              "required_names": [
+                "main",
+                "helper"
+              ]
             }
           }
         ],
@@ -41,7 +44,9 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["count"],
+              "columns": [
+                "count"
+              ],
               "required_rows_min": 1
             }
           }
@@ -55,7 +60,9 @@
               "depth": 3
             },
             "expect": {
-              "required_edge_types": ["CALLS"]
+              "required_edge_types": [
+                "CALLS"
+              ]
             }
           }
         ]
@@ -87,7 +94,10 @@
               "label": "Class"
             },
             "expect": {
-              "required_names": ["BaseLogger", "TraceLogger"]
+              "required_names": [
+                "BaseLogger",
+                "TraceLogger"
+              ]
             }
           },
           {
@@ -96,7 +106,10 @@
               "label": "Function"
             },
             "expect": {
-              "required_names": ["emit", "run"]
+              "required_names": [
+                "emit",
+                "run"
+              ]
             }
           }
         ],
@@ -108,7 +121,9 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["count"],
+              "columns": [
+                "count"
+              ],
               "required_rows_min": 1
             }
           }
@@ -122,7 +137,9 @@
               "depth": 4
             },
             "expect": {
-              "required_edge_types": ["CALLS"]
+              "required_edge_types": [
+                "CALLS"
+              ]
             }
           }
         ]
@@ -154,7 +171,9 @@
               "label": "Class"
             },
             "expect": {
-              "required_names": ["WorkerImpl"]
+              "required_names": [
+                "WorkerImpl"
+              ]
             }
           },
           {
@@ -163,7 +182,9 @@
               "label": "Function"
             },
             "expect": {
-              "required_names": ["run"]
+              "required_names": [
+                "run"
+              ]
             }
           }
         ],
@@ -175,7 +196,9 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["count"],
+              "columns": [
+                "count"
+              ],
               "required_rows_min": 1
             }
           }
@@ -189,7 +212,9 @@
               "depth": 4
             },
             "expect": {
-              "required_edge_types": ["CALLS"]
+              "required_edge_types": [
+                "CALLS"
+              ]
             }
           }
         ]
@@ -221,7 +246,9 @@
               "label": "Class"
             },
             "expect": {
-              "required_names": ["Counter"]
+              "required_names": [
+                "Counter"
+              ]
             }
           },
           {
@@ -230,7 +257,10 @@
               "label": "Function"
             },
             "expect": {
-              "required_names": ["emit", "build"]
+              "required_names": [
+                "emit",
+                "build"
+              ]
             }
           }
         ],
@@ -242,7 +272,9 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["count"],
+              "columns": [
+                "count"
+              ],
               "required_rows_min": 1
             }
           }
@@ -256,7 +288,9 @@
               "depth": 6
             },
             "expect": {
-              "required_edge_types": ["CALLS"]
+              "required_edge_types": [
+                "CALLS"
+              ]
             }
           }
         ]
@@ -288,7 +322,10 @@
               "label": "Function"
             },
             "expect": {
-              "required_names": ["add", "run"]
+              "required_names": [
+                "add",
+                "run"
+              ]
             }
           }
         ],
@@ -300,7 +337,9 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["count"],
+              "columns": [
+                "count"
+              ],
               "required_rows_min": 1
             }
           }
@@ -314,7 +353,9 @@
               "depth": 4
             },
             "expect": {
-              "required_edge_types": ["CALLS"]
+              "required_edge_types": [
+                "CALLS"
+              ]
             }
           }
         ]
@@ -346,7 +387,10 @@
               "label": "Class"
             },
             "expect": {
-              "required_names": ["BaseWorker", "Worker"]
+              "required_names": [
+                "BaseWorker",
+                "Worker"
+              ]
             }
           },
           {
@@ -355,7 +399,10 @@
               "label": "Function"
             },
             "expect": {
-              "required_names": ["trace", "bootstrap"]
+              "required_names": [
+                "trace",
+                "bootstrap"
+              ]
             }
           }
         ],
@@ -367,7 +414,9 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["count"],
+              "columns": [
+                "count"
+              ],
               "required_rows_min": 1
             }
           },
@@ -378,7 +427,9 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["n.name"],
+              "columns": [
+                "n.name"
+              ],
               "required_rows_min": 1
             }
           },
@@ -389,7 +440,10 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["a.name", "b.name"],
+              "columns": [
+                "a.name",
+                "b.name"
+              ],
               "required_rows_min": 1
             }
           },
@@ -400,7 +454,12 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["a.label", "a.file_path", "b.label", "b.name"],
+              "columns": [
+                "a.label",
+                "a.file_path",
+                "b.label",
+                "b.name"
+              ],
               "required_rows_min": 1
             }
           },
@@ -411,7 +470,12 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["a.label", "a.file_path", "b.label", "b.name"],
+              "columns": [
+                "a.label",
+                "a.file_path",
+                "b.label",
+                "b.name"
+              ],
               "required_rows_min": 1
             }
           },
@@ -422,7 +486,12 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["a.label", "a.name", "b.label", "b.name"]
+              "columns": [
+                "a.label",
+                "a.name",
+                "b.label",
+                "b.name"
+              ]
             }
           },
           {
@@ -432,7 +501,9 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["n.name"]
+              "columns": [
+                "n.name"
+              ]
             }
           },
           {
@@ -442,7 +513,46 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["a.name", "b.name"]
+              "columns": [
+                "a.name",
+                "b.name"
+              ]
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:DEFINES]->(b) WHERE a.name = \"main.py\" AND b.label = \"Module\" RETURN b.name",
+              "project": "python-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": [
+                "b.name"
+              ]
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:DEFINES]->(b) WHERE a.name = \"models.py\" AND b.label = \"Method\" RETURN b.name ORDER BY b.name",
+              "project": "python-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": [
+                "b.name"
+              ]
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:DEFINES]->(b) WHERE a.name = \"settings.yaml\" AND b.label = \"Variable\" RETURN b.name ORDER BY b.name",
+              "project": "python-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": [
+                "b.name"
+              ]
             }
           }
         ],
@@ -455,7 +565,9 @@
               "depth": 6
             },
             "expect": {
-              "required_edge_types": ["CALLS"]
+              "required_edge_types": [
+                "CALLS"
+              ]
             }
           }
         ],
@@ -463,8 +575,17 @@
           {
             "args": {},
             "expect": {
-              "required_node_labels": ["Class", "File", "Function", "Module"],
-              "required_edge_types": ["CALLS", "DECORATES", "IMPORTS"]
+              "required_node_labels": [
+                "Class",
+                "File",
+                "Function",
+                "Module"
+              ],
+              "required_edge_types": [
+                "CALLS",
+                "DECORATES",
+                "IMPORTS"
+              ]
             }
           }
         ],
@@ -527,7 +648,10 @@
               "label": "Class"
             },
             "expect": {
-              "required_names": ["BaseLogger", "FileLogger"]
+              "required_names": [
+                "BaseLogger",
+                "FileLogger"
+              ]
             }
           },
           {
@@ -536,7 +660,9 @@
               "label": "Function"
             },
             "expect": {
-              "required_names": ["decorate"]
+              "required_names": [
+                "decorate"
+              ]
             }
           },
           {
@@ -545,7 +671,9 @@
               "label": "Variable"
             },
             "expect": {
-              "required_names": ["boot"]
+              "required_names": [
+                "boot"
+              ]
             }
           }
         ],
@@ -557,7 +685,9 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["count"],
+              "columns": [
+                "count"
+              ],
               "required_rows_min": 1
             }
           },
@@ -568,7 +698,9 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["n.name"],
+              "columns": [
+                "n.name"
+              ],
               "required_rows_min": 1
             }
           },
@@ -579,7 +711,10 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["a.name", "b.name"],
+              "columns": [
+                "a.name",
+                "b.name"
+              ],
               "required_rows_min": 1
             }
           },
@@ -590,7 +725,12 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["a.label", "a.file_path", "b.label", "b.name"],
+              "columns": [
+                "a.label",
+                "a.file_path",
+                "b.label",
+                "b.name"
+              ],
               "required_rows_min": 1
             }
           },
@@ -601,7 +741,9 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["n.name"]
+              "columns": [
+                "n.name"
+              ]
             }
           }
         ],
@@ -614,7 +756,9 @@
               "depth": 6
             },
             "expect": {
-              "required_edge_types": ["CALLS"]
+              "required_edge_types": [
+                "CALLS"
+              ]
             }
           }
         ],
@@ -622,8 +766,15 @@
           {
             "args": {},
             "expect": {
-              "required_node_labels": ["Class", "File", "Function", "Module"],
-              "required_edge_types": ["CALLS"]
+              "required_node_labels": [
+                "Class",
+                "File",
+                "Function",
+                "Module"
+              ],
+              "required_edge_types": [
+                "CALLS"
+              ]
             }
           }
         ],
@@ -686,7 +837,9 @@
               "label": "Class"
             },
             "expect": {
-              "required_names": ["Worker"]
+              "required_names": [
+                "Worker"
+              ]
             }
           },
           {
@@ -695,7 +848,10 @@
               "label": "Interface"
             },
             "expect": {
-              "required_names": ["Runner", "Configured"]
+              "required_names": [
+                "Runner",
+                "Configured"
+              ]
             }
           },
           {
@@ -704,7 +860,10 @@
               "label": "Function"
             },
             "expect": {
-              "required_names": ["annotate", "boot"]
+              "required_names": [
+                "annotate",
+                "boot"
+              ]
             }
           }
         ],
@@ -716,7 +875,9 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["count"],
+              "columns": [
+                "count"
+              ],
               "required_rows_min": 1
             }
           },
@@ -727,7 +888,9 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["n.name"],
+              "columns": [
+                "n.name"
+              ],
               "required_rows_min": 1
             }
           },
@@ -738,7 +901,10 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["a.name", "b.name"],
+              "columns": [
+                "a.name",
+                "b.name"
+              ],
               "required_rows_min": 1
             }
           },
@@ -749,7 +915,12 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["a.label", "a.name", "b.label", "b.name"]
+              "columns": [
+                "a.label",
+                "a.name",
+                "b.label",
+                "b.name"
+              ]
             }
           },
           {
@@ -759,7 +930,9 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["n.name"]
+              "columns": [
+                "n.name"
+              ]
             }
           }
         ],
@@ -772,7 +945,9 @@
               "depth": 6
             },
             "expect": {
-              "required_edge_types": ["CALLS"]
+              "required_edge_types": [
+                "CALLS"
+              ]
             }
           }
         ],
@@ -780,8 +955,16 @@
           {
             "args": {},
             "expect": {
-              "required_node_labels": ["Class", "File", "Function", "Interface", "Module"],
-              "required_edge_types": ["CALLS"]
+              "required_node_labels": [
+                "Class",
+                "File",
+                "Function",
+                "Interface",
+                "Module"
+              ],
+              "required_edge_types": [
+                "CALLS"
+              ]
             }
           }
         ],
@@ -844,7 +1027,10 @@
               "label": "Class"
             },
             "expect": {
-              "required_names": ["Config", "Worker"]
+              "required_names": [
+                "Config",
+                "Worker"
+              ]
             }
           },
           {
@@ -853,7 +1039,9 @@
               "label": "Interface"
             },
             "expect": {
-              "required_names": ["Runner"]
+              "required_names": [
+                "Runner"
+              ]
             }
           },
           {
@@ -862,7 +1050,10 @@
               "label": "Function"
             },
             "expect": {
-              "required_names": ["decorate", "boot"]
+              "required_names": [
+                "decorate",
+                "boot"
+              ]
             }
           }
         ],
@@ -874,7 +1065,9 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["count"],
+              "columns": [
+                "count"
+              ],
               "required_rows_min": 1
             }
           },
@@ -885,7 +1078,9 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["n.name"],
+              "columns": [
+                "n.name"
+              ],
               "required_rows_min": 1
             }
           },
@@ -896,7 +1091,10 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["a.name", "b.name"],
+              "columns": [
+                "a.name",
+                "b.name"
+              ],
               "required_rows_min": 1
             }
           },
@@ -907,7 +1105,12 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["a.label", "a.file_path", "b.label", "b.name"],
+              "columns": [
+                "a.label",
+                "a.file_path",
+                "b.label",
+                "b.name"
+              ],
               "required_rows_min": 1
             }
           },
@@ -918,7 +1121,12 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["a.label", "a.file_path", "b.label", "b.name"],
+              "columns": [
+                "a.label",
+                "a.file_path",
+                "b.label",
+                "b.name"
+              ],
               "required_rows_min": 1
             }
           },
@@ -929,7 +1137,9 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["n.name"]
+              "columns": [
+                "n.name"
+              ]
             }
           },
           {
@@ -939,7 +1149,9 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["n.name"]
+              "columns": [
+                "n.name"
+              ]
             }
           },
           {
@@ -949,7 +1161,9 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["count"],
+              "columns": [
+                "count"
+              ],
               "required_rows_min": 1
             }
           },
@@ -960,7 +1174,9 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["n.name"]
+              "columns": [
+                "n.name"
+              ]
             }
           },
           {
@@ -970,7 +1186,46 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["a.name", "b.name"]
+              "columns": [
+                "a.name",
+                "b.name"
+              ]
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:DEFINES]->(b) WHERE a.name = \"lib.rs\" AND b.label = \"Module\" RETURN b.name",
+              "project": "rust-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": [
+                "b.name"
+              ]
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:DEFINES]->(b) WHERE a.name = \"lib.rs\" AND b.label = \"Field\" RETURN b.name ORDER BY b.name",
+              "project": "rust-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": [
+                "b.name"
+              ]
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:DEFINES]->(b) WHERE a.name = \"Cargo.toml\" AND b.label = \"Variable\" RETURN b.name ORDER BY b.name",
+              "project": "rust-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": [
+                "b.name"
+              ]
             }
           }
         ],
@@ -983,7 +1238,9 @@
               "depth": 6
             },
             "expect": {
-              "required_edge_types": ["CALLS"]
+              "required_edge_types": [
+                "CALLS"
+              ]
             }
           }
         ],
@@ -991,8 +1248,17 @@
           {
             "args": {},
             "expect": {
-              "required_node_labels": ["Class", "File", "Function", "Interface", "Module"],
-              "required_edge_types": ["CALLS", "USAGE"]
+              "required_node_labels": [
+                "Class",
+                "File",
+                "Function",
+                "Interface",
+                "Module"
+              ],
+              "required_edge_types": [
+                "CALLS",
+                "USAGE"
+              ]
             }
           }
         ],

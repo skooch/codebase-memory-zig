@@ -1559,7 +1559,7 @@ test "pipeline retains parser-backed definitions and expected edges for all read
     const project_name = std.fs.path.basename(project_dir);
 
     const python_parent = try findSingleNodeByNameInFile(&db, project_name, "Class", "Parent", "python/main.py");
-    const python_module = try findSingleNodeByNameInFile(&db, project_name, "Module", "main", "python/main.py");
+    const python_module = try findSingleNodeByNameInFile(&db, project_name, "Module", "python/main.py", "python/main.py");
     const python_main = try findSingleNodeByNameInFile(&db, project_name, "Function", "main", "python/main.py");
     const py_helper = try findSingleNodeByNameInFile(&db, project_name, "Function", "helper", "python/main.py");
     const py_calls = try db.findEdgesBySource(project_name, python_main, "CALLS");
@@ -1595,9 +1595,9 @@ test "pipeline retains parser-backed definitions and expected edges for all read
     try std.testing.expectEqual(@as(usize, 1), zig_calls.len);
 
     const python_file = try findSingleNodeByNameInFile(&db, project_name, "File", "main.py", "python/main.py");
-    const py_contains = try db.findEdgesBySource(project_name, python_file, "CONTAINS");
-    defer db.freeEdges(py_contains);
-    try std.testing.expect(py_contains.len > 0);
+    const py_defines = try db.findEdgesBySource(project_name, python_file, "DEFINES");
+    defer db.freeEdges(py_defines);
+    try std.testing.expect(py_defines.len > 0);
 }
 
 test "pipeline resolves rust use aliases across files" {
@@ -1897,7 +1897,7 @@ test "pipeline aligns module-level declaration usages with semantic reference so
 
     const project_name = std.fs.path.basename(project_dir);
 
-    const py_module_id = try findSingleNodeByNameInFile(&db, project_name, "Module", "python_semantics", "python_semantics.py");
+    const py_module_id = try findSingleNodeByNameInFile(&db, project_name, "Module", "python_semantics.py", "python_semantics.py");
     const trace_id = try findSingleNodeByNameInFile(&db, project_name, "Function", "trace", "python_semantics.py");
     const base_id = try findSingleNodeByNameInFile(&db, project_name, "Class", "Base", "python_semantics.py");
     const py_usages = try db.findEdgesBySource(project_name, py_module_id, "USAGE");
@@ -1905,13 +1905,13 @@ test "pipeline aligns module-level declaration usages with semantic reference so
     try std.testing.expect(edgeTargetsContain(py_usages, trace_id));
     try std.testing.expect(edgeTargetsContain(py_usages, base_id));
 
-    const js_module_id = try findSingleNodeByNameInFile(&db, project_name, "Module", "logger", "logger.js");
+    const js_module_id = try findSingleNodeByNameInFile(&db, project_name, "Module", "logger.js", "logger.js");
     const js_base_id = try findSingleNodeByNameInFile(&db, project_name, "Class", "BaseLogger", "logger.js");
     const js_usages = try db.findEdgesBySource(project_name, js_module_id, "USAGE");
     defer db.freeEdges(js_usages);
     try std.testing.expect(edgeTargetsContain(js_usages, js_base_id));
 
-    const rust_module_id = try findSingleNodeByNameInFile(&db, project_name, "Module", "lib", "src/lib.rs");
+    const rust_module_id = try findSingleNodeByNameInFile(&db, project_name, "Module", "src/lib.rs", "src/lib.rs");
     const rust_worker_id = try findSingleNodeByNameInFile(&db, project_name, "Class", "Worker", "src/lib.rs");
     const rust_config_id = try findSingleNodeByNameInFile(&db, project_name, "Class", "Config", "src/lib.rs");
     const rust_runner_id = try findSingleNodeByNameInFile(&db, project_name, "Interface", "Runner", "src/lib.rs");

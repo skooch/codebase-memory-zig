@@ -85,7 +85,6 @@ pub fn extractFile(
 ) !FileExtraction {
     const rel = file.rel_path;
     const file_name = std.fs.path.basename(rel);
-    const stem = std.fs.path.stem(file_name);
 
     var symbols = std.ArrayList(ExtractedSymbol).empty;
     var tree_sitter_defs = std.ArrayList(TsDefinition).empty;
@@ -139,7 +138,7 @@ pub fn extractFile(
 
     var module_id: i64 = file_id;
     var current_scope_id: i64 = file_id;
-    if (stem.len > 0) {
+    if (file_name.len > 0) {
         const module_qn = try std.fmt.allocPrint(
             allocator,
             "{s}:module:{s}:{s}",
@@ -149,7 +148,7 @@ pub fn extractFile(
 
         const created_module = try gb.upsertNode(
             "Module",
-            stem,
+            rel,
             module_qn,
             rel,
             1,
@@ -157,7 +156,7 @@ pub fn extractFile(
         );
         if (created_module > 0) {
             module_id = created_module;
-            _ = gb.insertEdge(file_id, module_id, "CONTAINS") catch |err| switch (err) {
+            _ = gb.insertEdge(file_id, module_id, "DEFINES") catch |err| switch (err) {
                 graph_buffer.GraphBufferError.DuplicateEdge => {},
                 else => return err,
             };
@@ -205,9 +204,15 @@ pub fn extractFile(
             def.end_line,
         );
         if (symbol_id > 0 and !exists) {
-            const owner = treeSitterDefinitionOwner(project_name, qn_base, file.language, def, gb, module_id);
-            if (owner.id != 0 and gb.findNodeById(owner.id) != null) {
-                _ = gb.insertEdge(owner.id, symbol_id, owner.edge_type) catch |err| switch (err) {
+            _ = gb.insertEdge(file_id, symbol_id, "DEFINES") catch |err| switch (err) {
+                graph_buffer.GraphBufferError.DuplicateEdge => {},
+                else => {
+                    allocator.free(symbol_qn);
+                    return err;
+                },
+            };
+            if (treeSitterMethodOwner(project_name, qn_base, file.language, def, gb)) |owner| {
+                _ = gb.insertEdge(owner.id, symbol_id, "DEFINES_METHOD") catch |err| switch (err) {
                     graph_buffer.GraphBufferError.DuplicateEdge => {},
                     else => {
                         allocator.free(symbol_qn);
@@ -294,6 +299,7 @@ pub fn extractFile(
                         sym.name,
                         owner,
                         gb,
+                        file_id,
                         &symbols,
                     );
                 } else {
@@ -314,6 +320,7 @@ pub fn extractFile(
                         parsed_end_line,
                         sym,
                         gb,
+                        file_id,
                         module_id,
                         &symbols,
                     ) catch |err| switch (err) {
@@ -354,6 +361,7 @@ pub fn extractFile(
                 rel,
                 line_no,
                 gb,
+                file_id,
                 current_scope_id,
                 module_id,
                 &symbols,
@@ -1125,6 +1133,7 @@ fn addSymbolFromParsed(
     end_line: i32,
     symbol: ParsedSymbol,
     gb: *graph_buffer.GraphBuffer,
+    file_id: i64,
     module_id: i64,
     symbols: *std.ArrayList(ExtractedSymbol),
 ) !void {
@@ -1145,7 +1154,7 @@ fn addSymbolFromParsed(
         end_line,
     );
     if (symbol_id > 0 and gb.findNodeById(module_id) != null and !exists) {
-        _ = gb.insertEdge(module_id, symbol_id, "CONTAINS") catch |err| switch (err) {
+        _ = gb.insertEdge(file_id, symbol_id, "DEFINES") catch |err| switch (err) {
             graph_buffer.GraphBufferError.DuplicateEdge => {},
             else => {
                 return err;
@@ -1187,6 +1196,7 @@ fn addScopedMethodFromParsed(
     method_name: []const u8,
     owner: *const graph_buffer.BufferNode,
     gb: *graph_buffer.GraphBuffer,
+    file_id: i64,
     symbols: *std.ArrayList(ExtractedSymbol),
 ) !i64 {
     const symbol_qn = try std.fmt.allocPrint(
@@ -1206,6 +1216,10 @@ fn addScopedMethodFromParsed(
         end_line,
     );
     if (symbol_id > 0 and !exists) {
+        _ = gb.insertEdge(file_id, symbol_id, "DEFINES") catch |err| switch (err) {
+            graph_buffer.GraphBufferError.DuplicateEdge => {},
+            else => return err,
+        };
         _ = gb.insertEdge(owner.id, symbol_id, "DEFINES_METHOD") catch |err| switch (err) {
             graph_buffer.GraphBufferError.DuplicateEdge => {},
             else => return err,
@@ -1230,6 +1244,7 @@ fn appendSupplementalDefinitions(
     file_path: []const u8,
     line_no: i32,
     gb: *graph_buffer.GraphBuffer,
+    file_id: i64,
     current_scope_id: i64,
     module_id: i64,
     symbols: *std.ArrayList(ExtractedSymbol),
@@ -1246,6 +1261,7 @@ fn appendSupplementalDefinitions(
             line_no,
             .{ .label = "Variable", .name = variable_name },
             gb,
+            file_id,
             module_id,
             symbols,
         );
@@ -1268,7 +1284,7 @@ fn appendSupplementalDefinitions(
         line_no,
     );
     if (field_id > 0 and !exists) {
-        _ = gb.insertEdge(current_scope_id, field_id, "CONTAINS") catch |err| switch (err) {
+        _ = gb.insertEdge(file_id, field_id, "DEFINES") catch |err| switch (err) {
             graph_buffer.GraphBufferError.DuplicateEdge => {},
             else => return err,
         };
@@ -1694,11 +1710,6 @@ const ScopeSelection = struct {
     starts_here: bool,
 };
 
-const TreeSitterOwner = struct {
-    id: i64,
-    edge_type: []const u8,
-};
-
 fn selectScopeForLine(scope_markers: []const TsSymbol, line_no: i32, module_id: i64) ScopeSelection {
     var best: ?TsSymbol = null;
     var best_span: i32 = std.math.maxInt(i32);
@@ -1743,26 +1754,23 @@ fn treeSitterQualifiedName(
     );
 }
 
-fn treeSitterDefinitionOwner(
+fn treeSitterMethodOwner(
     project_name: []const u8,
     qn_base: []const u8,
     language: discover.Language,
     def: TsDefinition,
     gb: *graph_buffer.GraphBuffer,
-    module_id: i64,
-) TreeSitterOwner {
+) ?*const graph_buffer.BufferNode {
     if (std.mem.eql(u8, def.label, "Method") and def.container_name.len > 0) {
         const owner_qn = std.fmt.allocPrint(
             std.heap.page_allocator,
             "{s}:{s}:{s}:symbol:{s}:{s}",
             .{ project_name, qn_base, @tagName(language), @tagName(language), def.container_name },
-        ) catch return .{ .id = module_id, .edge_type = "CONTAINS" };
+        ) catch return null;
         defer std.heap.page_allocator.free(owner_qn);
-        if (gb.findNodeByQualifiedName(owner_qn)) |owner| {
-            return .{ .id = owner.id, .edge_type = "DEFINES_METHOD" };
-        }
+        return gb.findNodeByQualifiedName(owner_qn);
     }
-    return .{ .id = module_id, .edge_type = "CONTAINS" };
+    return null;
 }
 
 fn freePendingTsDefinitions(allocator: std.mem.Allocator, definitions: *std.ArrayList(TsDefinition)) void {

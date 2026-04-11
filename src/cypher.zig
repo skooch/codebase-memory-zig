@@ -68,13 +68,13 @@ const ParsedQuery = struct {
     edge_pattern: ?EdgePattern = null,
     conditions: []Condition,
     returns: []ReturnExpr,
-    order_by: ?OrderBy = null,
+    order_by: []OrderBy,
     limit: ?usize = null,
 };
 
 const QueryRow = struct {
     values: [][]const u8,
-    sort_value: []const u8,
+    sort_values: [][]const u8,
 };
 
 const EdgeContext = struct {
@@ -157,8 +157,8 @@ fn executeNodeQuery(
         return buildCountResult(allocator, parsed.returns[0], rows.items.len);
     }
 
-    if (parsed.order_by == null and rows.items.len > 1) {
-        std.sort.pdq(QueryRow, rows.items, OrderBy{ .subject = .source, .field = "", .descending = false }, queryRowLessThan);
+    if (parsed.order_by.len == 0 and rows.items.len > 1) {
+        std.sort.pdq(QueryRow, rows.items, parsed.order_by, queryRowLessThan);
     }
     try finalizeRows(allocator, &rows, parsed.returns, parsed.order_by, effective_limit);
     return buildTabularResult(allocator, parsed.returns, rows.items);
@@ -218,7 +218,7 @@ fn finalizeRows(
     allocator: std.mem.Allocator,
     rows: *std.ArrayList(QueryRow),
     returns: []const ReturnExpr,
-    order_by: ?OrderBy,
+    order_by: []const OrderBy,
     effective_limit: usize,
 ) !void {
     if (rows.items.len == 0) return;
@@ -227,8 +227,8 @@ fn finalizeRows(
     if (distinct) {
         try dedupeRows(allocator, rows);
     }
-    if (order_by != null) {
-        std.sort.pdq(QueryRow, rows.items, order_by.?, queryRowLessThan);
+    if (order_by.len > 0) {
+        std.sort.pdq(QueryRow, rows.items, order_by, queryRowLessThan);
     }
     if (rows.items.len > effective_limit) {
         var idx = effective_limit;
@@ -405,7 +405,7 @@ fn buildNodeReturnRow(
     allocator: std.mem.Allocator,
     node: store.Node,
     returns: []const ReturnExpr,
-    order_by: ?OrderBy,
+    order_by: []const OrderBy,
     node_var: []const u8,
 ) !QueryRow {
     var values = std.ArrayList([]const u8).empty;
@@ -428,19 +428,14 @@ fn buildNodeReturnRow(
         }
     }
 
-    const sort_value = if (order_by) |ord| blk: {
-        if (ord.subject != .node) break :blk try allocator.dupe(u8, "");
-        const owned = try readNodeField(allocator, node, ord.field);
-        defer owned.deinit(allocator);
-        break :blk try allocator.dupe(u8, owned.value);
-    } else if (returns.len > 0 and values.items.len > 0)
-        try allocator.dupe(u8, values.items[0])
+    const sort_values = if (order_by.len > 0)
+        try buildNodeSortValues(allocator, node, order_by)
     else
-        try allocator.dupe(u8, node_var);
+        try buildDefaultSortValues(allocator, if (returns.len > 0 and values.items.len > 0) values.items[0] else node_var);
 
     return .{
         .values = try values.toOwnedSlice(allocator),
-        .sort_value = sort_value,
+        .sort_values = sort_values,
     };
 }
 
@@ -448,7 +443,7 @@ fn buildEdgeReturnRow(
     allocator: std.mem.Allocator,
     ctx: EdgeContext,
     returns: []const ReturnExpr,
-    order_by: ?OrderBy,
+    order_by: []const OrderBy,
 ) !QueryRow {
     var values = std.ArrayList([]const u8).empty;
     errdefer {
@@ -462,26 +457,62 @@ fn buildEdgeReturnRow(
         try values.append(allocator, try allocator.dupe(u8, owned.value));
     }
 
-    const sort_value = if (order_by) |ord| blk: {
-        const owned = try readSubjectField(allocator, ctx, ord.subject, ord.field);
-        defer owned.deinit(allocator);
-        break :blk try allocator.dupe(u8, owned.value);
-    } else if (values.items.len > 0)
-        try allocator.dupe(u8, values.items[0])
+    const sort_values = if (order_by.len > 0)
+        try buildEdgeSortValues(allocator, ctx, order_by)
     else
-        try allocator.dupe(u8, "");
+        try buildDefaultSortValues(allocator, if (values.items.len > 0) values.items[0] else "");
 
     return .{
         .values = try values.toOwnedSlice(allocator),
-        .sort_value = sort_value,
+        .sort_values = sort_values,
     };
 }
 
-fn compatibleQueryNodeName(node: store.Node) []const u8 {
-    if (std.mem.eql(u8, node.label, "Module")) {
-        return std.fs.path.basename(node.file_path);
+fn buildDefaultSortValues(allocator: std.mem.Allocator, value: []const u8) ![][]const u8 {
+    const out = try allocator.alloc([]const u8, 1);
+    errdefer allocator.free(out);
+    out[0] = try allocator.dupe(u8, value);
+    return out;
+}
+
+fn buildNodeSortValues(allocator: std.mem.Allocator, node: store.Node, order_by: []const OrderBy) ![][]const u8 {
+    const out = try allocator.alloc([]const u8, order_by.len);
+    var filled: usize = 0;
+    errdefer {
+        var idx: usize = 0;
+        while (idx < filled) : (idx += 1) allocator.free(out[idx]);
+        allocator.free(out);
     }
-    return node.name;
+
+    for (order_by, 0..) |ord, idx| {
+        if (ord.subject != .node) {
+            out[idx] = try allocator.dupe(u8, "");
+        } else {
+            const owned = try readNodeField(allocator, node, ord.field);
+            defer owned.deinit(allocator);
+            out[idx] = try allocator.dupe(u8, owned.value);
+        }
+        filled += 1;
+    }
+    return out;
+}
+
+fn buildEdgeSortValues(allocator: std.mem.Allocator, ctx: EdgeContext, order_by: []const OrderBy) ![][]const u8 {
+    const out = try allocator.alloc([]const u8, order_by.len);
+    var filled: usize = 0;
+    errdefer {
+        var idx: usize = 0;
+        while (idx < filled) : (idx += 1) allocator.free(out[idx]);
+        allocator.free(out);
+    }
+
+    for (order_by, 0..) |ord, idx| {
+        const owned = try readSubjectField(allocator, ctx, ord.subject, ord.field);
+        defer owned.deinit(allocator);
+        out[idx] = try allocator.dupe(u8, owned.value);
+        filled += 1;
+    }
+    return out;
 }
 
 fn readSubjectField(
@@ -510,7 +541,7 @@ const OwnedField = struct {
 fn readNodeField(allocator: std.mem.Allocator, node: store.Node, field: []const u8) !OwnedField {
     if (std.mem.eql(u8, field, "id")) return .{ .value = try std.fmt.allocPrint(allocator, "{d}", .{node.id}), .owned = true };
     if (std.mem.eql(u8, field, "label")) return .{ .value = node.label };
-    if (std.mem.eql(u8, field, "name")) return .{ .value = compatibleQueryNodeName(node) };
+    if (std.mem.eql(u8, field, "name")) return .{ .value = node.name };
     if (std.mem.eql(u8, field, "qualified_name")) return .{ .value = node.qualified_name };
     if (std.mem.eql(u8, field, "file_path")) return .{ .value = node.file_path };
     if (std.mem.eql(u8, field, "start_line")) return .{ .value = try std.fmt.allocPrint(allocator, "{d}", .{node.start_line}), .owned = true };
@@ -550,12 +581,20 @@ fn freeQueryRows(allocator: std.mem.Allocator, rows: []const QueryRow) void {
 fn freeQueryRow(allocator: std.mem.Allocator, row: QueryRow) void {
     for (row.values) |value| allocator.free(value);
     allocator.free(row.values);
-    allocator.free(row.sort_value);
+    for (row.sort_values) |value| allocator.free(value);
+    allocator.free(row.sort_values);
 }
 
-fn queryRowLessThan(order: OrderBy, lhs: QueryRow, rhs: QueryRow) bool {
-    const cmp = std.mem.order(u8, lhs.sort_value, rhs.sort_value);
-    return if (order.descending) cmp == .gt else cmp == .lt;
+fn queryRowLessThan(order: []const OrderBy, lhs: QueryRow, rhs: QueryRow) bool {
+    const key_count = @min(lhs.sort_values.len, rhs.sort_values.len);
+    var idx: usize = 0;
+    while (idx < key_count) : (idx += 1) {
+        const cmp = std.mem.order(u8, lhs.sort_values[idx], rhs.sort_values[idx]);
+        if (cmp == .eq) continue;
+        const descending = if (idx < order.len) order[idx].descending else false;
+        return if (descending) cmp == .gt else cmp == .lt;
+    }
+    return false;
 }
 
 fn dedupeRows(allocator: std.mem.Allocator, rows: *std.ArrayList(QueryRow)) !void {
@@ -599,9 +638,7 @@ fn returnColumnName(expr: ReturnExpr) []const u8 {
 }
 
 fn canonicalEdgeType(edge_type: ?[]const u8) ?[]const u8 {
-    const et = edge_type orelse return null;
-    if (std.mem.eql(u8, et, "DEFINES")) return "CONTAINS";
-    return et;
+    return edge_type;
 }
 
 fn matchLike(actual: []const u8, pattern: []const u8) bool {
@@ -658,6 +695,7 @@ fn parseQuery(allocator: std.mem.Allocator, query: []const u8) !ParsedQuery {
         .kind = if (std.mem.indexOf(u8, pattern_section, "->") != null) .edge else .node,
         .conditions = &.{},
         .returns = &.{},
+        .order_by = &.{},
     };
     errdefer freeParsedQuery(allocator, parsed);
 
@@ -671,7 +709,7 @@ fn parseQuery(allocator: std.mem.Allocator, query: []const u8) !ParsedQuery {
     if (order_pos) |pos| {
         const order_tail = after_return[pos + " ORDER BY ".len ..];
         const order_end = if (limit_pos) |limit_idx| limit_idx - (pos + " ORDER BY ".len) else order_tail.len;
-        parsed.order_by = try parseOrderBy(std.mem.trim(u8, order_tail[0..order_end], " \t"), parsed);
+        parsed.order_by = try parseOrderBy(allocator, std.mem.trim(u8, order_tail[0..order_end], " \t"), parsed);
     }
     if (limit_pos) |pos| {
         const limit_text = std.mem.trim(u8, after_return[pos + " LIMIT ".len ..], " \t");
@@ -683,6 +721,7 @@ fn parseQuery(allocator: std.mem.Allocator, query: []const u8) !ParsedQuery {
 fn freeParsedQuery(allocator: std.mem.Allocator, parsed: ParsedQuery) void {
     allocator.free(parsed.conditions);
     allocator.free(parsed.returns);
+    if (parsed.order_by.len > 0) allocator.free(parsed.order_by);
 }
 
 fn parseNodePattern(section: []const u8) !NodePattern {
@@ -865,8 +904,12 @@ fn appendReturnExpr(
     });
 }
 
-fn parseOrderBy(text: []const u8, parsed: ParsedQuery) !OrderBy {
-    var expr = std.mem.trim(u8, text, " \t");
+fn parseOrderBy(allocator: std.mem.Allocator, text: []const u8, parsed: ParsedQuery) ![]OrderBy {
+    var parts = splitTopLevelComma(allocator, text);
+    defer parts.deinit(allocator);
+
+    const part = if (parts.items.len > 0) parts.items[0] else text;
+    var expr = std.mem.trim(u8, part, " \t");
     var descending = false;
     if (endsWithInsensitive(expr, " DESC")) {
         descending = true;
@@ -875,12 +918,16 @@ fn parseOrderBy(text: []const u8, parsed: ParsedQuery) !OrderBy {
         expr = std.mem.trim(u8, expr[0 .. expr.len - " ASC".len], " \t");
     }
 
+    const out = try allocator.alloc(OrderBy, 1);
+    errdefer allocator.free(out);
     if (parsed.kind == .node and parsed.node_pattern != null and std.mem.eql(u8, expr, parsed.node_pattern.?.var_name)) {
-        return .{ .subject = .node, .field = "name", .descending = descending };
+        out[0] = .{ .subject = .node, .field = "name", .descending = descending };
+        return out;
     }
 
     const ref = try parseReference(expr);
-    return .{ .subject = ref.subject, .field = ref.field, .descending = descending };
+    out[0] = .{ .subject = ref.subject, .field = ref.field, .descending = descending };
+    return out;
 }
 
 fn parseReference(text: []const u8) !struct { subject: ValueSubject, field: []const u8 } {
@@ -1065,6 +1112,46 @@ test "cypher supports edge queries" {
     try std.testing.expectEqualStrings("helper", result.rows[0][2]);
 }
 
+test "cypher preserves defines edge queries" {
+    var s = try Store.openMemory(std.testing.allocator);
+    defer s.deinit();
+    try s.upsertProject("p", "/tmp/p");
+    const file = try s.upsertNode(.{
+        .project = "p",
+        .label = "File",
+        .name = "main.py",
+        .qualified_name = "p:file",
+        .file_path = "main.py",
+    });
+    const fn_node = try s.upsertNode(.{
+        .project = "p",
+        .label = "Function",
+        .name = "run",
+        .qualified_name = "p:run",
+        .file_path = "main.py",
+    });
+    _ = try s.upsertEdge(.{
+        .project = "p",
+        .source_id = file,
+        .target_id = fn_node,
+        .edge_type = "DEFINES",
+    });
+
+    const result = try execute(
+        std.testing.allocator,
+        &s,
+        "MATCH (a)-[r:DEFINES]->(b) RETURN a.label, a.name, b.label, b.name",
+        "p",
+        20,
+    );
+    defer freeResult(std.testing.allocator, result);
+    try std.testing.expectEqual(@as(usize, 1), result.rows.len);
+    try std.testing.expectEqualStrings("File", result.rows[0][0]);
+    try std.testing.expectEqualStrings("main.py", result.rows[0][1]);
+    try std.testing.expectEqualStrings("Function", result.rows[0][2]);
+    try std.testing.expectEqualStrings("run", result.rows[0][3]);
+}
+
 test "cypher preserves shared default edge ordering without ORDER BY" {
     var s = try Store.openMemory(std.testing.allocator);
     defer s.deinit();
@@ -1132,9 +1219,9 @@ test "cypher preserves shared default edge ordering without ORDER BY" {
     try std.testing.expectEqual(@as(usize, 4), result.rows.len);
     try std.testing.expectEqualStrings("boot", result.rows[0][0]);
     try std.testing.expectEqualStrings("log", result.rows[0][1]);
-    try std.testing.expectEqualStrings("index.js", result.rows[1][0]);
+    try std.testing.expectEqualStrings("index", result.rows[1][0]);
     try std.testing.expectEqualStrings("decorate", result.rows[1][1]);
-    try std.testing.expectEqualStrings("index.js", result.rows[2][0]);
+    try std.testing.expectEqualStrings("index", result.rows[2][0]);
     try std.testing.expectEqualStrings("boot", result.rows[2][1]);
     try std.testing.expectEqualStrings("log", result.rows[3][0]);
     try std.testing.expectEqualStrings("write", result.rows[3][1]);
