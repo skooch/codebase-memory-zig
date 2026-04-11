@@ -1342,7 +1342,7 @@ test "pipeline retains parser-backed definitions and expected edges for all read
     defer db.freeEdges(rust_calls);
     try std.testing.expectEqual(@as(usize, 1), rust_calls.len);
     const rust_child = try findSingleNodeByNameInFile(&db, project_name, "Class", "Service", "rust/lib.rs");
-    const rust_trait = try findSingleNodeByNameInFile(&db, project_name, "Trait", "Speaker", "rust/lib.rs");
+    const rust_trait = try findSingleNodeByNameInFile(&db, project_name, "Interface", "Speaker", "rust/lib.rs");
     const rust_impls = try db.findEdgesBySource(project_name, rust_child, "IMPLEMENTS");
     defer db.freeEdges(rust_impls);
     try std.testing.expectEqual(@as(usize, 1), rust_impls.len);

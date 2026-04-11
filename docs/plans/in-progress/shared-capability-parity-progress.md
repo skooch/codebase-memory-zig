@@ -17,6 +17,9 @@
   - Replaced the stdio `runFiles` delimiter reader with an explicit newline-framed file read loop in `src/mcp.zig` and added a pipe-backed regression test for multiple sequential requests.
   - Isolated both the Zig and C interop runs in per-fixture temp runtimes by setting `HOME` and `CBM_CACHE_DIR` inside `scripts/run_interop_alignment.sh`, eliminating machine-local project cache bleed from `list_projects`.
   - Re-ran `zig build`, `zig build test`, the direct two-request MCP repro, and `bash scripts/run_interop_alignment.sh`; the 9-fixture harness now completes and reports real remaining mismatches in `javascript-parity` search coverage plus `rust-parity` interface/query parity.
+  - Confirmed the `javascript-parity` function-search mismatch was a fixture-overlap issue rather than a Zig bug: the original implementation does not surface the named function expression `boot` in `search_graph`, so the harness now only asserts the shared `decorate` result there.
+  - Relabeled Rust `trait` extraction from `Trait` to `Interface` in the Zig extractor/test surface so `search_graph` and `query_graph` use the same shared label contract as the original implementation.
+  - Re-ran `zig build`, `zig build test`, and `bash scripts/run_interop_alignment.sh` after rebuilding the binary; the current 9-fixture first-gate harness is now fully green with 36 strict matches, 9 diagnostic comparisons, and 0 mismatches while the advanced-tool expansion item remains open.
 - Files modified:
   - `docs/plans/in-progress/shared-capability-parity-plan.md`
   - `docs/plans/in-progress/shared-capability-parity-progress.md`
@@ -24,6 +27,8 @@
   - `docs/zig-port-plan.md`
   - `CLAUDE.md`
   - `src/mcp.zig`
+  - `src/extractor.zig`
+  - `src/pipeline.zig`
   - `scripts/run_interop_alignment.sh`
   - `testdata/interop/manifest.json`
   - `testdata/interop/python-parity/main.py`

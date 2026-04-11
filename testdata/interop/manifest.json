@@ -422,7 +422,7 @@
               "label": "Function"
             },
             "expect": {
-              "required_names": ["decorate", "boot"]
+              "required_names": ["decorate"]
             }
           }
         ],

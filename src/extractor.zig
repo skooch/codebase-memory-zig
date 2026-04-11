@@ -1070,7 +1070,7 @@ fn tsNodeLabel(language: discover.Language, kind: []const u8) ?[]const u8 {
             std.mem.eql(u8, kind, "trait_item") or
             std.mem.eql(u8, kind, "type_item") or
             std.mem.eql(u8, kind, "impl_item"))
-            if (std.mem.eql(u8, kind, "trait_item")) "Trait" else "Class"
+            if (std.mem.eql(u8, kind, "trait_item")) "Interface" else "Class"
         else
             null,
         .zig => if (std.mem.eql(u8, kind, "function_declaration") or
@@ -1230,7 +1230,7 @@ fn parseRustDefs(line: []const u8) ?ParsedSymbol {
         return .{ .label = "Class", .name = name };
     }
     if (extractPrefixName(line, "trait ")) |name| {
-        return .{ .label = "Trait", .name = name };
+        return .{ .label = "Interface", .name = name };
     }
     if (parseRustImpl(line)) |name| {
         return .{ .label = "Class", .name = name };
@@ -2119,7 +2119,7 @@ test "tree-sitter extracts rust definitions with labels and line numbers" {
     );
 
     try std.testing.expect(definitionPresent(defs.items, "Class", "Service", 1));
-    try std.testing.expect(definitionPresent(defs.items, "Trait", "Handler", 5));
+    try std.testing.expect(definitionPresent(defs.items, "Interface", "Handler", 5));
     try std.testing.expect(definitionPresent(defs.items, "Function", "helper", 7));
     try std.testing.expect(definitionPresent(defs.items, "Function", "main", 11));
     try std.testing.expect(definitionPresent(defs.items, "Class", "Service", 15));
