@@ -4,7 +4,7 @@
 Bring every currently shared-but-not-interoperable capability in `docs/port-comparison.md` up to full parity with `codebase-memory-mcp`, then update the comparison docs to mark those rows as interoperable.
 
 ## Current Phase
-Phase 1
+Phase 2
 
 ## File Map
 - Modify: `docs/plans/in-progress/shared-capability-parity-plan.md`
@@ -41,9 +41,9 @@ Phase 1
 - [x] Re-read `docs/port-comparison.md` and extract the exact shared-but-not-interoperable rows this plan is responsible for: `tools/list`, CLI progress output, `query_graph`, `get_architecture`, `search_code`, `detect_changes`, definitions extraction, call resolution, usage/type-reference edges, semantic edges, `CONFIGURES` / `WRITES`, `USES_TYPE`, `install`, `uninstall`, `update`, and auto-detected agent integrations.
 - [x] Rewrite the affected sections in `docs/gap-analysis.md` so each targeted row has an explicit full-parity acceptance rule, not just a high-level status label.
 - [x] Update `docs/zig-port-plan.md` so the parity objective for this follow-on plan is documented as “close the shared-surface full-parity gaps” rather than “expand the target contract.”
-- [ ] Extend `testdata/interop/manifest.json` and `scripts/run_interop_alignment.sh` so the harness compares advanced-tool outputs (`tools/list`, `query_graph`, `get_architecture`, `search_code`, `detect_changes`) instead of only the first-gate tool set.
+- [x] Extend `testdata/interop/manifest.json` and `scripts/run_interop_alignment.sh` so the harness compares advanced-tool outputs (`tools/list`, `query_graph`, `get_architecture`, `search_code`, `detect_changes`) instead of only the first-gate tool set.
 - [x] Add parity fixture repos at `testdata/interop/python-parity/`, `testdata/interop/javascript-parity/`, `testdata/interop/typescript-parity/`, and `testdata/interop/rust-parity/` that deliberately exercise aliasing, type references, semantic edges, config-write edges, and code-search ranking cases needed by later phases.
-- **Status:** pending
+- **Status:** completed
 
 ### Phase 2: Bring the MCP Query and Protocol Surface to Full Parity
 - [ ] Update `src/mcp.zig` so `tools/list` advertises the full overlapping implemented tool surface with the same tool-level visibility the original exposes for shared features.
@@ -51,7 +51,7 @@ Phase 1
 - [ ] Extend `src/cypher.zig`, `src/store.zig`, and `src/mcp.zig` so `query_graph` covers the original overlapping read-only Cypher shapes this repo currently marks as partial, including the query forms needed by `get_architecture`, `search_code`, and `detect_changes`.
 - [ ] Broaden `src/mcp.zig` output shaping for `get_architecture`, `search_code`, and `detect_changes` so their payload richness, ranking/dedup behavior, and summary fields match the original for shared capabilities instead of the current narrower daily-use summaries.
 - [ ] Add or extend regression coverage in `src/mcp.zig`, `src/cypher.zig`, and `src/store.zig` for the upgraded contracts, then wire the new harness assertions in `scripts/run_interop_alignment.sh` to fail when the Zig payload shape drifts from the original.
-- **Status:** pending
+- **Status:** in progress
 
 ### Phase 3: Bring Shared Graph Construction and Edge Semantics to Full Parity
 - [ ] Expand `src/extractor.zig`, `src/pipeline.zig`, and `src/registry.zig` so definitions extraction on already-overlapping target languages matches the original’s shared behavior for nested declarations, aliases, and symbol-role labeling rather than stopping at the current daily-use subset.
