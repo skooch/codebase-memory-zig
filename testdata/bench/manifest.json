@@ -1,0 +1,421 @@
+{
+  "schema_version": "0.1",
+  "goal": "First-slice local benchmark suite for shared accuracy and performance comparisons",
+  "repos": [
+    {
+      "id": "python-basic",
+      "path": "testdata/interop/python-basic",
+      "project": "python-basic",
+      "warmup_runs": 1,
+      "measured_runs": 2,
+      "accuracy_scenarios": [
+        {
+          "id": "function-search",
+          "tool": "search_graph",
+          "args": {
+            "label": "Function"
+          },
+          "expect": {
+            "required_names": [
+              "main",
+              "helper"
+            ]
+          }
+        },
+        {
+          "id": "function-count",
+          "tool": "query_graph",
+          "args": {
+            "query": "MATCH (n) WHERE n.label = \"Function\" RETURN count(n) AS count",
+            "max_rows": 20
+          },
+          "expect": {
+            "columns": [
+              "count"
+            ],
+            "required_rows_min": 1
+          }
+        },
+        {
+          "id": "trace-main",
+          "tool": "trace_call_path",
+          "args": {
+            "start_node_name_hint": "main",
+            "direction": "out",
+            "depth": 3
+          },
+          "expect": {
+            "required_edge_types": [
+              "CALLS"
+            ]
+          }
+        }
+      ],
+      "performance_scenarios": [
+        {
+          "id": "function-search",
+          "tool": "search_graph",
+          "args": {
+            "label": "Function"
+          }
+        },
+        {
+          "id": "function-count",
+          "tool": "query_graph",
+          "args": {
+            "query": "MATCH (n) WHERE n.label = \"Function\" RETURN count(n) AS count",
+            "max_rows": 20
+          }
+        },
+        {
+          "id": "trace-main",
+          "tool": "trace_call_path",
+          "args": {
+            "start_node_name_hint": "main",
+            "direction": "out",
+            "depth": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "javascript-basic",
+      "path": "testdata/interop/javascript-basic",
+      "project": "javascript-basic",
+      "warmup_runs": 1,
+      "measured_runs": 2,
+      "accuracy_scenarios": [
+        {
+          "id": "class-search",
+          "tool": "search_graph",
+          "args": {
+            "label": "Class"
+          },
+          "expect": {
+            "required_names": [
+              "BaseLogger",
+              "TraceLogger"
+            ]
+          }
+        },
+        {
+          "id": "function-count",
+          "tool": "query_graph",
+          "args": {
+            "query": "MATCH (n) WHERE n.label = \"Class\" RETURN count(n) AS count",
+            "max_rows": 20
+          },
+          "expect": {
+            "columns": [
+              "count"
+            ],
+            "required_rows_min": 1
+          }
+        },
+        {
+          "id": "trace-run",
+          "tool": "trace_call_path",
+          "args": {
+            "start_node_name_hint": "run",
+            "direction": "out",
+            "depth": 4
+          },
+          "expect": {
+            "required_edge_types": [
+              "CALLS"
+            ]
+          }
+        }
+      ],
+      "performance_scenarios": [
+        {
+          "id": "class-search",
+          "tool": "search_graph",
+          "args": {
+            "label": "Class"
+          }
+        },
+        {
+          "id": "function-count",
+          "tool": "query_graph",
+          "args": {
+            "query": "MATCH (n) WHERE n.label = \"Class\" RETURN count(n) AS count",
+            "max_rows": 20
+          }
+        },
+        {
+          "id": "trace-run",
+          "tool": "trace_call_path",
+          "args": {
+            "start_node_name_hint": "run",
+            "direction": "out",
+            "depth": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "typescript-basic",
+      "path": "testdata/interop/typescript-basic",
+      "project": "typescript-basic",
+      "warmup_runs": 1,
+      "measured_runs": 2,
+      "accuracy_scenarios": [
+        {
+          "id": "class-search",
+          "tool": "search_graph",
+          "args": {
+            "label": "Class"
+          },
+          "expect": {
+            "required_names": [
+              "WorkerImpl"
+            ]
+          }
+        },
+        {
+          "id": "function-count",
+          "tool": "query_graph",
+          "args": {
+            "query": "MATCH (n) WHERE n.label = \"Function\" RETURN count(n) AS count",
+            "max_rows": 20
+          },
+          "expect": {
+            "columns": [
+              "count"
+            ],
+            "required_rows_min": 1
+          }
+        },
+        {
+          "id": "trace-run",
+          "tool": "trace_call_path",
+          "args": {
+            "start_node_name_hint": "run",
+            "direction": "out",
+            "depth": 4
+          },
+          "expect": {
+            "required_edge_types": [
+              "CALLS"
+            ]
+          }
+        }
+      ],
+      "performance_scenarios": [
+        {
+          "id": "class-search",
+          "tool": "search_graph",
+          "args": {
+            "label": "Class"
+          }
+        },
+        {
+          "id": "function-count",
+          "tool": "query_graph",
+          "args": {
+            "query": "MATCH (n) WHERE n.label = \"Function\" RETURN count(n) AS count",
+            "max_rows": 20
+          }
+        },
+        {
+          "id": "trace-run",
+          "tool": "trace_call_path",
+          "args": {
+            "start_node_name_hint": "run",
+            "direction": "out",
+            "depth": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "rust-basic",
+      "path": "testdata/interop/rust-basic",
+      "project": "rust-basic",
+      "warmup_runs": 1,
+      "measured_runs": 2,
+      "accuracy_scenarios": [
+        {
+          "id": "class-search",
+          "tool": "search_graph",
+          "args": {
+            "label": "Class"
+          },
+          "expect": {
+            "required_names": [
+              "Counter"
+            ]
+          }
+        },
+        {
+          "id": "function-count",
+          "tool": "query_graph",
+          "args": {
+            "query": "MATCH (n) WHERE n.label = \"Class\" RETURN count(n) AS count",
+            "max_rows": 20
+          },
+          "expect": {
+            "columns": [
+              "count"
+            ],
+            "required_rows_min": 1
+          }
+        },
+        {
+          "id": "trace-build",
+          "tool": "trace_call_path",
+          "args": {
+            "start_node_name_hint": "build",
+            "direction": "out",
+            "depth": 6
+          },
+          "expect": {
+            "required_edge_types": [
+              "CALLS"
+            ]
+          }
+        }
+      ],
+      "performance_scenarios": [
+        {
+          "id": "class-search",
+          "tool": "search_graph",
+          "args": {
+            "label": "Class"
+          }
+        },
+        {
+          "id": "function-count",
+          "tool": "query_graph",
+          "args": {
+            "query": "MATCH (n) WHERE n.label = \"Class\" RETURN count(n) AS count",
+            "max_rows": 20
+          }
+        },
+        {
+          "id": "trace-build",
+          "tool": "trace_call_path",
+          "args": {
+            "start_node_name_hint": "build",
+            "direction": "out",
+            "depth": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "zig-basic",
+      "path": "testdata/interop/zig-basic",
+      "project": "zig-basic",
+      "warmup_runs": 1,
+      "measured_runs": 2,
+      "accuracy_scenarios": [
+        {
+          "id": "function-search",
+          "tool": "search_graph",
+          "args": {
+            "label": "Function"
+          },
+          "expect": {
+            "required_names": [
+              "add",
+              "run"
+            ]
+          }
+        },
+        {
+          "id": "function-count",
+          "tool": "query_graph",
+          "args": {
+            "query": "MATCH (n) WHERE n.label = \"Function\" RETURN count(n) AS count",
+            "max_rows": 20
+          },
+          "expect": {
+            "columns": [
+              "count"
+            ],
+            "required_rows_min": 1
+          }
+        },
+        {
+          "id": "trace-run",
+          "tool": "trace_call_path",
+          "args": {
+            "start_node_name_hint": "run",
+            "direction": "out",
+            "depth": 4
+          },
+          "expect": {
+            "required_edge_types": [
+              "CALLS"
+            ]
+          }
+        }
+      ],
+      "performance_scenarios": [
+        {
+          "id": "function-search",
+          "tool": "search_graph",
+          "args": {
+            "label": "Function"
+          }
+        },
+        {
+          "id": "function-count",
+          "tool": "query_graph",
+          "args": {
+            "query": "MATCH (n) WHERE n.label = \"Function\" RETURN count(n) AS count",
+            "max_rows": 20
+          }
+        },
+        {
+          "id": "trace-run",
+          "tool": "trace_call_path",
+          "args": {
+            "start_node_name_hint": "run",
+            "direction": "out",
+            "depth": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "codebase-memory-zig",
+      "path": ".",
+      "project": "codebase-memory-zig",
+      "warmup_runs": 1,
+      "measured_runs": 1,
+      "notes": [
+        "Performance-oriented local repo benchmark. Accuracy scoring is intentionally skipped for this first slice."
+      ],
+      "accuracy_scenarios": [],
+      "performance_scenarios": [
+        {
+          "id": "function-search",
+          "tool": "search_graph",
+          "args": {
+            "label": "Function",
+            "limit": 25
+          }
+        },
+        {
+          "id": "todo-search",
+          "tool": "search_code",
+          "args": {
+            "pattern": "TODO",
+            "limit": 10
+          }
+        },
+        {
+          "id": "function-count",
+          "tool": "query_graph",
+          "args": {
+            "query": "MATCH (n) WHERE n.label = \"Function\" RETURN count(n) AS count",
+            "max_rows": 10
+          }
+        }
+      ]
+    }
+  ]
+}

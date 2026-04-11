@@ -1,2 +1,7 @@
 zig-out/
 .zig-cache/
+.benchmark_reports/
+.zig-cache-bench/
+.zig-global-cache-bench/
+.zig-prefix-bench/
+scripts/__pycache__/

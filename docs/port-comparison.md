@@ -178,7 +178,7 @@ This section compares what kinds of graph entities the two systems are built to 
 | Previously indexed project watcher registration | Yes | Yes | `Near parity` | Yes | Explicitly wired in Zig Phase 6. |
 | UI runtime flags (`--ui`, `--port`) | Yes | No | `Cut` | No | Zig does not ship the UI server. |
 | Startup update notification | Yes | No | `Deferred` | No | The original README documents update checks on startup. |
-| Benchmarking / soak / security scripts | Present | Not present | `Partial` | No | Zig currently has only the interop harness plus local scratch scripts. |
+| Benchmarking / soak / security scripts | Present | Initial benchmark suite now present, but much narrower than the original script set | `Partial` | No | Zig now ships `scripts/run_benchmark_suite.sh` for first-slice accuracy and performance comparisons, but it does not yet reproduce the original's broader benchmark, soak, and security script surface. |
 
 ## 7. CLI and Productization
 
