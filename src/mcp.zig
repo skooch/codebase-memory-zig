@@ -20,6 +20,7 @@
 //  * detect_changes
 
 const std = @import("std");
+const adr = @import("adr.zig");
 const discover = @import("discover.zig");
 const store = @import("store.zig");
 const pipeline = @import("pipeline.zig");
@@ -41,6 +42,7 @@ const SupportedTool = enum {
     delete_project,
     index_status,
     detect_changes,
+    manage_adr,
 };
 
 const RpcRequest = struct {
@@ -198,7 +200,8 @@ pub const McpServer = struct {
                 \\{"name":"list_projects","description":"List indexed projects","inputSchema":{"type":"object","properties":{}}},
                 \\{"name":"delete_project","description":"Delete a project from the index","inputSchema":{"type":"object","properties":{"project":{"type":"string"}},"required":["project"]}},
                 \\{"name":"index_status","description":"Get the indexing status of a project","inputSchema":{"type":"object","properties":{"project":{"type":"string"}}}},
-                \\{"name":"detect_changes","description":"Map local git changes to affected symbols and nearby blast radius","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"base_branch":{"type":"string"},"scope":{"type":"string"},"depth":{"type":"number"}},"required":["project"]}}
+                \\{"name":"detect_changes","description":"Map local git changes to affected symbols and nearby blast radius","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"base_branch":{"type":"string"},"scope":{"type":"string"},"depth":{"type":"number"}},"required":["project"]}},
+                \\{"name":"manage_adr","description":"Create or update Architecture Decision Records","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"mode":{"type":"string","enum":["get","update","sections"]},"content":{"type":"string"},"sections":{"type":"array","items":{"type":"string"}}},"required":["project"]}}
                 \\]}
             ;
             return self.successResponse(request.value.id, payload);
@@ -234,6 +237,7 @@ pub const McpServer = struct {
             .delete_project => self.handleDeleteProject(request_id, call.arguments orelse .null),
             .index_status => self.handleIndexStatus(request_id, call.arguments orelse .null),
             .detect_changes => self.handleDetectChanges(request_id, call.arguments orelse .null),
+            .manage_adr => self.handleManageAdr(request_id, call.arguments orelse .null),
         };
     }
 
@@ -742,6 +746,66 @@ pub const McpServer = struct {
             }
         }
         try payload.appendSlice(self.allocator, "]}");
+
+        const owned_payload = try payload.toOwnedSlice(self.allocator);
+        defer self.allocator.free(owned_payload);
+        return self.successResponse(request_id, owned_payload);
+    }
+
+    fn handleManageAdr(self: *McpServer, request_id: ?std.json.Value, args: std.json.Value) !?[]const u8 {
+        const project = stringArg(args, "project") orelse return self.errorResponse(request_id, -32602, "Missing project");
+        const mode = stringArg(args, "mode") orelse "get";
+        const content = stringArg(args, "content");
+
+        const project_entry = try self.db.getProject(project);
+        if (project_entry == null) {
+            return self.errorResponse(request_id, -32602, "project not found");
+        }
+        self.db.freeProject(project_entry.?);
+
+        if (std.mem.eql(u8, mode, "update") and content != null) {
+            const decoded_content = try decodeEscapedJsonString(self.allocator, content.?);
+            defer self.allocator.free(decoded_content);
+            try self.db.upsertAdr(project, decoded_content);
+            return self.successResponse(request_id, "{\"status\":\"updated\"}");
+        }
+
+        if (std.mem.eql(u8, mode, "sections")) {
+            const maybe_adr = try self.db.getAdr(project);
+            defer if (maybe_adr) |entry| self.db.freeAdr(entry);
+
+            const sections = if (maybe_adr) |entry| try adr.listMarkdownSections(self.allocator, entry.content) else try self.allocator.alloc([]u8, 0);
+            defer freeOwnedStrings(self.allocator, sections);
+
+            var payload = std.ArrayList(u8).empty;
+            try payload.appendSlice(self.allocator, "{\"sections\":[");
+            for (sections, 0..) |section, idx| {
+                if (idx > 0) try payload.append(self.allocator, ',');
+                try appendJsonString(&payload, self.allocator, section);
+            }
+            try payload.appendSlice(self.allocator, "]}");
+
+            const owned_payload = try payload.toOwnedSlice(self.allocator);
+            defer self.allocator.free(owned_payload);
+            return self.successResponse(request_id, owned_payload);
+        }
+
+        const maybe_adr = try self.db.getAdr(project);
+        defer if (maybe_adr) |entry| self.db.freeAdr(entry);
+        if (maybe_adr == null) {
+            return self.successResponse(
+                request_id,
+                "{\"content\":\"\",\"status\":\"no_adr\",\"adr_hint\":\"No ADR yet. Create one with manage_adr(mode='update', content='## PURPOSE\\n...\\n\\n## STACK\\n...\\n\\n## ARCHITECTURE\\n...\\n\\n## PATTERNS\\n...\\n\\n## TRADEOFFS\\n...\\n\\n## PHILOSOPHY\\n...'). Sections: PURPOSE, STACK, ARCHITECTURE, PATTERNS, TRADEOFFS, PHILOSOPHY.\"}",
+            );
+        }
+
+        const entry = maybe_adr.?;
+        var payload = std.ArrayList(u8).empty;
+        try payload.appendSlice(self.allocator, "{");
+        try appendJsonStringField(&payload, self.allocator, "content", entry.content, true);
+        try appendJsonStringField(&payload, self.allocator, "created_at", entry.created_at, false);
+        try appendJsonStringField(&payload, self.allocator, "updated_at", entry.updated_at, false);
+        try payload.appendSlice(self.allocator, "}");
 
         const owned_payload = try payload.toOwnedSlice(self.allocator);
         defer self.allocator.free(owned_payload);
@@ -1880,6 +1944,7 @@ fn SupportedToolFromString(name: []const u8) error{UnsupportedTool}!SupportedToo
     if (std.mem.eql(u8, name, "delete_project")) return .delete_project;
     if (std.mem.eql(u8, name, "index_status")) return .index_status;
     if (std.mem.eql(u8, name, "detect_changes")) return .detect_changes;
+    if (std.mem.eql(u8, name, "manage_adr")) return .manage_adr;
     return error.UnsupportedTool;
 }
 
@@ -1932,6 +1997,37 @@ fn jsonValueToString(allocator: std.mem.Allocator, value: std.json.Value) ![]u8 
 
     var out = std.ArrayList(u8).empty;
     try out.writer(allocator).print("{f}", .{std.json.fmt(value, .{})});
+    return out.toOwnedSlice(allocator);
+}
+
+fn decodeEscapedJsonString(allocator: std.mem.Allocator, raw: []const u8) ![]u8 {
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(allocator);
+
+    var i: usize = 0;
+    while (i < raw.len) : (i += 1) {
+        if (raw[i] != '\\' or i + 1 >= raw.len) {
+            try out.append(allocator, raw[i]);
+            continue;
+        }
+
+        i += 1;
+        switch (raw[i]) {
+            '\\' => try out.append(allocator, '\\'),
+            '"' => try out.append(allocator, '"'),
+            '/' => try out.append(allocator, '/'),
+            'b' => try out.append(allocator, '\x08'),
+            'f' => try out.append(allocator, '\x0c'),
+            'n' => try out.append(allocator, '\n'),
+            'r' => try out.append(allocator, '\r'),
+            't' => try out.append(allocator, '\t'),
+            else => {
+                try out.append(allocator, '\\');
+                try out.append(allocator, raw[i]);
+            },
+        }
+    }
+
     return out.toOwnedSlice(allocator);
 }
 
@@ -2107,7 +2203,21 @@ test "tool enum coverage" {
     try std.testing.expectEqual(SupportedTool.get_architecture, try SupportedToolFromString("get_architecture"));
     try std.testing.expectEqual(SupportedTool.search_code, try SupportedToolFromString("search_code"));
     try std.testing.expectEqual(SupportedTool.detect_changes, try SupportedToolFromString("detect_changes"));
+    try std.testing.expectEqual(SupportedTool.manage_adr, try SupportedToolFromString("manage_adr"));
     try std.testing.expectError(error.UnsupportedTool, SupportedToolFromString("missing"));
+}
+
+test "tools/list advertises manage_adr" {
+    var s = try store.Store.openMemory(std.testing.allocator);
+    defer s.deinit();
+    var srv = McpServer.init(std.testing.allocator, &s);
+    defer srv.deinit();
+
+    const response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":42,"method":"tools/list","params":{}}
+    )).?;
+    defer std.testing.allocator.free(response);
+    try std.testing.expect(std.mem.indexOf(u8, response, "\"manage_adr\"") != null);
 }
 
 test "list_projects returns projects wrapper" {
@@ -2281,6 +2391,48 @@ test "index_status and delete_project expose project lifecycle" {
     defer missing_parsed.deinit();
     const missing_result = missing_parsed.value.object.get("result").?.object;
     try std.testing.expectEqualStrings("not_found", missing_result.get("status").?.string);
+}
+
+test "manage_adr supports update get and sections" {
+    var s = try store.Store.openMemory(std.testing.allocator);
+    defer s.deinit();
+    try s.upsertProject("demo", "/tmp/demo");
+
+    var srv = McpServer.init(std.testing.allocator, &s);
+    defer srv.deinit();
+
+    const missing_response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":70,"method":"tools/call","params":{"name":"manage_adr","arguments":{"project":"demo"}}}
+    )).?;
+    defer std.testing.allocator.free(missing_response);
+    try std.testing.expect(std.mem.indexOf(u8, missing_response, "\"status\":\"no_adr\"") != null);
+
+    const update_response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":71,"method":"tools/call","params":{"name":"manage_adr","arguments":{"project":"demo","mode":"update","content":"## PURPOSE\\nShip ADRs.\\n\\n## STACK\\nZig\\n\\n## ARCHITECTURE\\nSQLite"}}}
+    )).?;
+    defer std.testing.allocator.free(update_response);
+    try std.testing.expect(std.mem.indexOf(u8, update_response, "\"status\":\"updated\"") != null);
+
+    const get_response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":72,"method":"tools/call","params":{"name":"manage_adr","arguments":{"project":"demo","mode":"get"}}}
+    )).?;
+    defer std.testing.allocator.free(get_response);
+    const get_parsed = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, get_response, .{});
+    defer get_parsed.deinit();
+    const get_result = get_parsed.value.object.get("result").?.object;
+    try std.testing.expect(std.mem.indexOf(u8, get_result.get("content").?.string, "## PURPOSE") != null);
+    try std.testing.expect(get_result.get("created_at") != null);
+    try std.testing.expect(get_result.get("updated_at") != null);
+
+    const sections_response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":73,"method":"tools/call","params":{"name":"manage_adr","arguments":{"project":"demo","mode":"sections"}}}
+    )).?;
+    defer std.testing.allocator.free(sections_response);
+    const sections_parsed = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, sections_response, .{});
+    defer sections_parsed.deinit();
+    const sections = sections_parsed.value.object.get("result").?.object.get("sections").?.array.items;
+    try std.testing.expectEqual(@as(usize, 3), sections.len);
+    try std.testing.expectEqualStrings("## PURPOSE", sections[0].string);
 }
 
 test "index_repository registers watcher state and delete_project unwatches it" {

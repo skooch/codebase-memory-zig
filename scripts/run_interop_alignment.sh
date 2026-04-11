@@ -42,6 +42,7 @@ SHARED_TOOL_NAMES = [
     "index_repository",
     "index_status",
     "list_projects",
+    "manage_adr",
     "query_graph",
     "search_code",
     "search_graph",
@@ -93,7 +94,7 @@ def extract_tool_payload(raw: str, allow_content_wrapper: bool = True) -> tuple[
     result = envelope.get("result")
     status = None
     if isinstance(result, dict) and "content" in result and allow_content_wrapper:
-        content = result.get("content") or []
+        content = result.get("content")
         if isinstance(content, list) and content:
             text = content[0].get("text", "")
             try:
@@ -101,7 +102,7 @@ def extract_tool_payload(raw: str, allow_content_wrapper: bool = True) -> tuple[
             except Exception:
                 result = text
             status = "ok"
-        else:
+        elif isinstance(content, list):
             result = []
             status = "ok"
     else:
@@ -315,6 +316,41 @@ def canonical_detect_changes(payload: Any) -> dict[str, Any]:
         "changed_files": normalized_files,
         "changed_count": int(payload.get("changed_count", len(normalized_files)) or 0),
         "impacted_symbols": normalized_impacted,
+    }
+
+
+def canonical_manage_adr(payload: Any) -> dict[str, Any]:
+    def decode_text(text: str) -> str:
+        if "\\" not in text:
+            return text
+        try:
+            return bytes(text, "utf-8").decode("unicode_escape")
+        except Exception:
+            return text
+
+    def expand_sections(values: list[str]) -> list[str]:
+        expanded: list[str] = []
+        for value in values:
+            decoded = decode_text(value)
+            if "\n" not in decoded:
+                expanded.append(decoded)
+                continue
+            for line in decoded.splitlines():
+                line = line.rstrip("\r")
+                if line.startswith("#"):
+                    expanded.append(line)
+        return expanded
+
+    if not isinstance(payload, dict):
+        return {"status": "", "content": "", "sections": []}
+    sections = payload.get("sections", [])
+    normalized_sections = []
+    if isinstance(sections, list):
+        normalized_sections = expand_sections([str(section) for section in sections])
+    return {
+        "status": str(payload.get("status", "")),
+        "content": decode_text(str(payload.get("content", ""))),
+        "sections": normalized_sections,
     }
 
 
@@ -706,6 +742,26 @@ def build_requests(root: Path, fixture: dict[str, Any], impl: str) -> tuple[list
         )
         tool_id += 1
 
+    for assertion in assertions.get("manage_adr", []):
+        args = dict(assertion.get("args", {}))
+        args["project"] = project_name if impl == "zig" else c_project_name
+        requests.append(
+            {
+                "request": {
+                    "jsonrpc": "2.0",
+                    "id": tool_id,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "manage_adr",
+                        "arguments": args,
+                    },
+                },
+                "compare_key": "manage_adr",
+                "assertion": assertion,
+            }
+        )
+        tool_id += 1
+
     requests.append(
         {
             "request": {
@@ -819,6 +875,19 @@ def check_assertions(tool_name: str, tool_payload: Any, assertions: list[dict[st
                 failures.append("detect_changes impacted_symbols not empty")
             continue
 
+        if tool_name == "manage_adr":
+            adr_payload = canonical_manage_adr(tool_payload or {})
+            if "status" in expected and adr_payload["status"] != expected["status"]:
+                failures.append(f"manage_adr status {adr_payload['status']} != {expected['status']}")
+            required_sections = expected.get("required_sections", [])
+            missing_sections = [section for section in required_sections if section not in adr_payload["sections"]]
+            if missing_sections:
+                failures.append(f"manage_adr missing sections {missing_sections}")
+            for fragment in expected.get("content_contains", []):
+                if fragment not in adr_payload["content"]:
+                    failures.append(f"manage_adr content missing {fragment}")
+            continue
+
         if tool_name == "list_projects":
             entries = canonical_list_projects(tool_payload or {})
             if len(entries) == 0:
@@ -895,7 +964,7 @@ def main() -> None:
                     {"tool": "tools_list", "failures": failures}
                 )
 
-            for scope_tool in ("search_graph", "query_graph", "trace_call_path", "get_architecture", "search_code", "detect_changes"):
+            for scope_tool in ("search_graph", "query_graph", "trace_call_path", "get_architecture", "search_code", "detect_changes", "manage_adr"):
                 assertion_key = scope_tool
                 for index, assertion in enumerate(assertions.get(assertion_key, [])):
                     entries = impl_payloads.get(scope_tool) or []
@@ -936,6 +1005,7 @@ def main() -> None:
             "get_architecture",
             "search_code",
             "detect_changes",
+            "manage_adr",
             "list_projects",
             "index_repository",
         ):
@@ -1153,6 +1223,33 @@ def main() -> None:
                     if has_mismatch:
                         report["mismatches"].append(
                             {"fixture": fixture_id, "tool": scope, "category": "detect_changes_result"}
+                        )
+                        comparisons[scope] = {"status": "mismatch", "cases": cases}
+                    else:
+                        comparisons[scope] = {"status": "match", "count": len(cases)}
+
+            if scope == "manage_adr":
+                z_entries = get_entries("zig", scope)
+                c_entries = get_entries("c", scope)
+                if not z_entries or not c_entries:
+                    comparisons[scope] = {"status": "missing", "zig": bool(z_entries), "c": bool(c_entries)}
+                else:
+                    cases = []
+                    has_mismatch = False
+                    for index, assertion in enumerate(assertions.get("manage_adr", [])):
+                        z_payload = canonical_manage_adr(z_entries[index]["payload"])
+                        c_payload = canonical_manage_adr(c_entries[index]["payload"])
+                        case = {
+                            "mode": assertion.get("args", {}).get("mode", "get"),
+                            "zig": z_payload,
+                            "c": c_payload,
+                        }
+                        if z_payload != c_payload:
+                            has_mismatch = True
+                        cases.append(case)
+                    if has_mismatch:
+                        report["mismatches"].append(
+                            {"fixture": fixture_id, "tool": scope, "category": "adr_payload"}
                         )
                         comparisons[scope] = {"status": "mismatch", "cases": cases}
                     else:

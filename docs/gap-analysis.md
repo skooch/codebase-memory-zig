@@ -61,7 +61,7 @@ Completed after the readiness gate:
   - current evidence: `Comparisons: 67`, `Strict matches: 58`, `Diagnostic-only comparisons: 9`, `Mismatches: 0`, `cli_progress: match`
 
 Intentionally deferred after Phase 7:
-- The remaining MCP tools outside the current daily-use slice, especially `manage_adr`.
+- The remaining MCP work outside the completed daily-use slice, especially fuller Cypher parity and richer trace modes.
 - Full Cypher parity beyond the broader day-to-day query subset now supporting node/edge reads, filtering, sorting, and counts.
 - Deeper usage/type-reference extraction parity and broader cross-language semantics beyond the current target daily-use slice.
 - Git-history coupling, route nodes, test tagging, config-linking, and richer decorator/enrichment follow-ons.
@@ -101,7 +101,7 @@ Complete slices:
 
 Deferred or optional future slices:
 - Public surface expansion:
-  - `manage_adr`
+  - richer trace breadth beyond the current call-edge slice
 - Query/runtime expansion:
   - full Cypher lexer/parser/executor parity beyond the verified shared read-only floor
   - broader traversal and query-analysis parity beyond the current shared `detect_changes` contract
@@ -231,7 +231,7 @@ The Zig stub has the 14 tool names as an enum but zero handler implementations.
 | `delete_project` | Full (cascade delete nodes/edges, remove .db file, unwatch) | WORKS | Low |
 | `index_status` | Full (in_progress/complete, node/edge counts) | WORKS | Low |
 | `detect_changes` | Full (git diff → affected symbols, blast radius via BFS, risk levels) | STUB | High — git diff parsing + store queries + BFS |
-| `manage_adr` | Full (get/update/sections modes, section parsing/rendering, validation) | STUB | Medium |
+| `manage_adr` | Full (get/update/sections modes, section parsing/rendering, validation) | WORKS for the shared `get` / `update` / `sections` contract; deeper validation helpers remain follow-on work | Medium |
 | `ingest_traces` | Stub in C too ("not yet implemented") | STUB | N/A — cut feature |
 
 **Gap: 13 tool handlers to implement** (excluding ingest_traces which was cut).
@@ -337,7 +337,7 @@ The Zig store has the schema (tables + indexes + pragmas) and opens in-memory DB
 | `get_schema` (labels, types, patterns, samples) | Full | MISSING |
 | `get_architecture` (languages, packages, entries, routes, hotspots, boundaries, services, layers, clusters, file tree) | Full | MISSING |
 | `cbm_louvain` (community detection) | Full | MISSING |
-| ADR store/get/delete/update_sections | Full | MISSING |
+| ADR store/get/delete | Full | WORKS |
 
 ### Transaction / Bulk
 

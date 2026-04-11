@@ -52,7 +52,7 @@ Completed now:
   - current evidence: `Comparisons: 67`, `Strict matches: 58`, `Diagnostic-only comparisons: 9`, `Mismatches: 0`, `cli_progress: match`
 
 Intentionally deferred after Phase 7:
-- Remaining MCP surface beyond the current daily-use slice, especially `manage_adr`.
+- Remaining MCP surface beyond the current daily-use slice, especially fuller Cypher parity and richer trace breadth.
 - Full Cypher parity beyond the broader day-to-day query subset now used by `query_graph`, `get_architecture`, and `detect_changes`.
 - Deeper usage/type-ref parity and broader extraction semantics beyond the current daily-use slice for Python, JS/TS/TSX, Rust, and Zig.
 - Git-history coupling, route nodes, test tagging, config-linking, and richer decorator/enrichment follow-ons.
@@ -77,7 +77,7 @@ That completed work is archived in:
 
 This follow-on stayed intentionally narrower than a full “port every remaining subsystem” effort:
 - it closed the shared-surface full-parity rows
-- it did not reopen intentionally missing subsystems such as UI, route graphs, or `manage_adr`
+- it did not reopen intentionally missing subsystems such as UI or route graphs
 
 ### Recommended Execution Order
 
@@ -550,7 +550,7 @@ Current state: the end-to-end vertical slice is working with parser-backed defin
 - [ ] Wire up all MCP tools: `search_graph`, `query_graph`, `get_code_snippet`, `trace_call_path`, etc.
 - [x] Port `watcher/` for auto-reindex
 - [x] Exit criterion: can run as MCP server, index a repo, answer queries via Claude Code
-Current state: the broader daily-use MCP surface is now live, the runtime uses a persistent store, and watcher-backed auto-index / auto-reindex is wired into the long-running server path. Remaining M2 work is the non-daily-use surface such as `manage_adr` and fuller Cypher parity beyond the current supported subset.
+Current state: the broader daily-use MCP surface is now live, the runtime uses a persistent store, and watcher-backed auto-index / auto-reindex is wired into the long-running server path. Remaining M2 work is fuller Cypher parity and other long-tail follow-ons beyond the current supported subset.
 
 ### M3 Checklist
 
@@ -584,7 +584,7 @@ Complete plan/milestone slices:
 Deferred or optional follow-on implementation slices:
 - Remaining M2 work:
   - full Cypher support
-  - remaining MCP tools, especially `manage_adr`
+  - remaining MCP follow-ons, especially fuller Cypher parity
 - Remaining M3:
   - memory/performance parity work
 - Remaining M4:

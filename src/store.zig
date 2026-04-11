@@ -4,6 +4,7 @@
 
 const std = @import("std");
 const c = @cImport(@cInclude("sqlite3.h"));
+const adr = @import("adr.zig");
 
 pub const StoreError = error{
     OpenFailed,
@@ -37,6 +38,8 @@ pub const Project = struct {
     indexed_at: []const u8 = "",
     root_path: []const u8 = "",
 };
+
+pub const AdrEntry = adr.Entry;
 
 pub const FileHash = struct {
     project: []const u8,
@@ -227,6 +230,12 @@ pub const Store = struct {
                 "size INTEGER DEFAULT 0, " ++
                 "PRIMARY KEY (project, rel_path)" ++
                 ")",
+            "CREATE TABLE IF NOT EXISTS project_summaries (" ++
+                "project TEXT PRIMARY KEY REFERENCES projects(name) ON DELETE CASCADE, " ++
+                "summary TEXT NOT NULL DEFAULT '', " ++
+                "created_at TEXT NOT NULL DEFAULT '', " ++
+                "updated_at TEXT NOT NULL DEFAULT ''" ++
+                ")",
             "CREATE INDEX IF NOT EXISTS idx_nodes_label ON nodes(project, label)",
             "CREATE INDEX IF NOT EXISTS idx_nodes_name ON nodes(project, name)",
             "CREATE INDEX IF NOT EXISTS idx_nodes_file ON nodes(project, file_path)",
@@ -359,6 +368,57 @@ pub const Store = struct {
             .edges = edge_count,
             .status = if (node_count > 0) .ready else .empty,
         };
+    }
+
+    pub fn upsertAdr(self: *Store, project: []const u8, content: []const u8) !void {
+        var now_buf: [64]u8 = undefined;
+        const now = std.time.timestamp();
+        const timestamp = std.fmt.bufPrint(&now_buf, "{d}", .{now}) catch "0";
+
+        const stmt = try self.prepare(
+            "INSERT INTO project_summaries(project, summary, created_at, updated_at) VALUES(?1, ?2, ?3, ?4) " ++
+                "ON CONFLICT(project) DO UPDATE SET summary = excluded.summary, updated_at = excluded.updated_at",
+        );
+        defer self.finalize(stmt);
+
+        try self.bindText(stmt, 1, project);
+        try self.bindText(stmt, 2, content);
+        try self.bindText(stmt, 3, timestamp);
+        try self.bindText(stmt, 4, timestamp);
+        try self.stepDone(stmt);
+    }
+
+    pub fn getAdr(self: *Store, project: []const u8) !?AdrEntry {
+        const stmt = try self.prepare(
+            "SELECT project, summary, created_at, updated_at FROM project_summaries WHERE project = ?1 LIMIT 1",
+        );
+        defer self.finalize(stmt);
+
+        try self.bindText(stmt, 1, project);
+        const rc = c.sqlite3_step(stmt);
+        if (rc == c.SQLITE_DONE) return null;
+        if (rc != c.SQLITE_ROW) return StoreError.SqlError;
+
+        return .{
+            .project = try self.copyColumnText(stmt, 0),
+            .content = try self.copyColumnText(stmt, 1),
+            .created_at = try self.copyColumnText(stmt, 2),
+            .updated_at = try self.copyColumnText(stmt, 3),
+        };
+    }
+
+    pub fn deleteAdr(self: *Store, project: []const u8) !void {
+        const stmt = try self.prepare("DELETE FROM project_summaries WHERE project = ?1");
+        defer self.finalize(stmt);
+        try self.bindText(stmt, 1, project);
+        _ = try self.stepNoResult(stmt);
+    }
+
+    pub fn freeAdr(self: *Store, entry: AdrEntry) void {
+        self.allocator.free(entry.project);
+        self.allocator.free(entry.content);
+        self.allocator.free(entry.created_at);
+        self.allocator.free(entry.updated_at);
     }
 
     pub fn freeProjectStatus(self: *Store, status: ProjectStatus) void {
@@ -1419,6 +1479,35 @@ test "store breadth-first traversal reuses shared edge traversal logic" {
     const both = try s.traverseEdgesBreadthFirst("p2", middle_id, .both, 1, null);
     defer s.freeTraversalEdges(both);
     try std.testing.expectEqual(@as(usize, 3), both.len);
+}
+
+test "store ADR persistence round-trips content and timestamps" {
+    var s = try Store.openMemory(std.testing.allocator);
+    defer s.deinit();
+
+    try s.upsertProject("adr-demo", "/tmp/adr-demo");
+    try s.upsertAdr(
+        "adr-demo",
+        "## PURPOSE\nKeep ADRs in the SQLite store.\n\n## STACK\nZig and SQLite.",
+    );
+
+    const first = (try s.getAdr("adr-demo")).?;
+    defer s.freeAdr(first);
+    try std.testing.expectEqualStrings("adr-demo", first.project);
+    try std.testing.expect(std.mem.indexOf(u8, first.content, "## PURPOSE") != null);
+    try std.testing.expect(first.created_at.len > 0);
+    try std.testing.expect(first.updated_at.len > 0);
+
+    try s.upsertAdr(
+        "adr-demo",
+        "## PURPOSE\nUpdated content.\n\n## STACK\nZig and SQLite.",
+    );
+    const updated = (try s.getAdr("adr-demo")).?;
+    defer s.freeAdr(updated);
+    try std.testing.expect(std.mem.indexOf(u8, updated.content, "Updated content.") != null);
+
+    try s.deleteAdr("adr-demo");
+    try std.testing.expectEqual(@as(?AdrEntry, null), try s.getAdr("adr-demo"));
 }
 
 test "store project status and suffix helpers support phase 3 tools" {

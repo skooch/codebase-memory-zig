@@ -3,6 +3,7 @@
 // Module root. Re-exports the public API surface.
 
 pub const store = @import("store.zig");
+pub const adr = @import("adr.zig");
 pub const graph_buffer = @import("graph_buffer.zig");
 pub const pipeline = @import("pipeline.zig");
 pub const mcp = @import("mcp.zig");
@@ -24,6 +25,7 @@ pub const Language = discover.Language;
 
 test {
     _ = store;
+    _ = adr;
     _ = graph_buffer;
     _ = pipeline;
     _ = mcp;

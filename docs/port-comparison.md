@@ -54,11 +54,11 @@ It is intentionally not a wish list. It describes:
 | Area | Original C | Zig Port | Status | Interoperable? |
 |------|------------|----------|--------|----------------|
 | Readiness/interoperability gate | Full shared-capability reference implementation | Expanded shared-capability parity harness completed, automated, and passing | `Near parity` | Yes |
-| Daily-use MCP surface | Full 14-tool surface, though `ingest_traces` is stubbed | Complete current-target daily-use surface, but without `manage_adr` and `ingest_traces` | `Partial` | No |
+| Daily-use MCP surface | Full 14-tool surface, though `ingest_traces` is stubbed | Complete overlapping tool surface, with remaining differences concentrated in richer trace breadth and other partial rows below | `Partial` | No |
 | Core indexing pipeline | Broad multi-pass pipeline including routes, tests, config links, infra scans, git history, similarity | Strong core pipeline for structure, definitions, imports, calls, usages, semantics, incremental, parallel, similarity | `Partial` | No |
 | Runtime lifecycle | Watcher, auto-index, update notifications, UI-capable runtime | Watcher, auto-index, incremental, transactional indexing, persistent runtime DB | `Near parity` | Yes |
 | CLI/productization | Rich install/update/config for 10 agents plus hooks/instructions | Source-build-friendly install/update/config for Codex CLI and Claude Code | `Partial` | No |
-| Optional/long-tail systems | UI, route graph, ADR, infra/resource indexing, git history, tests, config linking | Explicitly deferred or cut | `Deferred` / `Cut` | No |
+| Optional/long-tail systems | UI, route graph, infra/resource indexing, git history, tests, config linking | Explicitly deferred or cut | `Deferred` / `Cut` | No |
 
 ## 1. Project Scope and Product Shape
 
@@ -77,7 +77,7 @@ It is intentionally not a wish list. It describes:
 | Capability | Original C | Zig Port | Status | Interoperable? | Notes |
 |-----------|------------|----------|--------|----------------|-------|
 | `initialize` | Yes | Yes | `Near parity` | Yes | Both serve stdio JSON-RPC MCP. |
-| `tools/list` | Yes, advertises 14 tools | Yes, advertises the 12 overlapping implemented tools | `Near parity` | Yes | Shared tool-schema parity is now green; the remaining count difference is `manage_adr` plus the original's stub `ingest_traces`. |
+| `tools/list` | Yes, advertises 14 tools | Yes, advertises the 13 overlapping implemented tools | `Near parity` | Yes | Shared tool-schema parity is now green; the only remaining count difference is the original's stub `ingest_traces`. |
 | `tools/call` | Yes | Yes | `Near parity` | Yes | Core RPC path is implemented in both. |
 | One-shot CLI tool execution | `codebase-memory-mcp cli ...` | `cbm cli ...` | `Near parity` | Yes | Both support direct command-line tool invocation. |
 | CLI progress output | Rich progress sink with per-stage pipeline events | Shared phase-aware progress stream for overlapping commands | `Near parity` | Yes | The temp-HOME CLI parity check in the interop harness now reports `cli_progress: match`; richer original-only lifecycle/runtime extras remain separate rows. |
@@ -94,13 +94,13 @@ It is intentionally not a wish list. It describes:
 | `trace_call_path` / `trace_path` | Calls, data-flow, cross-service, risk labels, include-tests | Call-edge traversal only | `Partial` | No | Zig does not implement the broader tracing modes or risk labeling. |
 | `get_code_snippet` | Full | Implemented | `Near parity` | Yes | Zig supports exact lookup, suffix fallback, ambiguity suggestions, neighbor info. |
 | `get_graph_schema` | Full | Implemented | `Near parity` | Yes | Good match for the low-risk public surface. |
-| `get_architecture` | Languages, packages, entry points, routes, hotspots, boundaries, layers, clusters, ADR | Shared architecture summary sections, counts, and structured fields aligned on the parity fixtures | `Near parity` | Yes | The harness now proves the overlapping architecture-summary contract is aligned; richer original-only sections such as ADR management remain outside this shared row. |
+| `get_architecture` | Languages, packages, entry points, routes, hotspots, boundaries, layers, clusters, ADR | Shared architecture summary sections, counts, and structured fields aligned on the parity fixtures | `Near parity` | Yes | The harness now proves the overlapping architecture-summary contract is aligned; richer original-only route and clustering sections remain outside this shared row. |
 | `search_code` | Graph-augmented grep with ranking/dedup | Shared compact/full/files behavior aligned on grouping, labels, and ranking for the parity fixtures | `Near parity` | Yes | The Zig search path now matches the original on the overlapping result-shaping contract exercised by the fixture corpus, including the JavaScript `boot` label case. |
 | `list_projects` | Full | Implemented | `Near parity` | Yes | Core readiness tool; counts remain diagnostic in first-gate comparisons. |
 | `delete_project` | Full | Implemented | `Near parity` | Yes | Includes watcher unregistration in Zig. |
 | `index_status` | Full | Implemented | `Near parity` | Yes | Exposed during Phase 3. |
 | `detect_changes` | Git diff + impact + blast radius + risk classification | Shared git-diff, impacted-symbol, blast-radius, and reporting contract aligned for the parity fixtures | `Near parity` | Yes | Zig now matches the original's overlapping `scope` mode behavior and shared reporting shape on the verified fixture scenarios. |
-| `manage_adr` | Implemented | Not implemented | `Deferred` | No | Explicitly kept outside the completed Zig target contract. |
+| `manage_adr` | Implemented | Implemented with shared `get`, `update`, and `sections` parity | `Near parity` | Yes | The interop harness now verifies the overlapping ADR tool contract on a local parity fixture. |
 | `ingest_traces` | Stubbed in original | Not implemented | `N/A` | No | Not a meaningful parity gap because the original feature is also not real. |
 
 ### 2.3 Important Tool-Contract Differences
@@ -111,7 +111,7 @@ It is intentionally not a wish list. It describes:
 | Trace tool naming | `trace_path` plus `trace_call_path` alias | `trace_call_path` only | The Zig port follows the clearer explicit name. |
 | Trace entry argument | `function_name` | `start_node_qn` | Zig prefers deterministic graph identity over name-only lookup. |
 | Trace modes | `calls`, `data_flow`, `cross_service` | call-edge traversal only | Users should not expect original trace modes in the Zig port. |
-| Tools advertised via `tools/list` | 14 total | 12 overlapping implemented tools | Shared overlap is aligned; the remaining count difference is deferred `manage_adr` plus the original's stub `ingest_traces`. |
+| Tools advertised via `tools/list` | 14 total | 13 overlapping implemented tools | Shared overlap is aligned; the remaining count difference is the original's stub `ingest_traces`. |
 
 ## 3. Indexing Pipeline and Graph Construction
 
@@ -221,7 +221,6 @@ If someone asks “what still separates the Zig port from the original?”, the 
 
 | Difference | Why it matters |
 |-----------|----------------|
-| No `manage_adr` | The original has ADR persistence and guided architecture documentation flows. |
 | No full Cypher parity | Some advanced graph query patterns remain C-only. |
 | No route / cross-service graph stack | The original can model HTTP and async route relationships more richly. |
 | No LSP-assisted hybrid resolution | Some higher-fidelity call/type resolution paths remain original-only. |

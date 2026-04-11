@@ -4,6 +4,60 @@
   "goal": "Define readiness fixtures and follow-on parity fixtures for cross-language interoperability and full-parity checks",
   "fixtures": [
     {
+      "id": "adr-parity",
+      "path": "testdata/interop/adr-parity",
+      "project": "adr-parity",
+      "language": "python",
+      "scope_tools": [
+        "index_repository",
+        "manage_adr",
+        "list_projects"
+      ],
+      "assertions": {
+        "index_repository": {
+          "expect": {
+            "nodes_min": 2,
+            "edges_min": 1
+          }
+        },
+        "manage_adr": [
+          {
+            "args": {
+              "mode": "update",
+              "content": "## PURPOSE\\nPersist ADRs.\\n\\n## STACK\\nZig and SQLite.\\n\\n## ARCHITECTURE\\nProject-scoped ADR storage."
+            },
+            "expect": {
+              "status": "updated"
+            }
+          },
+          {
+            "args": {
+              "mode": "get"
+            },
+            "expect": {
+              "content_contains": [
+                "## PURPOSE",
+                "## STACK",
+                "## ARCHITECTURE"
+              ]
+            }
+          },
+          {
+            "args": {
+              "mode": "sections"
+            },
+            "expect": {
+              "required_sections": [
+                "## PURPOSE",
+                "## STACK",
+                "## ARCHITECTURE"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
       "id": "python-basic",
       "path": "testdata/interop/python-basic",
       "project": "python-basic",
