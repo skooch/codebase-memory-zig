@@ -257,6 +257,16 @@ fn isSkipFileSuffix(name: []const u8) bool {
 }
 
 fn isFastSkipFile(name: []const u8, opts: DiscoverOptions) bool {
+    const shared_names = [_][]const u8{
+        "package.json",
+        "tsconfig.json",
+    };
+    for (shared_names) |item| {
+        if (std.mem.eql(u8, name, item)) {
+            return true;
+        }
+    }
+
     if (opts.mode != .fast) {
         return false;
     }
@@ -517,4 +527,41 @@ test "extension detection" {
     try std.testing.expectEqual(Language.zig, languageForExtension(".zig").?);
     try std.testing.expectEqual(Language.python, languageForExtension(".py").?);
     try std.testing.expect(languageForExtension(".xyz") == null);
+}
+
+test "discover skips shared js ts config files in full mode" {
+    const allocator = std.testing.allocator;
+    const root = try std.fmt.allocPrint(allocator, "/tmp/cbm-discover-skip-{x}", .{std.crypto.random.int(u64)});
+    defer allocator.free(root);
+    try std.fs.cwd().makePath(root);
+    defer std.fs.cwd().deleteTree(root) catch {};
+
+    {
+        var dir = try std.fs.cwd().openDir(root, .{});
+        defer dir.close();
+
+        var index = try dir.createFile("index.js", .{});
+        defer index.close();
+        try index.writeAll("function boot() { return 1; }\n");
+
+        var package = try dir.createFile("package.json", .{});
+        defer package.close();
+        try package.writeAll("{\"name\":\"demo\"}\n");
+
+        var tsconfig = try dir.createFile("tsconfig.json", .{});
+        defer tsconfig.close();
+        try tsconfig.writeAll("{\"compilerOptions\":{}}\n");
+    }
+
+    const files = try discoverFiles(allocator, root, .{ .mode = .full });
+    defer {
+        for (files) |file| {
+            allocator.free(file.path);
+            allocator.free(file.rel_path);
+        }
+        allocator.free(files);
+    }
+
+    try std.testing.expectEqual(@as(usize, 1), files.len);
+    try std.testing.expectEqualStrings("index.js", files[0].rel_path);
 }

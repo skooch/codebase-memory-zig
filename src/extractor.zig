@@ -1504,9 +1504,10 @@ fn tsNodeLabel(language: discover.Language, node: ts.Node) ?[]const u8 {
         .javascript, .typescript, .tsx => if (std.mem.eql(u8, kind, "function_declaration") or
             std.mem.eql(u8, kind, "generator_function_declaration"))
             "Function"
-        else if (std.mem.eql(u8, kind, "method_definition") or
-            std.mem.eql(u8, kind, "method_signature"))
+        else if (std.mem.eql(u8, kind, "method_definition"))
             "Method"
+        else if (std.mem.eql(u8, kind, "method_signature"))
+            if (nodeHasAncestorKind(node, "class_declaration") or nodeHasAncestorKind(node, "class")) "Method" else null
         else if (std.mem.eql(u8, kind, "function_expression"))
             if (jsTsFunctionExpressionIsDefinition(node)) "Function" else null
         else if (std.mem.eql(u8, kind, "arrow_function"))
@@ -2420,7 +2421,21 @@ fn isDeclarationLine(language: discover.Language, line: []const u8) bool {
     if (parseSymbol(language, line)) |sym| {
         return isDeclarationLabel(sym.label);
     }
+    if ((language == .typescript or language == .tsx) and isTypeScriptSignatureLine(line)) {
+        return true;
+    }
     return false;
+}
+
+fn isTypeScriptSignatureLine(line: []const u8) bool {
+    const trimmed = std.mem.trim(u8, line, " \t");
+    if (!std.mem.endsWith(u8, trimmed, ";")) return false;
+    if (std.mem.indexOfScalar(u8, trimmed, '(') == null) return false;
+    if (std.mem.indexOfScalar(u8, trimmed, ')') == null) return false;
+    if (std.mem.indexOfScalar(u8, trimmed, ':') == null) return false;
+    if (std.mem.indexOfScalar(u8, trimmed, '=') != null) return false;
+    if (std.mem.indexOfScalar(u8, trimmed, '{') != null) return false;
+    return true;
 }
 
 fn stripComments(language: discover.Language, line: []const u8) []const u8 {
@@ -2794,6 +2809,7 @@ test "tree-sitter extracts typescript definitions with labels and line numbers" 
     try std.testing.expect(definitionPresent(defs.items, "Interface", "ServicePort", 1));
     try std.testing.expect(definitionPresent(defs.items, "Function", "helper", 5));
     try std.testing.expect(definitionPresent(defs.items, "Class", "Service", 9));
+    try std.testing.expect(!definitionPresent(defs.items, "Method", "read", 2));
     try std.testing.expect(definitionPresent(defs.items, "Method", "read", 10));
 }
 
@@ -3083,6 +3099,15 @@ test "call collection skips declaration lines" {
     try std.testing.expect((try collectCalls(
         std.testing.allocator,
         "const worker = new Worker()",
+        .typescript,
+        null,
+        2,
+        1,
+        false,
+    )) == null);
+    try std.testing.expect((try collectCalls(
+        std.testing.allocator,
+        "run(): string;",
         .typescript,
         null,
         2,

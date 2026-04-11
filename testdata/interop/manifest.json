@@ -760,6 +760,30 @@
                 "n.name"
               ]
             }
+          },
+          {
+            "args": {
+              "query": "MATCH (n) WHERE n.label = \"File\" RETURN n.name ORDER BY n.name ASC",
+              "project": "javascript-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": [
+                "n.name"
+              ]
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (n) WHERE n.label = \"Module\" RETURN n.name ORDER BY n.name ASC",
+              "project": "javascript-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": [
+                "n.name"
+              ]
+            }
           }
         ],
         "trace_call_path": [
@@ -941,6 +965,42 @@
           {
             "args": {
               "query": "MATCH (n) WHERE n.label = \"Variable\" RETURN n.name ORDER BY n.name ASC",
+              "project": "typescript-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": [
+                "n.name"
+              ]
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (n) WHERE n.label = \"File\" RETURN n.name ORDER BY n.name ASC",
+              "project": "typescript-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": [
+                "n.name"
+              ]
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (n) WHERE n.label = \"Module\" RETURN n.name ORDER BY n.name ASC",
+              "project": "typescript-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": [
+                "n.name"
+              ]
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (n) WHERE n.label = \"Method\" RETURN n.name ORDER BY n.name ASC",
               "project": "typescript-parity",
               "max_rows": 20
             },
