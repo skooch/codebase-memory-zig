@@ -74,7 +74,7 @@
   - `testdata/interop/manifest.json`
 
 ### Phase 3: Bring Shared Graph Construction and Edge Semantics to Full Parity
-- **Status:** in progress
+- **Status:** completed
 - Actions:
   - Started the phase with the first evidence-backed graph-fidelity slice instead of trying to move every remaining edge family at once: declaration-context `USAGE` parity for the shared Python, JavaScript, and Rust fixtures.
   - Confirmed from direct Zig/C fixture probes that the original emits module-scoped usage facts for decorator references, inheritance bases, and some Rust declaration-time type references that the Zig extractor either missed or attributed differently.
@@ -127,6 +127,11 @@
   - Confirmed the next shared definitions drift in the JS/TS parity fixtures with controlled Zig/C probes: the Zig port was still indexing `package.json` / `tsconfig.json` as extra `File` / `Module` pairs and was promoting TypeScript interface signatures into `Method` nodes that the original does not persist.
   - Tightened discovery and tree-sitter extraction to match that shared contract in `src/discover.zig` and `src/extractor.zig`: `package.json` and `tsconfig.json` are now skipped during indexing, and TypeScript `method_signature` nodes only become `Method` definitions when they occur under actual class syntax rather than interface declarations.
   - Tightened Python module-variable parity for the shared basic fixture in `src/extractor.zig` and `src/pipeline.zig`: assignments inside top-level control-flow blocks no longer get promoted as unconditional module `Variable` definitions, and the basic harness now asserts that `python-basic` keeps its variable inventory empty like the original.
+  - Re-ran the controlled baseline after finding the checked-in report had drifted behind the documented status: `zig build`, `zig build test`, and `bash scripts/run_interop_alignment.sh` are currently green again with `Comparisons: 67`, `Strict matches: 58`, `Diagnostic-only comparisons: 9`, `Mismatches: 0`, and `cli_progress: match`.
+  - Probed the remaining unpinned edge families directly against fresh temp-HOME Zig and C runs instead of inferring from the green harness: Python `DECORATES` and `CONFIGURES` rows match exactly, while the current shared parity fixtures all agree on empty-row results for the exercised `WRITES` and `USES_TYPE` queries.
+  - Expanded `testdata/interop/manifest.json` so those graph-contract edges are now explicit strict comparisons instead of implicit assumptions: Python now compares `DECORATES`, `WRITES`, and `USES_TYPE`; JavaScript compares `WRITES`; TypeScript compares `WRITES` and `USES_TYPE`; Rust compares `USES_TYPE`.
+  - Re-ran `bash scripts/run_interop_alignment.sh` after the manifest expansion and confirmed the stricter graph-fidelity surface remains green with `Mismatches: 0`; the headline comparison totals stay at `67` / `58` / `9` because the report rolls up by tool family rather than per-query assertion count.
+  - Closed the parser/build checkbox without code changes: controlled probes showed the remaining shared Phase 3 parity gaps were in verification coverage, not missing vendored parser inputs or build integration, so no `build.zig` or `build.zig.zon` changes were required to complete the overlapping graph contract.
 - Files modified:
   - `docs/plans/in-progress/shared-capability-parity-plan.md`
   - `docs/plans/in-progress/shared-capability-parity-progress.md`

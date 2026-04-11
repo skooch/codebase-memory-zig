@@ -508,6 +508,21 @@
           },
           {
             "args": {
+              "query": "MATCH (a)-[r:DECORATES]->(b) RETURN a.label, a.name, b.label, b.name ORDER BY a.name, b.name",
+              "project": "python-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": [
+                "a.label",
+                "a.name",
+                "b.label",
+                "b.name"
+              ]
+            }
+          },
+          {
+            "args": {
               "query": "MATCH (n) WHERE n.label = \"Variable\" RETURN n.name ORDER BY n.name ASC",
               "project": "python-parity",
               "max_rows": 20
@@ -521,6 +536,32 @@
           {
             "args": {
               "query": "MATCH (a)-[r:CONFIGURES]->(b) RETURN a.name, b.name ORDER BY a.name, b.name",
+              "project": "python-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": [
+                "a.name",
+                "b.name"
+              ]
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:WRITES]->(b) RETURN a.name, b.name ORDER BY a.name, b.name",
+              "project": "python-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": [
+                "a.name",
+                "b.name"
+              ]
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:USES_TYPE]->(b) RETURN a.name, b.name ORDER BY a.name, b.name",
               "project": "python-parity",
               "max_rows": 20
             },
@@ -763,6 +804,19 @@
           },
           {
             "args": {
+              "query": "MATCH (a)-[r:WRITES]->(b) RETURN a.name, b.name ORDER BY a.name, b.name",
+              "project": "javascript-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": [
+                "a.name",
+                "b.name"
+              ]
+            }
+          },
+          {
+            "args": {
               "query": "MATCH (n) WHERE n.label = \"Variable\" RETURN n.name ORDER BY n.name ASC",
               "project": "javascript-parity",
               "max_rows": 20
@@ -970,6 +1024,32 @@
                 "a.label",
                 "a.name",
                 "b.label",
+                "b.name"
+              ]
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:WRITES]->(b) RETURN a.name, b.name ORDER BY a.name, b.name",
+              "project": "typescript-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": [
+                "a.name",
+                "b.name"
+              ]
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:USES_TYPE]->(b) RETURN a.name, b.name ORDER BY a.name, b.name",
+              "project": "typescript-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": [
+                "a.name",
                 "b.name"
               ]
             }
@@ -1215,6 +1295,19 @@
                 "b.name"
               ],
               "required_rows_min": 1
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:USES_TYPE]->(b) RETURN a.name, b.name ORDER BY a.name, b.name",
+              "project": "rust-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": [
+                "a.name",
+                "b.name"
+              ]
             }
           },
           {

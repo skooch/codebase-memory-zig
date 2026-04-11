@@ -4,7 +4,7 @@
 Bring every currently shared-but-not-interoperable capability in `docs/port-comparison.md` up to full parity with `codebase-memory-mcp`, then update the comparison docs to mark those rows as interoperable.
 
 ## Current Phase
-Phase 3
+Phase 4
 
 ## File Map
 - Modify: `docs/plans/in-progress/shared-capability-parity-plan.md`
@@ -54,12 +54,12 @@ Phase 3
 - **Status:** completed
 
 ### Phase 3: Bring Shared Graph Construction and Edge Semantics to Full Parity
-- [ ] Expand `src/extractor.zig`, `src/pipeline.zig`, and `src/registry.zig` so definitions extraction on already-overlapping target languages matches the original’s shared behavior for nested declarations, aliases, and symbol-role labeling rather than stopping at the current daily-use subset.
-- [ ] Extend `src/registry.zig` and `src/pipeline.zig` so call resolution reaches the original shared overlap for alias-heavy imports, cross-file suffix matches, and the currently missing resolution cases that still force `Partial` status.
-- [ ] Upgrade `src/extractor.zig`, `src/pipeline.zig`, `src/store.zig`, and `src/graph_buffer.zig` so `USAGE`, type-reference, semantic-edge, `CONFIGURES`, `WRITES`, and `USES_TYPE` behavior match the original overlapping graph contract rather than the current approximations.
-- [ ] Add the necessary parser/build integration changes in `build.zig` and `build.zig.zon` only where the extractor work requires new vendored parser inputs for already-overlapping language behavior, and keep the phase scoped away from entirely new subsystems such as route graphs or UI.
-- [ ] Add direct regression coverage in `src/extractor.zig`, `src/pipeline.zig`, `src/registry.zig`, and `src/store.zig`, then expand `testdata/interop/manifest.json` and `scripts/run_interop_alignment.sh` so the new parity fixtures prove the upgraded graph facts against the original implementation.
-- **Status:** in progress
+- [x] Expand `src/extractor.zig`, `src/pipeline.zig`, and `src/registry.zig` so definitions extraction on already-overlapping target languages matches the original’s shared behavior for nested declarations, aliases, and symbol-role labeling rather than stopping at the current daily-use subset.
+- [x] Extend `src/registry.zig` and `src/pipeline.zig` so call resolution reaches the original shared overlap for alias-heavy imports, cross-file suffix matches, and the currently missing resolution cases that still force `Partial` status.
+- [x] Upgrade `src/extractor.zig`, `src/pipeline.zig`, `src/store.zig`, and `src/graph_buffer.zig` so `USAGE`, type-reference, semantic-edge, `CONFIGURES`, `WRITES`, and `USES_TYPE` behavior match the original overlapping graph contract rather than the current approximations.
+- [x] Add the necessary parser/build integration changes in `build.zig` and `build.zig.zon` only where the extractor work requires new vendored parser inputs for already-overlapping language behavior, and keep the phase scoped away from entirely new subsystems such as route graphs or UI.
+- [x] Add direct regression coverage in `src/extractor.zig`, `src/pipeline.zig`, `src/registry.zig`, and `src/store.zig`, then expand `testdata/interop/manifest.json` and `scripts/run_interop_alignment.sh` so the new parity fixtures prove the upgraded graph facts against the original implementation.
+- **Status:** completed
 
 ### Phase 4: Bring CLI and Productization Overlap to Full Parity
 - [ ] Extend `src/cli.zig` and `src/main.zig` so `install`, `uninstall`, and `update` match the original overlapping workflow expectations for shared agent targets, reporting, and persisted config handling instead of the current narrower source-build path.
