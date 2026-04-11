@@ -827,6 +827,7 @@ fn resolveExtractions(
             const caller_node = gb.findNodeById(call.caller_id) orelse continue;
             if (reg.resolve(call.callee_name, call.caller_id, caller_node.file_path, null)) |res| {
                 if (gb.findNodeByQualifiedName(res.qualified_name)) |target| {
+                    if (std.mem.eql(u8, target.label, "Class") or std.mem.eql(u8, target.label, "Interface")) continue;
                     if (target.id != call.caller_id) {
                         _ = gb.insertEdge(call.caller_id, target.id, "CALLS") catch {};
                     }

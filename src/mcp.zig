@@ -1309,16 +1309,87 @@ fn searchCodeLessThan(_: void, lhs: CodeSearchHit, rhs: CodeSearchHit) bool {
     const rhs_rank = searchCodeLabelRank(rhs.label);
     if (lhs_rank != rhs_rank) return lhs_rank < rhs_rank;
 
-    const lhs_degree = lhs.in_degree + lhs.out_degree;
-    const rhs_degree = rhs.in_degree + rhs.out_degree;
-    if (lhs_degree != rhs_degree) return lhs_degree > rhs_degree;
+    const file_order = std.mem.order(u8, lhs.file_path, rhs.file_path);
+    if (file_order != .eq) return file_order == .lt;
+
+    const lhs_start = if (lhs.start_line > 0) lhs.start_line else @as(i32, @intCast(lhs.line));
+    const rhs_start = if (rhs.start_line > 0) rhs.start_line else @as(i32, @intCast(rhs.line));
+    if (lhs_start != rhs_start) return lhs_start < rhs_start;
 
     const lhs_name = lhs.name orelse lhs.file_path;
     const rhs_name = rhs.name orelse rhs.file_path;
     const name_order = std.mem.order(u8, lhs_name, rhs_name);
     if (name_order != .eq) return name_order == .lt;
 
-    return std.mem.order(u8, lhs.file_path, rhs.file_path) == .lt;
+    return lhs.line < rhs.line;
+}
+
+fn freeCodeSearchHit(allocator: std.mem.Allocator, hit: CodeSearchHit) void {
+    allocator.free(hit.file_path);
+    allocator.free(hit.snippet);
+    if (hit.name) |value| allocator.free(value);
+    if (hit.label) |value| allocator.free(value);
+    if (hit.qualified_name) |value| allocator.free(value);
+    allocator.free(hit.match_lines);
+}
+
+fn searchCodeCanContain(candidate: CodeSearchHit, nested: CodeSearchHit) bool {
+    const candidate_rank = searchCodeLabelRank(candidate.label);
+    const nested_rank = searchCodeLabelRank(nested.label);
+    if (candidate_rank >= nested_rank) return false;
+    if (!std.mem.eql(u8, candidate.file_path, nested.file_path)) return false;
+    if (candidate.start_line <= 0 or candidate.end_line < candidate.start_line) return false;
+    for (nested.match_lines) |line_no| {
+        if (line_no < @as(u32, @intCast(candidate.start_line)) or line_no > @as(u32, @intCast(candidate.end_line))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+fn appendUniqueMatchLine(allocator: std.mem.Allocator, hit: *CodeSearchHit, line_no: u32) !void {
+    for (hit.match_lines) |existing| {
+        if (existing == line_no) return;
+    }
+    const lines = try allocator.realloc(hit.match_lines, hit.match_lines.len + 1);
+    lines[hit.match_lines.len] = line_no;
+    hit.match_lines = lines;
+}
+
+fn foldContainedSearchHits(allocator: std.mem.Allocator, hits: *std.ArrayList(CodeSearchHit)) !void {
+    var idx: usize = 0;
+    while (idx < hits.items.len) {
+        const current = hits.items[idx];
+        if (searchCodeLabelRank(current.label) < searchCodeLabelRank("Variable")) {
+            idx += 1;
+            continue;
+        }
+
+        var best_idx: ?usize = null;
+        var best_rank: u8 = std.math.maxInt(u8);
+        var best_span: i32 = std.math.maxInt(i32);
+        for (hits.items, 0..) |candidate, candidate_idx| {
+            if (candidate_idx == idx) continue;
+            if (!searchCodeCanContain(candidate, current)) continue;
+            const rank = searchCodeLabelRank(candidate.label);
+            const span = candidate.end_line - candidate.start_line;
+            if (best_idx == null or rank < best_rank or (rank == best_rank and span < best_span)) {
+                best_idx = candidate_idx;
+                best_rank = rank;
+                best_span = span;
+            }
+        }
+
+        if (best_idx) |candidate_idx| {
+            for (current.match_lines) |line_no| {
+                try appendUniqueMatchLine(allocator, &hits.items[candidate_idx], line_no);
+            }
+            freeCodeSearchHit(allocator, hits.orderedRemove(idx));
+            continue;
+        }
+
+        idx += 1;
+    }
 }
 
 fn collectSearchCodeHits(
@@ -1345,14 +1416,7 @@ fn collectSearchCodeHits(
 
     var out = std.ArrayList(CodeSearchHit).empty;
     errdefer {
-        for (out.items) |hit| {
-            allocator.free(hit.file_path);
-            allocator.free(hit.snippet);
-            if (hit.name) |value| allocator.free(value);
-            if (hit.label) |value| allocator.free(value);
-            if (hit.qualified_name) |value| allocator.free(value);
-            allocator.free(hit.match_lines);
-        }
+        for (out.items) |hit| freeCodeSearchHit(allocator, hit);
         out.deinit(allocator);
     }
     var seen = std.StringHashMap(usize).init(allocator);
@@ -1438,6 +1502,7 @@ fn collectSearchCodeHits(
     }
 
     if (mode != .files and out.items.len > 1) {
+        try foldContainedSearchHits(allocator, &out);
         std.sort.pdq(CodeSearchHit, out.items, {}, searchCodeLessThan);
     }
 

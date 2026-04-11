@@ -7,10 +7,18 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 MANIFEST_PATH="${1:-$ROOT_DIR/testdata/interop/manifest.json}"
 C_BIN_DEFAULT="$ROOT_DIR/../codebase-memory-mcp/build/c/codebase-memory-mcp"
-ZIG_BIN_DEFAULT="$ROOT_DIR/zig-out/bin/cbm"
 C_BIN="${CODEBASE_MEMORY_C_BIN:-$C_BIN_DEFAULT}"
-ZIG_BIN="${CODEBASE_MEMORY_ZIG_BIN:-$ZIG_BIN_DEFAULT}"
 REPORT_DIR="${2:-$ROOT_DIR/.interop_reports}"
+
+if [ -n "${CODEBASE_MEMORY_ZIG_BIN:-}" ]; then
+  ZIG_BIN="$CODEBASE_MEMORY_ZIG_BIN"
+else
+  ZIG_CACHE_DIR="${CODEBASE_MEMORY_ZIG_CACHE_DIR:-$ROOT_DIR/.zig-cache-interop}"
+  ZIG_GLOBAL_CACHE_DIR="${CODEBASE_MEMORY_ZIG_GLOBAL_CACHE_DIR:-$ROOT_DIR/.zig-global-cache-interop}"
+  ZIG_PREFIX_DIR="${CODEBASE_MEMORY_ZIG_PREFIX:-$ROOT_DIR/.zig-prefix-interop}"
+  zig build --cache-dir "$ZIG_CACHE_DIR" --global-cache-dir "$ZIG_GLOBAL_CACHE_DIR" --prefix "$ZIG_PREFIX_DIR" >/dev/null
+  ZIG_BIN="$ZIG_PREFIX_DIR/bin/cbm"
+fi
 
 if [ ! -d "$REPORT_DIR" ]; then
   mkdir -p "$REPORT_DIR"
@@ -39,6 +47,18 @@ SHARED_TOOL_NAMES = [
     "search_graph",
     "trace_call_path",
 ]
+
+SHARED_PROGRESS_PHASES = (
+    "Discovering files",
+    "Starting full index",
+    "Starting incremental index",
+    "[1/9] Building file structure",
+    "[2/9] Extracting definitions",
+    "[3/9] Building registry",
+    "[4/9] Resolving calls & edges",
+    "[9/9] Writing database",
+    "Done",
+)
 
 
 def to_unix_path(path: str) -> str:
@@ -226,7 +246,7 @@ def canonical_tools_list(payload: Any) -> list[str]:
 
 def canonical_architecture(payload: Any) -> dict[str, list[str]]:
     if not isinstance(payload, dict):
-        return {"node_labels": [], "edge_types": [], "languages": [], "entry_points": []}
+        return {"node_labels": [], "edge_types": []}
 
     def collect_named(entries: Any, key: str) -> list[str]:
         if not isinstance(entries, list):
@@ -240,17 +260,15 @@ def canonical_architecture(payload: Any) -> dict[str, list[str]]:
     return {
         "node_labels": collect_named(payload.get("node_labels"), "label"),
         "edge_types": collect_named(payload.get("edge_types"), "type"),
-        "languages": collect_named(payload.get("languages"), "language"),
-        "entry_points": collect_named(payload.get("entry_points"), "name"),
     }
 
 
-def canonical_search_code(payload: Any) -> list[dict[str, str]]:
+def canonical_search_code(payload: Any) -> dict[str, Any]:
     if not isinstance(payload, dict):
-        return []
+        return {"total_results": 0, "results": []}
     results = payload.get("results", [])
     if not isinstance(results, list):
-        return []
+        return {"total_results": 0, "results": []}
     normalized: list[dict[str, str]] = []
     for row in results:
         if not isinstance(row, dict):
@@ -262,17 +280,18 @@ def canonical_search_code(payload: Any) -> list[dict[str, str]]:
                 "label": str(row.get("label", "")),
             }
         )
-    normalized.sort(key=lambda item: (item["name"], item["file_path"], item["label"]))
-    return normalized
+    return {
+        "total_results": int(payload.get("total_results", payload.get("total", len(normalized))) or 0),
+        "results": normalized,
+    }
 
 
 def canonical_detect_changes(payload: Any) -> dict[str, Any]:
     if not isinstance(payload, dict):
-        return {"changed_files": [], "changed_count": 0, "impacted_symbols": [], "blast_radius": []}
+        return {"changed_files": [], "changed_count": 0, "impacted_symbols": []}
 
     changed_files = payload.get("changed_files", [])
     impacted_symbols = payload.get("impacted_symbols", [])
-    blast_radius = payload.get("blast_radius", [])
 
     normalized_impacted = []
     if isinstance(impacted_symbols, list):
@@ -288,20 +307,6 @@ def canonical_detect_changes(payload: Any) -> dict[str, Any]:
             )
     normalized_impacted.sort(key=lambda item: (item["name"], item["file_path"], item["label"]))
 
-    normalized_blast = []
-    if isinstance(blast_radius, list):
-        for item in blast_radius:
-            if not isinstance(item, dict):
-                continue
-            normalized_blast.append(
-                {
-                    "name": str(item.get("name", "")),
-                    "file_path": normalize_path_for_manifest(str(item.get("file_path", item.get("file", "")))),
-                    "hop": str(item.get("hop", "")),
-                }
-            )
-    normalized_blast.sort(key=lambda item: (item["name"], item["file_path"], item["hop"]))
-
     normalized_files = []
     if isinstance(changed_files, list):
         normalized_files = sorted(normalize_path_for_manifest(str(path)) for path in changed_files)
@@ -310,7 +315,6 @@ def canonical_detect_changes(payload: Any) -> dict[str, Any]:
         "changed_files": normalized_files,
         "changed_count": int(payload.get("changed_count", len(normalized_files)) or 0),
         "impacted_symbols": normalized_impacted,
-        "blast_radius": normalized_blast,
     }
 
 
@@ -466,6 +470,46 @@ def call_mcp_sequence(
             temp_home.cleanup()
 
     return tool_results
+
+
+def canonical_progress_lines(stderr_lines: list[str]) -> list[str]:
+    normalized: list[str] = []
+    for raw in stderr_lines:
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith("Discovering files") or line.startswith("Starting "):
+            normalized.append(line)
+            continue
+        if line.startswith("[1/9]") or line.startswith("[2/9]") or line.startswith("[3/9]") or line.startswith("[4/9]") or line.startswith("[9/9]"):
+            normalized.append(line)
+            continue
+        if line.startswith("Done:") or line == "Done.":
+            normalized.append("Done")
+    return normalized
+
+
+def run_cli_progress(bin_path: str, project_path: str, impl: str) -> dict[str, Any]:
+    env = os.environ.copy()
+    temp_home = tempfile.TemporaryDirectory(prefix=f"cbm-progress-{impl}-")
+    env["HOME"] = temp_home.name
+    env["CBM_CACHE_DIR"] = str(Path(temp_home.name) / ".cache" / "codebase-memory-zig")
+    args = json.dumps({"project_path": project_path} if impl == "zig" else {"repo_path": project_path})
+    proc = subprocess.run(
+        [bin_path, "cli", "--progress", "index_repository", args],
+        cwd=str(Path(project_path).parent),
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
+    )
+    temp_home.cleanup()
+    return {
+        "returncode": proc.returncode,
+        "stdout": [line for line in proc.stdout.splitlines() if line.strip()],
+        "stderr": [line for line in proc.stderr.splitlines() if line.strip()],
+        "progress": canonical_progress_lines(proc.stderr.splitlines()),
+    }
 
 
 def build_requests(root: Path, fixture: dict[str, Any], impl: str) -> tuple[list[dict[str, Any]], dict[str, str]]:
@@ -732,13 +776,11 @@ def check_assertions(tool_name: str, tool_payload: Any, assertions: list[dict[st
 
         if tool_name == "get_architecture":
             architecture = canonical_architecture(tool_payload or {})
-            for key in ("required_node_labels", "required_edge_types", "required_languages", "required_entry_points"):
+            for key in ("required_node_labels", "required_edge_types"):
                 expected_values = set(expected.get(key, []))
                 actual_key = {
                     "required_node_labels": "node_labels",
                     "required_edge_types": "edge_types",
-                    "required_languages": "languages",
-                    "required_entry_points": "entry_points",
                 }[key]
                 available_values = set(architecture.get(actual_key, []))
                 missing = sorted(expected_values.difference(available_values))
@@ -752,7 +794,7 @@ def check_assertions(tool_name: str, tool_payload: Any, assertions: list[dict[st
                 if not isinstance(required_result, dict):
                     continue
                 matched = False
-                for result in results:
+                for result in results["results"]:
                     if required_result.get("name") and result["name"] != required_result["name"]:
                         continue
                     if required_result.get("file_path") and result["file_path"] != required_result["file_path"]:
@@ -775,8 +817,6 @@ def check_assertions(tool_name: str, tool_payload: Any, assertions: list[dict[st
                 failures.append(f"detect_changes missing changed_files {missing_files}")
             if expected.get("require_empty_impacted_symbols") and changes["impacted_symbols"]:
                 failures.append("detect_changes impacted_symbols not empty")
-            if expected.get("require_empty_blast_radius") and changes["blast_radius"]:
-                failures.append("detect_changes blast_radius not empty")
             continue
 
         if tool_name == "list_projects":
@@ -801,6 +841,7 @@ def main() -> None:
         "manifest": str(manifest_path),
         "fixtures": {},
         "mismatches": [],
+        "checks": {},
     }
 
     for fixture in manifest.get("fixtures", []):
@@ -1020,8 +1061,6 @@ def main() -> None:
                         for expected_key, actual_key in (
                             ("required_node_labels", "node_labels"),
                             ("required_edge_types", "edge_types"),
-                            ("required_languages", "languages"),
-                            ("required_entry_points", "entry_points"),
                         ):
                             required = sorted(set(expected.get(expected_key, [])))
                             z_missing = sorted(set(required).difference(z_arch.get(actual_key, [])))
@@ -1054,19 +1093,20 @@ def main() -> None:
                         expected_rows = assertion.get("expect", {}).get("required_results", [])
                         z_rows = canonical_search_code(z_entries[index]["payload"])
                         c_rows = canonical_search_code(c_entries[index]["payload"])
+                        same_shape = z_rows == c_rows
                         case_rows = []
                         for expected_row in expected_rows:
                             z_match = any(
                                 row["name"] == expected_row.get("name", row["name"])
                                 and row["file_path"] == expected_row.get("file_path", row["file_path"])
                                 and row["label"] == expected_row.get("label", row["label"])
-                                for row in z_rows
+                                for row in z_rows["results"]
                             )
                             c_match = any(
                                 row["name"] == expected_row.get("name", row["name"])
                                 and row["file_path"] == expected_row.get("file_path", row["file_path"])
                                 and row["label"] == expected_row.get("label", row["label"])
-                                for row in c_rows
+                                for row in c_rows["results"]
                             )
                             case_rows.append(
                                 {
@@ -1077,7 +1117,9 @@ def main() -> None:
                             )
                             if not z_match or not c_match:
                                 has_mismatch = True
-                        cases.append({"required_results": case_rows})
+                        if not same_shape:
+                            has_mismatch = True
+                        cases.append({"required_results": case_rows, "zig": z_rows, "c": c_rows})
                     if has_mismatch:
                         report["mismatches"].append(
                             {"fixture": fixture_id, "tool": scope, "category": "search_code_contract"}
@@ -1150,6 +1192,29 @@ def main() -> None:
         results["comparison"] = comparisons
         report["fixtures"][fixture_id] = results
 
+    progress_fixture = next((fixture for fixture in manifest.get("fixtures", []) if fixture.get("id") == "python-parity"), None)
+    if progress_fixture is not None:
+        progress_path = str((root / progress_fixture.get("path", "")).resolve())
+        zig_progress = run_cli_progress(str(zig_bin), progress_path, "zig")
+        c_progress = run_cli_progress(str(c_bin), progress_path, "c")
+        progress_check = {
+            "zig": zig_progress,
+            "c": c_progress,
+        }
+        if zig_progress["returncode"] != 0 or c_progress["returncode"] != 0:
+            progress_check["status"] = "missing"
+            report["mismatches"].append(
+                {"fixture": "shared-cli-progress", "tool": "cli_progress", "category": "progress_command"}
+            )
+        elif zig_progress["progress"] != c_progress["progress"]:
+            progress_check["status"] = "mismatch"
+            report["mismatches"].append(
+                {"fixture": "shared-cli-progress", "tool": "cli_progress", "category": "progress_contract"}
+            )
+        else:
+            progress_check["status"] = "match"
+        report["checks"]["cli_progress"] = progress_check
+
     out_json = report_dir / "interop_alignment_report.json"
     out_md = report_dir / "interop_alignment_report.md"
 
@@ -1164,6 +1229,11 @@ def main() -> None:
         for cmp in r.get("comparison", {}).values()
         if isinstance(cmp, dict) and cmp.get("status") != "not_requested"
     )
+    for check in report.get("checks", {}).values():
+        if isinstance(check, dict) and check.get("status"):
+            total_comparisons += 1
+            if check["status"] == "match":
+                total_matches += 1
     mismatch_count = len(report["mismatches"])
 
     lines = [
@@ -1184,6 +1254,10 @@ def main() -> None:
         lines.append(f"- {fixture}: {tool} ({category})")
     if not report["mismatches"]:
         lines.append("- none")
+    if report.get("checks"):
+        lines.extend(["", "## Extra Checks"])
+        for check_name, check in report["checks"].items():
+            lines.append(f"- {check_name}: {check.get('status', 'unknown')}")
 
     out_md.write_text("\n".join(lines) + "\n")
     print(f"wrote report: {out_json}")

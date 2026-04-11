@@ -118,6 +118,7 @@ pub const GraphBuffer = struct {
         end_line: i32,
     ) !i64 {
         if (self.nodes_by_qn.get(qualified_name)) |id| {
+            if (self.findNodeByIdMut(id)) |node| mergeNodeSpan(node, start_line, end_line);
             return id;
         }
 
@@ -161,6 +162,7 @@ pub const GraphBuffer = struct {
         properties_json: []const u8,
     ) !i64 {
         if (self.nodes_by_qn.get(qualified_name)) |id| {
+            if (self.findNodeByIdMut(id)) |node| mergeNodeSpan(node, start_line, end_line);
             return id;
         }
 
@@ -258,15 +260,32 @@ pub const GraphBuffer = struct {
     }
 
     pub fn findNodeById(self: *const GraphBuffer, id: i64) ?*const BufferNode {
+        return @ptrCast(@constCast(findNodeSlot(self.nodes_by_id.items, id) orelse return null));
+    }
+
+    fn findNodeByIdMut(self: *GraphBuffer, id: i64) ?*BufferNode {
+        return findNodeSlot(self.nodes_by_id.items, id);
+    }
+
+    fn findNodeSlot(items: []BufferNode, id: i64) ?*BufferNode {
         if (id <= 0) return null;
         const idx = @as(usize, @intCast(id - 1));
-        if (idx < self.nodes_by_id.items.len and self.nodes_by_id.items[idx].id == id) {
-            return &self.nodes_by_id.items[idx];
+        if (idx < items.len and items[idx].id == id) {
+            return &items[idx];
         }
-        for (self.nodes_by_id.items) |*node| {
+        for (items) |*node| {
             if (node.id == id) return node;
         }
         return null;
+    }
+
+    fn mergeNodeSpan(node: *BufferNode, start_line: i32, end_line: i32) void {
+        if (start_line > 0 and (node.start_line <= 0 or start_line < node.start_line)) {
+            node.start_line = start_line;
+        }
+        if (end_line > node.end_line) {
+            node.end_line = end_line;
+        }
     }
 
     pub fn nodes(self: *const GraphBuffer) []const BufferNode {

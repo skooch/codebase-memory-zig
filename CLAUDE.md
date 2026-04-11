@@ -51,6 +51,7 @@ src/
 - `find src -name '*.zig' | zlint -S` for Zig lint checks
 - `zlint` is not bootstrapped by `mise` in this repo today; check `command -v zlint` before relying on that lint command, and if it is missing report the verification as blocked instead of treating it as a source failure.
 - If MCP stdio starts acknowledging only the first request in a piped session, treat `src/mcp.zig` `runFiles` framing as suspect first; this repo has already tripped over `std.Io.Reader.takeDelimiterExclusive` there, and the durable fix is an explicit newline-framed file read loop.
+- If `zig build` appears to leave `zig-out/bin/cbm` on stale behavior after a `src/main.zig` edit, verify the executable with a fresh `--cache-dir` / `--global-cache-dir` / `--prefix` build. A stale installed binary can mask a compile error in the executable step even when an older `zig-out/bin/cbm` is still present. Also avoid importing `discover.zig` directly from `src/main.zig`; use `cbm.discover` there so test builds do not trip Zig's duplicate-module error.
 - If `git commit` or `git add` fails because `.git/index.lock` already exists, treat it as a stale lock, remove it with a non-interactive `rm -f .git/index.lock`, and retry the git command.
 
 ## Porting from C

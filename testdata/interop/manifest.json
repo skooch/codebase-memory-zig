@@ -370,6 +370,28 @@
               "columns": ["count"],
               "required_rows_min": 1
             }
+          },
+          {
+            "args": {
+              "query": "MATCH (n:Function) RETURN n.name ORDER BY n.name ASC LIMIT 5",
+              "project": "python-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["n.name"],
+              "required_rows_min": 1
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:CALLS]->(b) RETURN a.name, b.name LIMIT 5",
+              "project": "python-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["a.name", "b.name"],
+              "required_rows_min": 1
+            }
           }
         ],
         "trace_call_path": [
@@ -484,6 +506,28 @@
             },
             "expect": {
               "columns": ["count"],
+              "required_rows_min": 1
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (n:Function) RETURN n.name ORDER BY n.name ASC LIMIT 5",
+              "project": "javascript-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["n.name"],
+              "required_rows_min": 1
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:CALLS]->(b) RETURN a.name, b.name LIMIT 5",
+              "project": "javascript-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["a.name", "b.name"],
               "required_rows_min": 1
             }
           }
@@ -602,6 +646,28 @@
               "columns": ["count"],
               "required_rows_min": 1
             }
+          },
+          {
+            "args": {
+              "query": "MATCH (n:Function) RETURN n.name ORDER BY n.name ASC LIMIT 5",
+              "project": "typescript-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["n.name"],
+              "required_rows_min": 1
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:CALLS]->(b) RETURN a.name, b.name LIMIT 5",
+              "project": "typescript-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["a.name", "b.name"],
+              "required_rows_min": 1
+            }
           }
         ],
         "trace_call_path": [
@@ -716,6 +782,28 @@
             },
             "expect": {
               "columns": ["count"],
+              "required_rows_min": 1
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (n:Function) RETURN n.name ORDER BY n.name ASC LIMIT 5",
+              "project": "rust-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["n.name"],
+              "required_rows_min": 1
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:CALLS]->(b) RETURN a.name, b.name LIMIT 5",
+              "project": "rust-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["a.name", "b.name"],
               "required_rows_min": 1
             }
           }

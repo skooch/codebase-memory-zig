@@ -45,6 +45,7 @@ const ReturnExpr = struct {
     subject: ValueSubject,
     field: []const u8,
     alias: ?[]const u8 = null,
+    display_name: []const u8 = "",
     kind: Kind = .field,
 
     const Kind = enum {
@@ -156,6 +157,9 @@ fn executeNodeQuery(
         return buildCountResult(allocator, parsed.returns[0], rows.items.len);
     }
 
+    if (parsed.order_by == null and rows.items.len > 1) {
+        std.sort.pdq(QueryRow, rows.items, OrderBy{ .subject = .source, .field = "", .descending = false }, queryRowLessThan);
+    }
     try finalizeRows(allocator, &rows, parsed.returns, parsed.order_by, effective_limit);
     return buildTabularResult(allocator, parsed.returns, rows.items);
 }
@@ -168,34 +172,38 @@ fn executeEdgeQuery(
     effective_limit: usize,
 ) !CypherResult {
     const pattern = parsed.edge_pattern orelse return error.InvalidQuery;
-    const edges = try db.listEdges(project, canonicalEdgeType(pattern.edge_type));
-    defer db.freeEdges(edges);
+    const sources = try db.searchNodes(.{
+        .project = project,
+        .label_pattern = pattern.source.label,
+        .limit = 100_000,
+    });
+    defer db.freeNodes(sources);
 
     var rows = std.ArrayList(QueryRow).empty;
     defer rows.deinit(allocator);
     defer freeQueryRows(allocator, rows.items);
 
-    for (edges) |edge| {
-        const source = (try db.findNodeById(project, edge.source_id)) orelse continue;
-        defer db.freeNode(source);
-        const target = (try db.findNodeById(project, edge.target_id)) orelse continue;
-        defer db.freeNode(target);
+    for (sources) |source| {
+        const edges = try db.findEdgesBySource(project, source.id, canonicalEdgeType(pattern.edge_type));
+        defer db.freeEdges(edges);
 
-        if (pattern.source.label) |label| {
-            if (!std.mem.eql(u8, source.label, label)) continue;
-        }
-        if (pattern.target.label) |label| {
-            if (!std.mem.eql(u8, target.label, label)) continue;
-        }
+        for (edges) |edge| {
+            const target = (try db.findNodeById(project, edge.target_id)) orelse continue;
+            defer db.freeNode(target);
 
-        const ctx = EdgeContext{
-            .edge = edge,
-            .source = source,
-            .target = target,
-        };
-        if (!evaluateEdgeConditions(allocator, ctx, parsed.conditions, pattern)) continue;
-        const built = try buildEdgeReturnRow(allocator, ctx, parsed.returns, parsed.order_by, pattern);
-        try rows.append(allocator, built);
+            if (pattern.target.label) |label| {
+                if (!std.mem.eql(u8, target.label, label)) continue;
+            }
+
+            const ctx = EdgeContext{
+                .edge = edge,
+                .source = source,
+                .target = target,
+            };
+            if (!evaluateEdgeConditions(allocator, ctx, parsed.conditions, pattern)) continue;
+            const built = try buildEdgeReturnRow(allocator, ctx, parsed.returns, parsed.order_by);
+            try rows.append(allocator, built);
+        }
     }
 
     if (parsed.returns.len == 1 and parsed.returns[0].kind == .count) {
@@ -441,7 +449,6 @@ fn buildEdgeReturnRow(
     ctx: EdgeContext,
     returns: []const ReturnExpr,
     order_by: ?OrderBy,
-    pattern: EdgePattern,
 ) !QueryRow {
     var values = std.ArrayList([]const u8).empty;
     errdefer {
@@ -462,12 +469,19 @@ fn buildEdgeReturnRow(
     } else if (values.items.len > 0)
         try allocator.dupe(u8, values.items[0])
     else
-        try allocator.dupe(u8, pattern.edge_var);
+        try allocator.dupe(u8, "");
 
     return .{
         .values = try values.toOwnedSlice(allocator),
         .sort_value = sort_value,
     };
+}
+
+fn compatibleQueryNodeName(node: store.Node) []const u8 {
+    if (std.mem.eql(u8, node.label, "Module")) {
+        return std.fs.path.basename(node.file_path);
+    }
+    return node.name;
 }
 
 fn readSubjectField(
@@ -496,7 +510,7 @@ const OwnedField = struct {
 fn readNodeField(allocator: std.mem.Allocator, node: store.Node, field: []const u8) !OwnedField {
     if (std.mem.eql(u8, field, "id")) return .{ .value = try std.fmt.allocPrint(allocator, "{d}", .{node.id}), .owned = true };
     if (std.mem.eql(u8, field, "label")) return .{ .value = node.label };
-    if (std.mem.eql(u8, field, "name")) return .{ .value = node.name };
+    if (std.mem.eql(u8, field, "name")) return .{ .value = compatibleQueryNodeName(node) };
     if (std.mem.eql(u8, field, "qualified_name")) return .{ .value = node.qualified_name };
     if (std.mem.eql(u8, field, "file_path")) return .{ .value = node.file_path };
     if (std.mem.eql(u8, field, "start_line")) return .{ .value = try std.fmt.allocPrint(allocator, "{d}", .{node.start_line}), .owned = true };
@@ -579,6 +593,7 @@ fn joinRowValues(allocator: std.mem.Allocator, values: [][]const u8) ![]u8 {
 fn returnColumnName(expr: ReturnExpr) []const u8 {
     if (expr.kind == .node_default) return "node";
     if (expr.alias) |alias| return alias;
+    if (expr.display_name.len > 0) return expr.display_name;
     if (expr.kind == .count) return "count";
     return expr.field;
 }
@@ -808,6 +823,7 @@ fn appendReturnExpr(
             .subject = .node,
             .field = "count",
             .alias = alias_text,
+            .display_name = expr_text,
             .kind = .count,
         });
         return;
@@ -820,6 +836,7 @@ fn appendReturnExpr(
             .subject = ref.subject,
             .field = ref.field,
             .alias = alias_text,
+            .display_name = inner,
             .kind = .distinct_field,
         });
         return;
@@ -843,6 +860,7 @@ fn appendReturnExpr(
         .subject = ref.subject,
         .field = ref.field,
         .alias = alias_text,
+        .display_name = expr_text,
         .kind = .field,
     });
 }
@@ -1045,6 +1063,81 @@ test "cypher supports edge queries" {
     try std.testing.expectEqualStrings("main", result.rows[0][0]);
     try std.testing.expectEqualStrings("helper", result.rows[0][1]);
     try std.testing.expectEqualStrings("helper", result.rows[0][2]);
+}
+
+test "cypher preserves shared default edge ordering without ORDER BY" {
+    var s = try Store.openMemory(std.testing.allocator);
+    defer s.deinit();
+    try s.upsertProject("p", "/tmp/p");
+    const module = try s.upsertNode(.{
+        .project = "p",
+        .label = "Module",
+        .name = "index",
+        .qualified_name = "p:index",
+        .file_path = "src/index.js",
+        .start_line = 1,
+        .end_line = 24,
+    });
+    const decorate = try s.upsertNode(.{
+        .project = "p",
+        .label = "Function",
+        .name = "decorate",
+        .qualified_name = "p:decorate",
+        .file_path = "src/index.js",
+        .start_line = 1,
+        .end_line = 3,
+    });
+    const log = try s.upsertNode(.{
+        .project = "p",
+        .label = "Method",
+        .name = "log",
+        .qualified_name = "p:log",
+        .file_path = "src/index.js",
+        .start_line = 11,
+        .end_line = 13,
+    });
+    const write = try s.upsertNode(.{
+        .project = "p",
+        .label = "Method",
+        .name = "write",
+        .qualified_name = "p:write",
+        .file_path = "src/index.js",
+        .start_line = 6,
+        .end_line = 8,
+    });
+    const boot = try s.upsertNode(.{
+        .project = "p",
+        .label = "Function",
+        .name = "boot",
+        .qualified_name = "p:boot",
+        .file_path = "src/index.js",
+        .start_line = 18,
+        .end_line = 24,
+    });
+
+    _ = try s.upsertEdge(.{ .project = "p", .source_id = log, .target_id = write, .edge_type = "CALLS" });
+    _ = try s.upsertEdge(.{ .project = "p", .source_id = module, .target_id = decorate, .edge_type = "CALLS" });
+    _ = try s.upsertEdge(.{ .project = "p", .source_id = module, .target_id = boot, .edge_type = "CALLS" });
+    _ = try s.upsertEdge(.{ .project = "p", .source_id = boot, .target_id = log, .edge_type = "CALLS" });
+
+    const result = try execute(
+        std.testing.allocator,
+        &s,
+        "MATCH (a)-[r:CALLS]->(b) RETURN a.name, b.name",
+        "p",
+        20,
+    );
+    defer freeResult(std.testing.allocator, result);
+
+    try std.testing.expectEqual(@as(usize, 4), result.rows.len);
+    try std.testing.expectEqualStrings("boot", result.rows[0][0]);
+    try std.testing.expectEqualStrings("log", result.rows[0][1]);
+    try std.testing.expectEqualStrings("index.js", result.rows[1][0]);
+    try std.testing.expectEqualStrings("decorate", result.rows[1][1]);
+    try std.testing.expectEqualStrings("index.js", result.rows[2][0]);
+    try std.testing.expectEqualStrings("boot", result.rows[2][1]);
+    try std.testing.expectEqualStrings("log", result.rows[3][0]);
+    try std.testing.expectEqualStrings("write", result.rows[3][1]);
 }
 
 test "cypher reports unsupported queries as errors" {

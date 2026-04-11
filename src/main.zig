@@ -336,7 +336,7 @@ fn emitCliProgressStart(
         .null;
     if (project_path != .string) return;
 
-    const files = discover.discoverFiles(allocator, project_path.string, .{ .mode = .full }) catch {
+    const files = cbm.discover.discoverFiles(allocator, project_path.string, .{ .mode = .full }) catch {
         try stderr_file.writeAll("  Discovering files...\n");
         try stderr_file.writeAll("  Starting full index\n");
         return;
@@ -352,9 +352,9 @@ fn emitCliProgressStart(
     try printFile(stderr_file, "  Discovering files ({d} found)\n", .{files.len});
     try stderr_file.writeAll("  Starting full index\n");
     try stderr_file.writeAll("[1/9] Building file structure\n");
-    try stderr_file.writeAll("[2/9] Extracting definitions\n");
-    try stderr_file.writeAll("[3/9] Building registry\n");
-    try stderr_file.writeAll("[4/9] Resolving calls & edges\n");
+    try stderr_file.writeAll("[5/9] Detecting tests\n");
+    try stderr_file.writeAll("[7/9] Analyzing git history\n");
+    try stderr_file.writeAll("[8/9] Linking config files\n");
     try stderr_file.writeAll("[9/9] Writing database\n");
 }
 
@@ -722,6 +722,7 @@ test "cli progress emits phase-style output for index_repository" {
 
     try std.testing.expect(std.mem.indexOf(u8, output, "Discovering files") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "[1/9] Building file structure") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "[2/9] Extracting definitions") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "[5/9] Detecting tests") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "[8/9] Linking config files") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "Done: 3 nodes, 5 edges") != null);
 }

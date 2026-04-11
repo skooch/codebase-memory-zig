@@ -15,6 +15,7 @@ const TsDefinition = struct {
     label: []const u8,
     name: []const u8,
     start_line: i32,
+    end_line: i32,
 };
 
 const ParsedSymbol = struct {
@@ -70,7 +71,8 @@ pub const FileExtraction = struct {
 
 const TsSymbol = struct {
     symbol_id: i64,
-    line_no: i32,
+    start_line: i32,
+    end_line: i32,
 };
 
 pub fn extractFile(
@@ -201,7 +203,7 @@ pub fn extractFile(
             symbol_qn,
             rel,
             def.start_line,
-            def.start_line,
+            def.end_line,
         );
         if (symbol_id > 0 and gb.findNodeById(module_id) != null) {
             _ = gb.insertEdge(module_id, symbol_id, "CONTAINS") catch |err| switch (err) {
@@ -221,7 +223,8 @@ pub fn extractFile(
             if (isDeclarationLabel(def.label)) {
                 try scope_markers.append(allocator, .{
                     .symbol_id = symbol_id,
-                    .line_no = def.start_line,
+                    .start_line = def.start_line,
+                    .end_line = def.end_line,
                 });
             }
         }
@@ -235,6 +238,7 @@ pub fn extractFile(
     var lines = std.mem.splitAny(u8, bytes, "\n\r");
     var line_no: i32 = 1;
     var scope_index: usize = 0;
+    var active_scope_end_line: i32 = 0;
     while (lines.next()) |line_raw| : (line_no += 1) {
         const line = std.mem.trim(u8, line_raw, " \t");
         if (line.len == 0) continue;
@@ -247,13 +251,29 @@ pub fn extractFile(
             continue;
         }
 
-        while (scope_index < scope_markers.items.len and scope_markers.items[scope_index].line_no == line_no) {
-            current_scope_id = scope_markers.items[scope_index].symbol_id;
-            scope_index += 1;
+        if (active_scope_end_line > 0 and line_no > active_scope_end_line) {
+            current_scope_id = module_id;
+            active_scope_end_line = 0;
+        }
+        var scope_starts_here = false;
+        var selected_scope_id = current_scope_id;
+        var selected_scope_end = active_scope_end_line;
+        while (scope_index < scope_markers.items.len and scope_markers.items[scope_index].start_line == line_no) : (scope_index += 1) {
+            const marker = scope_markers.items[scope_index];
+            if (!scope_starts_here or (marker.end_line - marker.start_line) <= (selected_scope_end - line_no)) {
+                selected_scope_id = marker.symbol_id;
+                selected_scope_end = marker.end_line;
+            }
+            scope_starts_here = true;
+        }
+        if (scope_starts_here) {
+            current_scope_id = selected_scope_id;
+            active_scope_end_line = selected_scope_end;
         }
 
         const parsed_symbol = parseSymbol(file.language, clean_line);
         if (parsed_symbol) |sym| {
+            const parsed_end_line = estimateParsedSymbolEndLine(bytes, file.language, line_no, sym);
             const symbol_qn = try std.fmt.allocPrint(
                 allocator,
                 "{s}:{s}:{s}:symbol:{s}:{s}",
@@ -268,6 +288,7 @@ pub fn extractFile(
                 rel,
                 file.language,
                 line_no,
+                parsed_end_line,
                 sym,
                 gb,
                 module_id,
@@ -279,6 +300,9 @@ pub fn extractFile(
             if (sym.label.len > 0 and isDeclarationLabel(sym.label)) {
                 if (gb.findNodeByQualifiedName(symbol_qn)) |decl_node| {
                     current_scope_id = decl_node.id;
+                    if (parsed_end_line > line_no and parsed_end_line > active_scope_end_line) {
+                        active_scope_end_line = parsed_end_line;
+                    }
                     for (pending_decorators.items) |decorator_name| {
                         try semantic_hints.append(allocator, .{
                             .child_id = decl_node.id,
@@ -310,13 +334,16 @@ pub fn extractFile(
             &semantic_hints,
         );
 
+        const collect_definition_calls_at_module = shouldCollectDefinitionCallsAtModuleScope(file.language, clean_line, parsed_symbol);
+        const call_scope_id = if (collect_definition_calls_at_module) module_id else current_scope_id;
         const callee_names = collectCalls(
             allocator,
             clean_line,
             file.language,
             parsed_symbol,
-            current_scope_id,
+            call_scope_id,
             module_id,
+            scope_starts_here,
         ) catch |err| switch (err) {
             error.OutOfMemory => return err,
         };
@@ -324,7 +351,7 @@ pub fn extractFile(
             defer freeStringSlices(allocator, names);
             for (names) |callee| {
                 if (callee.len == 0) continue;
-                const caller_id = if (current_scope_id != 0) current_scope_id else module_id;
+                const caller_id = if (call_scope_id != 0) call_scope_id else module_id;
                 try unresolved_calls.append(allocator, .{
                     .caller_id = caller_id,
                     .callee_name = try allocator.dupe(u8, callee),
@@ -849,11 +876,13 @@ fn collectCalls(
     parsed_symbol: ?ParsedSymbol,
     current_scope_id: i64,
     module_id: i64,
+    scope_starts_here: bool,
 ) !?[]const []const u8 {
     if (line.len == 0) return null;
+    const allow_definition_calls = shouldCollectDefinitionCallsAtModuleScope(language, line, parsed_symbol);
     if (parsed_symbol) |sym| {
-        if (shouldSkipDeclarationCalls(sym.label, current_scope_id, module_id)) return null;
-    } else if (isDeclarationLine(language, line)) {
+        if (!allow_definition_calls and shouldSkipDeclarationCalls(sym.label, current_scope_id, module_id)) return null;
+    } else if (scope_starts_here or isDeclarationLine(language, line)) {
         return null;
     }
 
@@ -896,7 +925,7 @@ fn collectCalls(
             while (j < line.len and std.ascii.isWhitespace(line[j])) j += 1;
         }
         if (j < line.len and line[j] == '(' and callee.len > 0) {
-            if (!isKeywordCandidate(callee)) {
+            if (!isKeywordCandidate(callee) and !isConstructorCall(line, start)) {
                 try names.append(allocator, try allocator.dupe(u8, callee));
             }
         }
@@ -907,6 +936,31 @@ fn collectCalls(
         return null;
     }
     return try names.toOwnedSlice(allocator);
+}
+
+fn shouldCollectDefinitionCallsAtModuleScope(
+    language: discover.Language,
+    line: []const u8,
+    parsed_symbol: ?ParsedSymbol,
+) bool {
+    const symbol = parsed_symbol orelse return false;
+    switch (language) {
+        .javascript, .typescript, .tsx => {},
+        else => return false,
+    }
+    if (!std.mem.eql(u8, symbol.label, "Function")) return false;
+    if (std.mem.indexOfScalar(u8, line, '=') == null) return false;
+    if (std.mem.indexOfScalar(u8, line, '(') == null) return false;
+    return std.mem.indexOf(u8, line, "function") != null or std.mem.indexOf(u8, line, "=>") != null;
+}
+
+fn isConstructorCall(line: []const u8, ident_start: usize) bool {
+    var idx = ident_start;
+    while (idx > 0 and std.ascii.isWhitespace(line[idx - 1])) : (idx -= 1) {}
+    if (idx < 3) return false;
+    if (!std.mem.eql(u8, line[idx - 3 .. idx], "new")) return false;
+    if (idx > 3 and isIdentifierChar(line[idx - 4])) return false;
+    return true;
 }
 
 fn parseSymbol(language: discover.Language, line: []const u8) ?ParsedSymbol {
@@ -921,6 +975,7 @@ fn parseSymbol(language: discover.Language, line: []const u8) ?ParsedSymbol {
 
 fn isDeclarationLabel(label: []const u8) bool {
     return std.mem.eql(u8, label, "Function") or
+        std.mem.eql(u8, label, "Method") or
         std.mem.eql(u8, label, "Class") or
         std.mem.eql(u8, label, "Struct") or
         std.mem.eql(u8, label, "Trait") or
@@ -940,6 +995,7 @@ fn addSymbolFromParsed(
     rel: []const u8,
     language: discover.Language,
     line_no: i32,
+    end_line: i32,
     symbol: ParsedSymbol,
     gb: *graph_buffer.GraphBuffer,
     module_id: i64,
@@ -959,7 +1015,7 @@ fn addSymbolFromParsed(
         symbol_qn,
         rel,
         line_no,
-        line_no,
+        end_line,
     );
     if (symbol_id > 0 and gb.findNodeById(module_id) != null and !exists) {
         _ = gb.insertEdge(module_id, symbol_id, "CONTAINS") catch |err| switch (err) {
@@ -983,6 +1039,61 @@ fn supportsTreeSitterDefs(language: discover.Language) bool {
         .python, .javascript, .typescript, .tsx, .rust, .zig => true,
         else => false,
     };
+}
+
+fn estimateParsedSymbolEndLine(
+    bytes: []const u8,
+    language: discover.Language,
+    start_line: i32,
+    symbol: ParsedSymbol,
+) i32 {
+    if (!isDeclarationLabel(symbol.label)) return start_line;
+    return switch (language) {
+        .javascript, .typescript, .tsx, .rust, .zig => estimateBraceDelimitedEndLine(bytes, language, start_line),
+        else => start_line,
+    };
+}
+
+fn estimateBraceDelimitedEndLine(bytes: []const u8, language: discover.Language, start_line: i32) i32 {
+    var iter = std.mem.splitAny(u8, bytes, "\n\r");
+    var line_no: i32 = 1;
+    var seen_open = false;
+    var depth: i32 = 0;
+    while (iter.next()) |line_raw| : (line_no += 1) {
+        if (line_no < start_line) continue;
+        const line = stripComments(language, std.mem.trim(u8, line_raw, " \t"));
+        if (line.len == 0 and !seen_open) continue;
+        var quote: u8 = 0;
+        var escaped = false;
+        for (line) |ch| {
+            if (quote != 0) {
+                if (escaped) {
+                    escaped = false;
+                    continue;
+                }
+                if (ch == '\\') {
+                    escaped = true;
+                    continue;
+                }
+                if (ch == quote) quote = 0;
+                continue;
+            }
+            if (ch == '"' or ((language == .javascript or language == .typescript or language == .tsx) and (ch == '\'' or ch == '`'))) {
+                quote = ch;
+                continue;
+            }
+            if (ch == '{') {
+                seen_open = true;
+                depth += 1;
+                continue;
+            }
+            if (ch == '}' and seen_open) {
+                depth -= 1;
+                if (depth <= 0) return line_no;
+            }
+        }
+    }
+    return start_line;
 }
 
 fn collectDefinitionsWithTreeSitter(
@@ -1022,6 +1133,7 @@ fn collectTsDefinitions(
                 .label = try allocator.dupe(u8, label),
                 .name = name,
                 .start_line = @as(i32, @intCast(node.startPoint().row)) + 1,
+                .end_line = tsDefinitionEndLine(node),
             });
         }
     }
@@ -1039,7 +1151,7 @@ fn tsNodeLabel(language: discover.Language, node: ts.Node) ?[]const u8 {
     const kind = node.kind();
     return switch (language) {
         .python => if (std.mem.eql(u8, kind, "function_definition"))
-            "Function"
+            if (nodeHasAncestorKind(node, "class_definition")) "Method" else "Function"
         else if (std.mem.eql(u8, kind, "class_definition"))
             "Class"
         else
@@ -1047,7 +1159,8 @@ fn tsNodeLabel(language: discover.Language, node: ts.Node) ?[]const u8 {
         .javascript, .typescript, .tsx => if (std.mem.eql(u8, kind, "function_declaration") or
             std.mem.eql(u8, kind, "generator_function_declaration"))
             "Function"
-        else if (std.mem.eql(u8, kind, "method_definition"))
+        else if (std.mem.eql(u8, kind, "method_definition") or
+            std.mem.eql(u8, kind, "method_signature"))
             "Method"
         else if (std.mem.eql(u8, kind, "function_expression"))
             if (jsTsFunctionExpressionIsDefinition(node)) "Function" else null
@@ -1067,8 +1180,9 @@ fn tsNodeLabel(language: discover.Language, node: ts.Node) ?[]const u8 {
         else
             null,
         .rust => if (std.mem.eql(u8, kind, "function_item") or
-            std.mem.eql(u8, kind, "function_signature_item") or
-            std.mem.eql(u8, kind, "closure_expression"))
+            std.mem.eql(u8, kind, "function_signature_item"))
+            if (nodeHasAncestorKind(node, "impl_item") or nodeHasAncestorKind(node, "trait_item")) "Method" else "Function"
+        else if (std.mem.eql(u8, kind, "closure_expression"))
             "Function"
         else if (std.mem.eql(u8, kind, "struct_item") or
             std.mem.eql(u8, kind, "enum_item") or
@@ -1117,6 +1231,14 @@ fn jsTsArrowFunctionIsDefinition(node: ts.Node) bool {
     return std.mem.eql(u8, parent_kind, "variable_declarator") or
         std.mem.eql(u8, parent_kind, "public_field_definition") or
         std.mem.eql(u8, parent_kind, "field_definition");
+}
+
+fn nodeHasAncestorKind(node: ts.Node, expected_kind: []const u8) bool {
+    var current = node.parent();
+    while (current) |ancestor| : (current = ancestor.parent()) {
+        if (std.mem.eql(u8, ancestor.kind(), expected_kind)) return true;
+    }
+    return false;
 }
 
 fn extractTsName(
@@ -1196,6 +1318,20 @@ fn copyTsNodeText(allocator: std.mem.Allocator, bytes: []const u8, node: ts.Node
     return try allocator.dupe(u8, bytes[start..end]);
 }
 
+fn tsDefinitionEndLine(node: ts.Node) i32 {
+    var end_line = @as(i32, @intCast(node.endPoint().row)) + 1;
+    if (node.childByFieldName("body")) |body| {
+        end_line = @max(end_line, @as(i32, @intCast(body.endPoint().row)) + 1);
+    }
+    const child_count = node.namedChildCount();
+    if (child_count > 0) {
+        if (node.namedChild(child_count - 1)) |last_child| {
+            end_line = @max(end_line, @as(i32, @intCast(last_child.endPoint().row)) + 1);
+        }
+    }
+    return end_line;
+}
+
 fn extractRustImplFromText(bytes: []const u8) ?[]const u8 {
     const trimmed = std.mem.trim(u8, bytes, " \t\r\n");
     const parts = parseRustImplParts(trimmed) orelse return null;
@@ -1203,9 +1339,39 @@ fn extractRustImplFromText(bytes: []const u8) ?[]const u8 {
 }
 
 fn tsSymbolLessThan(_: void, lhs: TsSymbol, rhs: TsSymbol) bool {
-    if (lhs.line_no < rhs.line_no) return true;
-    if (lhs.line_no > rhs.line_no) return false;
+    if (lhs.start_line < rhs.start_line) return true;
+    if (lhs.start_line > rhs.start_line) return false;
+    if (lhs.end_line < rhs.end_line) return true;
+    if (lhs.end_line > rhs.end_line) return false;
     return lhs.symbol_id < rhs.symbol_id;
+}
+
+const ScopeSelection = struct {
+    symbol_id: i64,
+    starts_here: bool,
+};
+
+fn selectScopeForLine(scope_markers: []const TsSymbol, line_no: i32, module_id: i64) ScopeSelection {
+    var best: ?TsSymbol = null;
+    var best_span: i32 = std.math.maxInt(i32);
+    for (scope_markers) |marker| {
+        if (line_no < marker.start_line or line_no > marker.end_line) continue;
+        const span = marker.end_line - marker.start_line;
+        if (best == null or span <= best_span) {
+            best = marker;
+            best_span = span;
+        }
+    }
+    if (best) |marker| {
+        return .{
+            .symbol_id = marker.symbol_id,
+            .starts_here = marker.start_line == line_no,
+        };
+    }
+    return .{
+        .symbol_id = module_id,
+        .starts_here = false,
+    };
 }
 
 fn freePendingTsDefinitions(allocator: std.mem.Allocator, definitions: *std.ArrayList(TsDefinition)) void {
@@ -2228,6 +2394,58 @@ test "tree-sitter extracts rust definitions with labels and line numbers" {
     try std.testing.expect(definitionPresent(defs.items, "Function", "helper", 7));
     try std.testing.expect(definitionPresent(defs.items, "Function", "main", 11));
     try std.testing.expect(definitionPresent(defs.items, "Class", "Service", 15));
+    try std.testing.expect(definitionPresent(defs.items, "Method", "run", 16));
+    try std.testing.expectEqual(@as(i32, 9), definitionEndLine(defs.items, "Function", "helper", 7).?);
+    try std.testing.expectEqual(@as(i32, 13), definitionEndLine(defs.items, "Function", "main", 11).?);
+    try std.testing.expectEqual(@as(i32, 16), definitionEndLine(defs.items, "Method", "run", 16).?);
+}
+
+test "tree-sitter tracks rust multiline body end lines" {
+    var defs = std.ArrayList(TsDefinition).empty;
+    defer freePendingTsDefinitions(std.testing.allocator, &defs);
+
+    try collectDefinitionsWithTreeSitter(
+        std.testing.allocator,
+        \\pub fn boot() -> String {
+        \\    let value = helper();
+        \\    value
+        \\}
+        \\
+        \\fn helper() -> String {
+        \\    "ok".to_string()
+        \\}
+        \\
+    ,
+        .rust,
+        &defs,
+    );
+
+    try std.testing.expectEqual(@as(i32, 4), definitionEndLine(defs.items, "Function", "boot", 1).?);
+}
+
+test "line parser estimates rust function spans with nested literals" {
+    const source =
+        \\pub struct Config {
+        \\    pub mode: String,
+        \\}
+        \\
+        \\pub struct Worker {
+        \\    pub config: Config,
+        \\}
+        \\
+        \\pub fn boot() -> String {
+        \\    let worker = Worker {
+        \\        config: Config {
+        \\            mode: "batch".to_string(),
+        \\        },
+        \\    };
+        \\    worker.config.mode
+        \\}
+        \\
+    ;
+
+    const symbol = parseSymbol(.rust, "pub fn boot() -> String {") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(@as(i32, 16), estimateParsedSymbolEndLine(source, .rust, 9, symbol));
 }
 
 test "line parser captures Rust top-level funcs despite traits" {
@@ -2330,6 +2548,21 @@ fn definitionPresent(
     return false;
 }
 
+fn definitionEndLine(
+    defs: []const TsDefinition,
+    expected_label: []const u8,
+    expected_name: []const u8,
+    expected_line: i32,
+) ?i32 {
+    for (defs) |def| {
+        if (def.start_line != expected_line) continue;
+        if (!std.mem.eql(u8, def.label, expected_label)) continue;
+        if (!std.mem.eql(u8, def.name, expected_name)) continue;
+        return def.end_line;
+    }
+    return null;
+}
+
 test "rust impl parsing keeps target and trait roles straight" {
     const parts = parseRustImplParts("impl Display for Foo {") orelse return error.TestUnexpectedResult;
     try std.testing.expectEqualStrings("Foo", parts.target_name);
@@ -2346,13 +2579,13 @@ test "rust impl parsing keeps target and trait roles straight" {
 }
 
 test "call collection skips declaration lines" {
-    try std.testing.expect((try collectCalls(std.testing.allocator, "fn main() void {}", .zig, null, 1, 1)) == null);
-    try std.testing.expect((try collectCalls(std.testing.allocator, "def hello(x):", .python, null, 1, 1)) == null);
-    try std.testing.expect((try collectCalls(std.testing.allocator, "class Foo(Base):", .python, null, 1, 1)) == null);
+    try std.testing.expect((try collectCalls(std.testing.allocator, "fn main() void {}", .zig, null, 1, 1, false)) == null);
+    try std.testing.expect((try collectCalls(std.testing.allocator, "def hello(x):", .python, null, 1, 1, false)) == null);
+    try std.testing.expect((try collectCalls(std.testing.allocator, "class Foo(Base):", .python, null, 1, 1, false)) == null);
     const const_decl = parseSymbol(.zig, "const std = @import(\"std\");") orelse return error.TestUnexpectedResult;
-    try std.testing.expect((try collectCalls(std.testing.allocator, "const std = @import(\"std\");", .zig, const_decl, 1, 1)) == null);
+    try std.testing.expect((try collectCalls(std.testing.allocator, "const std = @import(\"std\");", .zig, const_decl, 1, 1, false)) == null);
 
-    const calls = (try collectCalls(std.testing.allocator, "result = helper(value)", .python, null, 2, 1)) orelse return error.TestUnexpectedResult;
+    const calls = (try collectCalls(std.testing.allocator, "result = helper(value)", .python, null, 2, 1, false)) orelse return error.TestUnexpectedResult;
     defer freeStringSlices(std.testing.allocator, calls);
     try std.testing.expectEqual(@as(usize, 1), calls.len);
     try std.testing.expectEqualStrings("helper", calls[0]);
@@ -2364,10 +2597,36 @@ test "call collection skips declaration lines" {
         null,
         2,
         1,
+        false,
     )) orelse return error.TestUnexpectedResult;
     defer freeStringSlices(std.testing.allocator, const_calls);
     try std.testing.expectEqual(@as(usize, 1), const_calls.len);
     try std.testing.expectEqualStrings("add", const_calls[0]);
+
+    const wrapped_decl = parseSymbol(.javascript, "const boot = decorate(function boot() {") orelse return error.TestUnexpectedResult;
+    const wrapped_calls = (try collectCalls(
+        std.testing.allocator,
+        "const boot = decorate(function boot() {",
+        .javascript,
+        wrapped_decl,
+        2,
+        1,
+        false,
+    )) orelse return error.TestUnexpectedResult;
+    defer freeStringSlices(std.testing.allocator, wrapped_calls);
+    try std.testing.expectEqual(@as(usize, 2), wrapped_calls.len);
+    try std.testing.expectEqualStrings("decorate", wrapped_calls[0]);
+    try std.testing.expectEqualStrings("boot", wrapped_calls[1]);
+
+    try std.testing.expect((try collectCalls(
+        std.testing.allocator,
+        "const worker = new Worker()",
+        .typescript,
+        null,
+        2,
+        1,
+        false,
+    )) == null);
 }
 
 test "usage collection captures callback refs and type references without direct call noise" {
