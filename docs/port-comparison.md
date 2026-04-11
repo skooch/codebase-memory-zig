@@ -118,11 +118,11 @@ It is intentionally not a wish list. It describes:
 | Capability | Original C | Zig Port | Status | Interoperable? | Notes |
 |-----------|------------|----------|--------|----------------|-------|
 | Structure pass | Yes | Yes | `Near parity` | Yes | Both build project/folder/file/module structure. |
-| Definitions extraction | Broad AST extraction | Parser-backed for target languages plus fallback heuristics | `Partial` | No | Strong for the target slice, not full original breadth. |
+| Shared target-language definitions extraction | Broad AST extraction across the original language set | Parser-backed extraction aligned with the verified shared Python, JavaScript, TypeScript, and Rust contract | `Near parity` | Yes | The parity fixtures now lock shared definition inventory, ownership, and label behavior for the overlapping target languages; broader language breadth remains a separate language-support row. |
 | Import resolution | Yes | Yes | `Near parity` | Yes | Zig improved alias preservation and namespace-aware resolution in Phase 4. |
-| Call resolution | Registry + import-aware resolution + some LSP hybrid paths | Registry + import-aware resolution | `Partial` | No | Zig does not implement the original LSP-assisted resolution path. |
-| Usage / type-reference edges | Yes | Yes for current target slice | `Partial` | No | Zig ships usable `USAGE` extraction, but deeper local-dataflow and broader parity are deferred. |
-| Semantic edges | Inherits / decorates / implements and related enrichment | Implemented for current target languages | `Partial` | No | Zig covers the daily-use slice, not the full original breadth. |
+| Shared call-resolution cases | Registry + import-aware resolution + some LSP hybrid paths | Registry + import-aware resolution aligned on the verified alias-heavy shared cases | `Near parity` | Yes | The interop harness now protects the overlapping call-edge contract directly; the original's broader LSP-assisted path remains a separate deferred row. |
+| Shared usage and type-reference edges | Yes | Yes for the verified shared fixture slice | `Near parity` | Yes | Phase 3 now locks the overlapping declaration-time `USAGE` and shared type-reference behavior on the parity fixtures; deeper data-flow remains outside this row. |
+| Shared semantic-edge contract | Inherits / decorates / implements and related enrichment | Implemented and aligned for the shared decorator-focused overlap | `Near parity` | Yes | The verified shared contract now matches the original on persisted decorator edges and on the exercised empty-result cases for unsupported inheritance/implements rows. |
 | Qualified-name helpers | Yes | Yes | `Near parity` | Yes | Explicit Phase 2 substrate work. |
 | Registry / symbol lookup | Yes | Yes | `Near parity` | Yes | Explicit Phase 2 and Phase 4 work in Zig. |
 | Incremental indexing | Yes | Yes | `Near parity` | Yes | Zig persists file hashes and reindexes changed slices. |
@@ -146,12 +146,13 @@ This section compares what kinds of graph entities the two systems are built to 
 | Core code graph (`Project`, `Folder`, `File`, `Module`, `Class`, `Function`, `Method`, `Interface`, `Enum`) | Yes | Yes | `Near parity` | Yes | These are the backbone of the shipped Zig graph. |
 | Core code edges (`CONTAINS_*`, `DEFINES`, `DEFINES_METHOD`, `CALLS`, `USAGE`) | Yes | Yes | `Near parity` | Yes | All are part of the current Zig daily-use contract. |
 | `SIMILAR_TO` | Yes | Yes | `Near parity` | Yes | Landed in Zig Phase 6. |
-| `CONFIGURES` / `WRITES` style edges | Yes | Present in the Zig graph | `Partial` | No | Observed in the Zig project graph, but broader config-link parity remains deferred. |
+| Shared `CONFIGURES` / `WRITES` contract | Yes | Yes for the verified shared fixture slice | `Near parity` | Yes | The parity fixtures now compare the overlapping `CONFIGURES` row directly and lock the exercised shared `WRITES` queries for Python, JavaScript, and TypeScript; broader config-link systems remain deferred elsewhere. |
 | Route graph (`Route`, `HTTP_CALLS`, `ASYNC_CALLS`, `HANDLES`, route-linked data flows) | Yes | Not shipped | `Deferred` | No | This is one of the clearest remaining graph-model differences. |
 | Resource / infra graph (`Resource`, K8s/Kustomize entities) | Yes | Not shipped | `Cut` | No | Intentionally outside the Zig scope. |
 | `TESTS` / test metadata | Yes | Not shipped | `Deferred` | No | Test tagging remains future work. |
 | `FILE_CHANGES_WITH` | Yes | Not shipped | `Deferred` | No | Depends on the deferred git-history pass. |
-| `USES_TYPE` and richer edge families | Yes | Partially approximated through `USAGE` | `Partial` | No | Zig has useful usage edges but not the full long-tail edge vocabulary. |
+| Shared `USES_TYPE` contract | Yes | Yes for the verified shared fixture slice | `Near parity` | Yes | Phase 3 now compares the overlapping `USES_TYPE` queries directly for the exercised Python, TypeScript, and Rust cases instead of treating them as implicit approximations. |
+| Richer long-tail edge families | Yes | Limited beyond the verified shared slice | `Partial` | No | Zig now matches the shared `USES_TYPE` overlap, but the original still has a broader long-tail edge vocabulary outside the completed parity surface. |
 
 ## 5. Language Support
 
@@ -184,12 +185,12 @@ This section compares what kinds of graph entities the two systems are built to 
 
 | Capability | Original C | Zig Port | Status | Interoperable? | Notes |
 |-----------|------------|----------|--------|----------------|-------|
-| `install` | Yes | Yes | `Partial` | No | Zig installs only Codex CLI and Claude Code MCP config entries. |
-| `uninstall` | Yes | Yes | `Partial` | No | Same scope difference as `install`. |
-| `update` | Yes, release-oriented updater | Yes, config-refresh for current binary path | `Partial` | No | Zig explicitly defers binary self-replacement for source builds. |
+| Shared `install` flow (`Codex CLI` / `Claude Code`) | Yes | Yes | `Near parity` | Yes | The temp-HOME CLI parity harness now proves the overlapping install reporting and config-file effects for the two shared agent targets. |
+| Shared `uninstall` flow (`Codex CLI` / `Claude Code`) | Yes | Yes | `Near parity` | Yes | The same temp-HOME parity harness now locks the overlapping uninstall behavior, including dry-run preservation and dual Claude config cleanup. |
+| Shared `update` flow (`Codex CLI` / `Claude Code`) | Yes, release-oriented updater plus config refresh | Yes, shared config refresh for the current binary path | `Near parity` | Yes | Phase 4 proves the overlapping config-refresh and reporting contract; original-only binary self-replacement remains a packaging difference rather than a shared-row failure. |
 | `config` | Yes | Yes | `Near parity` | Yes | Zig supports persisted config including `auto_index`, `auto_index_limit`, and `download_url`. |
 | `cli --progress` | Yes, rich progress sink | Yes, shared phase-aware parity stream for overlapping commands | `Near parity` | Yes | Verified by the interop harness temp-HOME CLI check, which now reports `cli_progress: match`. |
-| Auto-detected agent integrations | 10 agents | 2 agents | `Partial` | No | Zig currently supports Codex CLI and Claude Code only. |
+| Auto-detected shared agent integrations | 10 agents total, including Codex CLI and Claude Code | 2 shared agents: Codex CLI and Claude Code | `Near parity` | Yes | The verified shared overlap is now green for the two agent targets this repo counts as current product scope; the original's broader 10-agent ecosystem remains a separate product-surface difference. |
 | Agent instructions / skills / hooks installation | Yes | No | `Deferred` | No | Original installer configures instruction files, skills, and reminders/hooks. |
 | Manual agent config support | Yes | Yes for the two shipped agent targets | `Near parity` | Yes | Zig writes the correct config files for Codex CLI and Claude Code. |
 

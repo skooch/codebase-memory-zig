@@ -4,11 +4,11 @@
 Bring every currently shared-but-not-interoperable capability in `docs/port-comparison.md` up to full parity with `codebase-memory-mcp`, then update the comparison docs to mark those rows as interoperable.
 
 ## Current Phase
-Phase 5
+Completed
 
 ## File Map
-- Modify: `docs/plans/in-progress/shared-capability-parity-plan.md`
-- Create: `docs/plans/in-progress/shared-capability-parity-progress.md`
+- Modify: `docs/plans/implemented/shared-capability-parity-plan.md`
+- Modify: `docs/plans/implemented/shared-capability-parity-progress.md`
 - Modify: `docs/port-comparison.md`
 - Modify: `docs/gap-analysis.md`
 - Modify: `docs/zig-port-plan.md`
@@ -69,12 +69,12 @@ Phase 5
 - **Status:** completed
 
 ### Phase 5: Close the Loop with Full-Parity Verification and Documentation
-- [ ] Re-run `zig build`, `zig build test`, and the expanded `bash scripts/run_interop_alignment.sh` against the new parity fixtures until every targeted shared row has a concrete green verification path.
-- [ ] Run the temp-HOME CLI parity checks for `install`, `uninstall`, `update`, agent detection, and `cli --progress`, and record the exact commands and outcomes in the final plan/progress notes.
-- [ ] Update `docs/port-comparison.md` so every row targeted by this plan flips to `Interoperable? Yes` only after the corresponding verification evidence exists.
+- [x] Re-run `zig build`, `zig build test`, and the expanded `bash scripts/run_interop_alignment.sh` against the new parity fixtures until every targeted shared row has a concrete green verification path.
+- [x] Run the temp-HOME CLI parity checks for `install`, `uninstall`, `update`, agent detection, and `cli --progress`, and record the exact commands and outcomes in the final plan/progress notes.
+- [x] Update `docs/port-comparison.md` so every row targeted by this plan flips to `Interoperable? Yes` only after the corresponding verification evidence exists.
 - [x] Refresh `docs/gap-analysis.md` and `docs/zig-port-plan.md` to remove the completed shared-surface parity gaps while leaving still-missing subsystems such as `manage_adr`, route graphs, UI, and test-tagging explicitly outside this plan.
-- [ ] Move this plan from `docs/plans/new/` to `docs/plans/in-progress/` before implementation starts, then to `docs/plans/implemented/` only after every verification item above is complete.
-- **Status:** pending
+- [x] Move this plan from `docs/plans/new/` to `docs/plans/in-progress/` before implementation starts, then to `docs/plans/implemented/` only after every verification item above is complete.
+- **Status:** completed
 
 ## Decisions
 | Decision | Rationale |

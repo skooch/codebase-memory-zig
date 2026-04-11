@@ -154,7 +154,7 @@ Do not read it as:
 For the current complete-vs-deferred split, use:
 - the snapshot and plan sections above
 - [port-comparison.md](/Users/skooch/projects/codebase-memory-zig/docs/port-comparison.md)
-- `docs/plans/in-progress/shared-capability-parity-plan.md` for the current shared-surface full-parity execution plan
+- `docs/plans/implemented/shared-capability-parity-plan.md` for the completed shared-surface full-parity execution plan
 
 ---
 

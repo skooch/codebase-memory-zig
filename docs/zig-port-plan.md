@@ -60,7 +60,9 @@ Intentionally deferred after Phase 7:
 
 ### Follow-On Shared Parity Plan
 
-The current target contract is complete, and the shared Phase 2 protocol/query slice is now complete as well. The remaining follow-on plan tracks the shared capabilities that still fall short of full parity:
+The current target contract is complete, and the shared follow-on parity work is now complete as well.
+
+The completed follow-on plan covered:
 
 - definitions extraction on overlapping target languages
 - call resolution
@@ -70,12 +72,12 @@ The current target contract is complete, and the shared Phase 2 protocol/query s
 - `install`, `uninstall`, and `update`
 - auto-detected agent integrations
 
-That work is tracked in:
-- `docs/plans/in-progress/shared-capability-parity-plan.md`
+That completed work is archived in:
+- `docs/plans/implemented/shared-capability-parity-plan.md`
 
-This follow-on is intentionally narrower than a full “port every remaining subsystem” effort:
-- it targets shared-surface full parity
-- it does not reopen intentionally missing subsystems such as UI, route graphs, or `manage_adr`
+This follow-on stayed intentionally narrower than a full “port every remaining subsystem” effort:
+- it closed the shared-surface full-parity rows
+- it did not reopen intentionally missing subsystems such as UI, route graphs, or `manage_adr`
 
 ### Recommended Execution Order
 

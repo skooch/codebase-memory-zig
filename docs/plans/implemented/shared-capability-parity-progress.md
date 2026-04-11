@@ -164,3 +164,22 @@
   - `scripts/run_cli_parity.sh`
   - `src/cli.zig`
   - `src/main.zig`
+
+### Phase 5: Close the Loop with Full-Parity Verification and Documentation
+- **Status:** completed
+- Actions:
+  - Re-ran the final acceptance checks against the completed shared-capability surface instead of relying on earlier phase-local evidence:
+    - `zig build` → passed
+    - `zig build test` → passed
+    - `bash scripts/run_cli_parity.sh` → passed with `18` shared checks and `0` mismatches
+    - `bash scripts/run_interop_alignment.sh` → passed with `Comparisons: 67`, `Strict matches: 58`, `Diagnostic-only comparisons: 9`, `Mismatches: 0`, `cli_progress: match`
+  - Checked the optional lint step with `command -v zlint`; it is still unavailable in this shell, so `zlint` remains a blocked optional verification rather than a source failure for plan closeout.
+  - Updated `docs/port-comparison.md` so every row this plan targeted now speaks in terms of the verified shared overlap and flips to `Interoperable? Yes` only where the fixture or temp-HOME parity evidence now exists.
+  - Refreshed the remaining follow-on references in `docs/gap-analysis.md` and `docs/zig-port-plan.md` so the repo now points at the completed shared-parity plan in `docs/plans/implemented/` instead of presenting it as still active.
+  - Archived the plan and progress notes under `docs/plans/implemented/` once the verification and comparison-doc updates were complete.
+- Files modified:
+  - `docs/gap-analysis.md`
+  - `docs/plans/implemented/shared-capability-parity-plan.md`
+  - `docs/plans/implemented/shared-capability-parity-progress.md`
+  - `docs/port-comparison.md`
+  - `docs/zig-port-plan.md`
