@@ -58,6 +58,26 @@ Intentionally deferred after Phase 7:
 - Git-history coupling, route nodes, test tagging, config-linking, and richer decorator/enrichment follow-ons.
 - Broader installer/self-update behavior beyond the current source-build-friendly Codex CLI / Claude Code support.
 
+## Shared Capability Full-Parity Follow-On
+
+The current target contract is complete, but the following shared capabilities still exist in both implementations without full parity. These are the rows the follow-on parity plan must close before `docs/port-comparison.md` can flip them to `Interoperable? Yes`.
+
+| Capability row | Current gap | Full-parity acceptance rule | Primary Zig files | Verification target |
+|----------------|-------------|-----------------------------|-------------------|---------------------|
+| `tools/list` | Zig exposes fewer overlapping shared tool schemas and a thinner schema payload than the original | The Zig MCP server advertises the same overlapping shared tools with equivalent schema fields, descriptions, and argument metadata as the original for every tool the port claims to implement | `src/mcp.zig`, `src/main.zig` | Expanded interop harness compares normalized `tools/list` payloads from both servers |
+| `cli --progress` | Zig emits only minimal lifecycle events | The Zig CLI emits the same overlapping phase-oriented progress event categories, ordering, and payload fields as the original for shared commands | `src/main.zig`, `src/mcp.zig` | Temp-HOME CLI parity check plus captured progress-stream comparison |
+| `query_graph` | Zig supports only a narrower read-only Cypher subset | The Zig engine accepts and returns the same overlapping read-only query shapes, column ordering, row ordering, and error semantics as the original for the parity fixtures and harness query set | `src/cypher.zig`, `src/store.zig`, `src/mcp.zig` | Expanded interop harness compares normalized query results and errors |
+| `get_architecture` | Zig returns a thinner architecture summary | The Zig handler returns the same overlapping architecture sections, counts, and structured summary fields as the original for the shared fixture and repo probes | `src/mcp.zig`, `src/store.zig`, `src/cypher.zig` | Expanded interop harness compares canonicalized architecture payloads |
+| `search_code` | Zig ships useful output but not full shared ranking/dedup parity | The Zig handler matches the original for overlapping compact/full/files behavior, result grouping, dedup into containing symbols, and ranking of the parity fixture hits | `src/mcp.zig`, `src/store.zig` | Expanded interop harness compares normalized search-code result sets |
+| `detect_changes` | Zig has impacted-symbol output but not full shared reporting depth | The Zig handler matches the original overlapping git-diff, impacted-symbol, blast-radius, and shared reporting fields for controlled repo deltas | `src/mcp.zig`, `src/store.zig`, `src/pipeline.zig` | Expanded interop harness runs controlled git-diff scenarios against parity fixtures |
+| Definitions extraction | Zig reaches daily-use fidelity but not full shared overlap | For already-overlapping target languages, the Zig extractor emits the same symbol labels, names, nesting roles, and declaration retention as the original on parity fixtures | `src/extractor.zig`, `src/pipeline.zig` | Extractor tests plus interop fixture comparisons |
+| Call resolution | Zig misses some shared alias-heavy and suffix-heavy cases | The Zig pipeline resolves the same overlapping call edges as the original on parity fixtures with aliasing and cross-file imports | `src/registry.zig`, `src/pipeline.zig` | Pipeline tests plus interop trace/search assertions |
+| Usage / type-reference edges | Zig has useful `USAGE` output but not full shared parity | The Zig graph emits the same overlapping usage and type-reference facts as the original where both implementations already model them | `src/extractor.zig`, `src/pipeline.zig`, `src/store.zig` | Pipeline/store tests plus parity fixture graph queries |
+| Semantic edges | Zig covers a narrower semantic slice | The Zig graph emits the same overlapping `INHERITS`, `IMPLEMENTS`, and `DECORATES` facts as the original on shared target-language fixture cases | `src/extractor.zig`, `src/pipeline.zig`, `src/store.zig` | Pipeline tests plus parity fixture graph queries |
+| `CONFIGURES` / `WRITES` / `USES_TYPE` | Zig has partial or approximate versions only | The Zig graph emits the same overlapping edge families, target resolution, and retained metadata as the original on parity fixtures that exercise config files and type references | `src/extractor.zig`, `src/pipeline.zig`, `src/graph_buffer.zig`, `src/store.zig` | Parity fixtures plus interop graph/query comparisons |
+| `install`, `uninstall`, `update` | Zig implements the commands with a narrower source-build workflow | The Zig CLI matches the original overlapping behavior for shared agent targets, config persistence, reporting, and reversible filesystem changes in temp-HOME tests | `src/cli.zig`, `src/main.zig` | Temp-HOME command parity checks against both CLIs |
+| Auto-detected agent integrations | Zig detects only Codex CLI and Claude Code | The Zig CLI auto-detects every shared agent target it claims to support in the same environments and reports the same selection behavior as the original | `src/cli.zig` | Temp-HOME detection matrix tests plus CLI output comparison |
+
 ## Remaining Implementation Plan
 
 Complete slices:
@@ -123,6 +143,7 @@ Do not read it as:
 For the current complete-vs-deferred split, use:
 - the snapshot and plan sections above
 - [port-comparison.md](/Users/skooch/projects/codebase-memory-zig/docs/port-comparison.md)
+- `docs/plans/in-progress/shared-capability-parity-plan.md` for the current shared-surface full-parity execution plan
 
 ---
 

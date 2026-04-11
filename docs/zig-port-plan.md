@@ -49,6 +49,31 @@ Intentionally deferred after Phase 7:
 - Git-history coupling, route nodes, test tagging, config-linking, and richer decorator/enrichment follow-ons.
 - Broader installer or self-update behavior beyond the current source-build-friendly CLI contract.
 
+### Follow-On Shared Parity Plan
+
+The current target contract is complete, but a follow-on plan now tracks the shared capabilities that exist in both implementations and still fall short of full parity:
+
+- `tools/list`
+- `cli --progress`
+- `query_graph`
+- `get_architecture`
+- `search_code`
+- `detect_changes`
+- definitions extraction on overlapping target languages
+- call resolution
+- usage/type-reference parity
+- semantic-edge parity
+- `CONFIGURES`, `WRITES`, and `USES_TYPE`
+- `install`, `uninstall`, and `update`
+- auto-detected agent integrations
+
+That work is tracked in:
+- `docs/plans/in-progress/shared-capability-parity-plan.md`
+
+This follow-on is intentionally narrower than a full “port every remaining subsystem” effort:
+- it targets shared-surface full parity
+- it does not reopen intentionally missing subsystems such as UI, route graphs, or `manage_adr`
+
 ### Recommended Execution Order
 
 The completed execution order for the current target contract was:
@@ -72,6 +97,20 @@ The completed execution order for the current target contract was:
 6. **Productization and deferred features**
    - CLI parity, install/update/config flows, and selective defer decisions
    - reason: user-facing packaging and long-tail features should settle after core runtime behavior stops shifting
+
+The next recommended order for the shared-surface parity follow-on is:
+
+1. **Lock the parity contract and harness**
+   - rewrite the acceptance rules in docs
+   - expand the interop harness and fixture corpus
+2. **Close shared MCP/query payload gaps**
+   - `tools/list`, progress events, `query_graph`, `get_architecture`, `search_code`, `detect_changes`
+3. **Close shared graph-fidelity gaps**
+   - definitions, call resolution, usage/type-ref, semantic, and config/type edge families
+4. **Close shared CLI/productization gaps**
+   - `install`, `uninstall`, `update`, and shared agent detection
+5. **Flip documentation only after evidence exists**
+   - update `docs/port-comparison.md` after the verification surface is green
 
 ---
 

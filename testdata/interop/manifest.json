@@ -1,7 +1,7 @@
 {
-  "schema_version": "0.1",
-  "plan_phase": 5,
-  "goal": "Define readiness fixtures for first cross-language interoperability alignment checks",
+  "schema_version": "0.2",
+  "plan_phase": 1,
+  "goal": "Define readiness fixtures and follow-on parity fixtures for cross-language interoperability and full-parity checks",
   "fixtures": [
     {
       "id": "python-basic",
@@ -312,6 +312,292 @@
               "start_node_name_hint": "run",
               "direction": "out",
               "depth": 4
+            },
+            "expect": {
+              "required_edge_types": ["CALLS"]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "python-parity",
+      "path": "testdata/interop/python-parity",
+      "project": "python-parity",
+      "language": "python",
+      "scope_tools": [
+        "index_repository",
+        "search_graph",
+        "query_graph",
+        "trace_call_path",
+        "list_projects"
+      ],
+      "assertions": {
+        "index_repository": {
+          "expect": {
+            "nodes_min": 7,
+            "edges_min": 5
+          }
+        },
+        "search_graph": [
+          {
+            "args": {
+              "project": "python-parity",
+              "label": "Class"
+            },
+            "expect": {
+              "required_names": ["BaseWorker", "Worker"]
+            }
+          },
+          {
+            "args": {
+              "project": "python-parity",
+              "label": "Function"
+            },
+            "expect": {
+              "required_names": ["trace", "bootstrap"]
+            }
+          }
+        ],
+        "query_graph": [
+          {
+            "args": {
+              "query": "MATCH (n) WHERE n.label = \"Class\" RETURN count(n) AS count",
+              "project": "python-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["count"],
+              "required_rows_min": 1
+            }
+          }
+        ],
+        "trace_call_path": [
+          {
+            "args": {
+              "project": "python-parity",
+              "start_node_name_hint": "bootstrap",
+              "direction": "out",
+              "depth": 6
+            },
+            "expect": {
+              "required_edge_types": ["CALLS"]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "javascript-parity",
+      "path": "testdata/interop/javascript-parity",
+      "project": "javascript-parity",
+      "language": "javascript",
+      "scope_tools": [
+        "index_repository",
+        "search_graph",
+        "query_graph",
+        "trace_call_path",
+        "list_projects"
+      ],
+      "assertions": {
+        "index_repository": {
+          "expect": {
+            "nodes_min": 7,
+            "edges_min": 4
+          }
+        },
+        "search_graph": [
+          {
+            "args": {
+              "project": "javascript-parity",
+              "label": "Class"
+            },
+            "expect": {
+              "required_names": ["BaseLogger", "FileLogger"]
+            }
+          },
+          {
+            "args": {
+              "project": "javascript-parity",
+              "label": "Function"
+            },
+            "expect": {
+              "required_names": ["decorate", "boot"]
+            }
+          }
+        ],
+        "query_graph": [
+          {
+            "args": {
+              "query": "MATCH (n) WHERE n.label = \"Class\" RETURN count(n) AS count",
+              "project": "javascript-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["count"],
+              "required_rows_min": 1
+            }
+          }
+        ],
+        "trace_call_path": [
+          {
+            "args": {
+              "project": "javascript-parity",
+              "start_node_name_hint": "boot",
+              "direction": "out",
+              "depth": 6
+            },
+            "expect": {
+              "required_edge_types": ["CALLS"]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "typescript-parity",
+      "path": "testdata/interop/typescript-parity",
+      "project": "typescript-parity",
+      "language": "typescript",
+      "scope_tools": [
+        "index_repository",
+        "search_graph",
+        "query_graph",
+        "trace_call_path",
+        "list_projects"
+      ],
+      "assertions": {
+        "index_repository": {
+          "expect": {
+            "nodes_min": 8,
+            "edges_min": 5
+          }
+        },
+        "search_graph": [
+          {
+            "args": {
+              "project": "typescript-parity",
+              "label": "Class"
+            },
+            "expect": {
+              "required_names": ["Worker"]
+            }
+          },
+          {
+            "args": {
+              "project": "typescript-parity",
+              "label": "Interface"
+            },
+            "expect": {
+              "required_names": ["Runner", "Configured"]
+            }
+          },
+          {
+            "args": {
+              "project": "typescript-parity",
+              "label": "Function"
+            },
+            "expect": {
+              "required_names": ["annotate", "boot"]
+            }
+          }
+        ],
+        "query_graph": [
+          {
+            "args": {
+              "query": "MATCH (n) WHERE n.label = \"Interface\" RETURN count(n) AS count",
+              "project": "typescript-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["count"],
+              "required_rows_min": 1
+            }
+          }
+        ],
+        "trace_call_path": [
+          {
+            "args": {
+              "project": "typescript-parity",
+              "start_node_name_hint": "boot",
+              "direction": "out",
+              "depth": 6
+            },
+            "expect": {
+              "required_edge_types": ["CALLS"]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "rust-parity",
+      "path": "testdata/interop/rust-parity",
+      "project": "rust-parity",
+      "language": "rust",
+      "scope_tools": [
+        "index_repository",
+        "search_graph",
+        "query_graph",
+        "trace_call_path",
+        "list_projects"
+      ],
+      "assertions": {
+        "index_repository": {
+          "expect": {
+            "nodes_min": 9,
+            "edges_min": 5
+          }
+        },
+        "search_graph": [
+          {
+            "args": {
+              "project": "rust-parity",
+              "label": "Class"
+            },
+            "expect": {
+              "required_names": ["Config", "Worker"]
+            }
+          },
+          {
+            "args": {
+              "project": "rust-parity",
+              "label": "Interface"
+            },
+            "expect": {
+              "required_names": ["Runner"]
+            }
+          },
+          {
+            "args": {
+              "project": "rust-parity",
+              "label": "Function"
+            },
+            "expect": {
+              "required_names": ["decorate", "boot"]
+            }
+          }
+        ],
+        "query_graph": [
+          {
+            "args": {
+              "query": "MATCH (n) WHERE n.label = \"Interface\" RETURN count(n) AS count",
+              "project": "rust-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["count"],
+              "required_rows_min": 1
+            }
+          }
+        ],
+        "trace_call_path": [
+          {
+            "args": {
+              "project": "rust-parity",
+              "start_node_name_hint": "boot",
+              "direction": "out",
+              "depth": 6
             },
             "expect": {
               "required_edge_types": ["CALLS"]
