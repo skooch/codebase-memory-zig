@@ -83,6 +83,12 @@ The remaining shared capabilities that still exist in both implementations witho
 | `install`, `uninstall`, `update` | Zig implements the commands with a narrower source-build workflow | The Zig CLI matches the original overlapping behavior for shared agent targets, config persistence, reporting, and reversible filesystem changes in temp-HOME tests | `src/cli.zig`, `src/main.zig` | Temp-HOME command parity checks against both CLIs |
 | Auto-detected agent integrations | Zig detects only Codex CLI and Claude Code | The Zig CLI auto-detects every shared agent target it claims to support in the same environments and reports the same selection behavior as the original | `src/cli.zig` | Temp-HOME detection matrix tests plus CLI output comparison |
 
+Review-validated notes for the remaining graph-fidelity rows:
+- Self-call suppression and silent relation-insertion failure handling were correctness bugs and have been fixed in the relation layer.
+- Python module-vs-function `USAGE` ownership drift is not currently treated as a bug fix target; it remains contract-design work until the repo defines a sharper ownership rule for `USAGE` and any future `USES_TYPE` split.
+- Broader TypeScript and Rust type-reference drift is likewise deferred as graph-contract work rather than something to “correct” toward the original implementation’s narrower output.
+- `Constant` remains an intentional Zig label and should not be collapsed into `Variable` purely for source resemblance.
+
 ## Remaining Implementation Plan
 
 Complete slices:
