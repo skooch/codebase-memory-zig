@@ -6,6 +6,7 @@ pub const store = @import("store.zig");
 pub const adr = @import("adr.zig");
 pub const graph_buffer = @import("graph_buffer.zig");
 pub const pipeline = @import("pipeline.zig");
+pub const test_tagging = @import("test_tagging.zig");
 pub const mcp = @import("mcp.zig");
 pub const cypher = @import("cypher.zig");
 pub const discover = @import("discover.zig");
@@ -28,6 +29,7 @@ test {
     _ = adr;
     _ = graph_buffer;
     _ = pipeline;
+    _ = test_tagging;
     _ = mcp;
     _ = cypher;
     _ = discover;

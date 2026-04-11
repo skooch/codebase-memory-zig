@@ -64,7 +64,7 @@ Intentionally deferred after Phase 7:
 - The remaining MCP work outside the completed daily-use slice, especially fuller Cypher parity and richer trace modes.
 - Full Cypher parity beyond the broader day-to-day query subset now supporting node/edge reads, filtering, sorting, and counts.
 - Deeper usage/type-reference extraction parity and broader cross-language semantics beyond the current target daily-use slice.
-- Git-history coupling, route nodes, test tagging, config-linking, and richer decorator/enrichment follow-ons.
+- Git-history coupling, route nodes, config-linking, and richer decorator/enrichment follow-ons.
 - Broader installer/self-update behavior beyond the current source-build-friendly Codex CLI / Claude Code support.
 
 ## Shared Capability Full-Parity Follow-On
@@ -110,7 +110,6 @@ Deferred or optional future slices:
 - Metadata and enrichment:
   - git-history coupling
   - route nodes
-  - test tagging
   - config-linking
   - richer decorator/enrichment promotion
 - Productization beyond the current contract:
@@ -410,7 +409,7 @@ The Zig store has the schema (tables + indexes + pragmas) and opens in-memory DB
 | `pass_similarity` | 505 (minhash.c) | MISSING | MinHash near-clone detection |
 | `pass_gitdiff` | ~200 | MISSING | Git diff → changed files/hunks |
 | `pass_route_nodes` | 742 | MISSING (deferred) | HTTP route node creation |
-| `pass_tests` | 285 | MISSING (deferred) | Test file/function tagging |
+| `pass_tests` | 285 | WORKS for the shared Python `TESTS` / `TESTS_FILE` slice | Test file/function tagging now verified on the local parity fixture; broader language breadth stays follow-on work |
 | `pass_enrichment` | ~200 | MISSING (deferred) | Decorator tag enrichment |
 | `pass_configlink` | ~200 | MISSING (deferred) | Config-code linking |
 | `pass_githistory` | 514 | MISSING (deferred) | Change coupling from git log |

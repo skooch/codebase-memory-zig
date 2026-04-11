@@ -94,6 +94,76 @@ test "store persists parser-backed extraction and call/usage edges" {
     try std.testing.expect(!edgeTargetsContain(usages, child_node));
 }
 
+test "store persists derived TESTS and TESTS_FILE edges with test metadata" {
+    const allocator = std.testing.allocator;
+
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(
+        allocator,
+        "/tmp/cbm-store-test-tagging-{x}",
+        .{project_id},
+    );
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    {
+        var dir = try std.fs.cwd().openDir(project_dir, .{});
+        defer dir.close();
+
+        var widget = try dir.createFile("widget.py", .{});
+        defer widget.close();
+        try widget.writeAll(
+            \\def render_widget():
+            \\    return "widget"
+            \\
+        );
+
+        var test_widget = try dir.createFile("test_widget.py", .{});
+        defer test_widget.close();
+        try test_widget.writeAll(
+            \\from widget import render_widget
+            \\
+            \\def test_widget_renders():
+            \\    return render_widget()
+            \\
+        );
+    }
+
+    var db = try store.Store.openMemory(allocator);
+    defer db.deinit();
+
+    var p = pipeline.Pipeline.init(allocator, project_dir, .full);
+    defer p.deinit();
+    try p.run(&db);
+
+    const project_name = std.fs.path.basename(project_dir);
+    const render_id = try findSingleNodeInStore(&db, project_name, "Function", "render_widget", "widget.py");
+    const test_id = try findSingleNodeInStore(&db, project_name, "Function", "test_widget_renders", "test_widget.py");
+    const test_file_id = try findExactFileNodeInStore(&db, project_name, "test_widget.py");
+    const prod_file_id = try findExactFileNodeInStore(&db, project_name, "widget.py");
+
+    const tests_edges = try db.findEdgesBySource(project_name, test_id, "TESTS");
+    defer db.freeEdges(tests_edges);
+    try std.testing.expectEqual(@as(usize, 1), tests_edges.len);
+    try std.testing.expectEqual(render_id, tests_edges[0].target_id);
+
+    const file_edges = try db.findEdgesBySource(project_name, test_file_id, "TESTS_FILE");
+    defer db.freeEdges(file_edges);
+    try std.testing.expectEqual(@as(usize, 1), file_edges.len);
+    try std.testing.expectEqual(prod_file_id, file_edges[0].target_id);
+
+    const file_nodes = try db.searchNodes(.{
+        .project = project_name,
+        .label_pattern = "File",
+        .name_pattern = "test_widget.py",
+        .limit = 5,
+    });
+    defer db.freeNodes(file_nodes);
+    try std.testing.expectEqual(@as(usize, 1), file_nodes.len);
+    try std.testing.expect(std.mem.indexOf(u8, file_nodes[0].properties_json, "\"is_test\":true") != null);
+}
+
 fn edgeTargetsContain(edges: []const store.Edge, target_id: i64) bool {
     for (edges) |edge| {
         if (edge.target_id == target_id) return true;
@@ -118,4 +188,23 @@ fn findSingleNodeInStore(
     defer db.freeNodes(nodes);
     if (nodes.len == 0) return error.TestUnexpectedResult;
     return nodes[0].id;
+}
+
+fn findExactFileNodeInStore(db: *store.Store, project_name: []const u8, file_path: []const u8) !i64 {
+    const nodes = try db.searchNodes(.{
+        .project = project_name,
+        .label_pattern = "File",
+        .file_pattern = file_path,
+        .limit = 25,
+    });
+    defer db.freeNodes(nodes);
+    for (nodes) |node| {
+        if (std.mem.eql(u8, node.label, "File") and
+            std.mem.eql(u8, node.name, std.fs.path.basename(file_path)) and
+            std.mem.eql(u8, node.file_path, file_path))
+        {
+            return node.id;
+        }
+    }
+    return error.TestUnexpectedResult;
 }

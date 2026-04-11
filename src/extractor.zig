@@ -9,6 +9,7 @@
 const std = @import("std");
 const discover = @import("discover.zig");
 const graph_buffer = @import("graph_buffer.zig");
+const test_tagging = @import("test_tagging.zig");
 const ts = @import("tree_sitter");
 
 const TsDefinition = struct {
@@ -196,14 +197,26 @@ pub fn extractFile(
     for (tree_sitter_defs.items) |def| {
         const symbol_qn = try treeSitterQualifiedName(allocator, project_name, qn_base, file.language, def);
         const exists = gb.findNodeByQualifiedName(symbol_qn) != null;
-        const symbol_id = try gb.upsertNode(
-            def.label,
-            def.name,
-            symbol_qn,
-            rel,
-            def.start_line,
-            def.end_line,
-        );
+        const symbol_props = test_tagging.symbolPropertiesJson(def.label, def.name, rel);
+        const symbol_id = if (std.mem.eql(u8, symbol_props, "{}"))
+            try gb.upsertNode(
+                def.label,
+                def.name,
+                symbol_qn,
+                rel,
+                def.start_line,
+                def.end_line,
+            )
+        else
+            try gb.upsertNodeWithProperties(
+                def.label,
+                def.name,
+                symbol_qn,
+                rel,
+                def.start_line,
+                def.end_line,
+                symbol_props,
+            );
         if (symbol_id > 0 and !exists) {
             _ = gb.insertEdge(file_id, symbol_id, "DEFINES") catch |err| switch (err) {
                 graph_buffer.GraphBufferError.DuplicateEdge => {},
@@ -1149,14 +1162,26 @@ fn addSymbolFromParsed(
     defer allocator.free(symbol_qn);
 
     const exists = gb.findNodeByQualifiedName(symbol_qn) != null;
-    const symbol_id = try gb.upsertNode(
-        symbol.label,
-        symbol.name,
-        symbol_qn,
-        rel,
-        line_no,
-        end_line,
-    );
+    const symbol_props = test_tagging.symbolPropertiesJson(symbol.label, symbol.name, rel);
+    const symbol_id = if (std.mem.eql(u8, symbol_props, "{}"))
+        try gb.upsertNode(
+            symbol.label,
+            symbol.name,
+            symbol_qn,
+            rel,
+            line_no,
+            end_line,
+        )
+    else
+        try gb.upsertNodeWithProperties(
+            symbol.label,
+            symbol.name,
+            symbol_qn,
+            rel,
+            line_no,
+            end_line,
+            symbol_props,
+        );
     if (symbol_id > 0 and gb.findNodeById(module_id) != null and !exists) {
         _ = gb.insertEdge(file_id, symbol_id, "DEFINES") catch |err| switch (err) {
             graph_buffer.GraphBufferError.DuplicateEdge => {},
@@ -1211,14 +1236,26 @@ fn addScopedMethodFromParsed(
     defer allocator.free(symbol_qn);
 
     const exists = gb.findNodeByQualifiedName(symbol_qn) != null;
-    const symbol_id = try gb.upsertNode(
-        "Method",
-        method_name,
-        symbol_qn,
-        rel,
-        line_no,
-        end_line,
-    );
+    const symbol_props = test_tagging.symbolPropertiesJson("Method", method_name, rel);
+    const symbol_id = if (std.mem.eql(u8, symbol_props, "{}"))
+        try gb.upsertNode(
+            "Method",
+            method_name,
+            symbol_qn,
+            rel,
+            line_no,
+            end_line,
+        )
+    else
+        try gb.upsertNodeWithProperties(
+            "Method",
+            method_name,
+            symbol_qn,
+            rel,
+            line_no,
+            end_line,
+            symbol_props,
+        );
     if (symbol_id > 0 and !exists) {
         _ = gb.insertEdge(file_id, symbol_id, "DEFINES") catch |err| switch (err) {
             graph_buffer.GraphBufferError.DuplicateEdge => {},

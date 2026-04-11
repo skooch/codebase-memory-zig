@@ -4,7 +4,7 @@
 
 ### S
 - [x] [manage-adr-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/manage-adr-parity-plan.md)
-- [ ] [test-tagging-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/test-tagging-parity-plan.md)
+- [x] [test-tagging-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/test-tagging-parity-plan.md)
 - [ ] [runtime-lifecycle-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/runtime-lifecycle-parity-plan.md)
 
 ### M
@@ -24,5 +24,5 @@
 
 ## Current Execution Order
 1. [x] `manage-adr`
-2. [ ] `test-tagging`
+2. [x] `test-tagging`
 3. [ ] `runtime-lifecycle`

@@ -4,6 +4,55 @@
   "goal": "Define readiness fixtures and follow-on parity fixtures for cross-language interoperability and full-parity checks",
   "fixtures": [
     {
+      "id": "test-tagging",
+      "path": "testdata/interop/test-tagging",
+      "project": "test-tagging",
+      "language": "python",
+      "scope_tools": [
+        "index_repository",
+        "query_graph",
+        "list_projects"
+      ],
+      "assertions": {
+        "index_repository": {
+          "expect": {
+            "nodes_min": 6,
+            "edges_min": 6
+          }
+        },
+        "query_graph": [
+          {
+            "args": {
+              "query": "MATCH (a)-[r:TESTS]->(b) RETURN a.name, b.name ORDER BY a.name ASC, b.name ASC",
+              "project": "test-tagging",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": [
+                "a.name",
+                "b.name"
+              ],
+              "required_rows_min": 1
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:TESTS_FILE]->(b) RETURN a.name, b.name ORDER BY a.name ASC, b.name ASC",
+              "project": "test-tagging",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": [
+                "a.name",
+                "b.name"
+              ],
+              "required_rows_min": 1
+            }
+          }
+        ]
+      }
+    },
+    {
       "id": "adr-parity",
       "path": "testdata/interop/adr-parity",
       "project": "adr-parity",

@@ -12,6 +12,7 @@ const extractor = @import("extractor.zig");
 const minhash = @import("minhash.zig");
 const Registry = @import("registry.zig").Registry;
 const store = @import("store.zig");
+const test_tagging = @import("test_tagging.zig");
 
 pub const IndexMode = enum {
     full, // read everything, build from scratch
@@ -120,6 +121,7 @@ pub const Pipeline = struct {
         try collectExtractions(self, discovered_files, &gb, &reg, &extractions);
 
         try resolveExtractions(&gb, &reg, extractions.items, &self.cancelled);
+        _ = try test_tagging.runPass(self.allocator, &gb);
         try runConfigLinkPass(self.allocator, &gb);
         try runSimilarityPass(self.allocator, self.repo_path, &gb);
 
@@ -183,6 +185,7 @@ pub const Pipeline = struct {
         try collectExtractions(self, classification.changed_files, &gb, &reg, &extractions);
 
         try resolveExtractions(&gb, &reg, extractions.items, &self.cancelled);
+        _ = try test_tagging.runPass(self.allocator, &gb);
         try runConfigLinkPass(self.allocator, &gb);
         try runSimilarityPass(self.allocator, self.repo_path, &gb);
 
@@ -243,11 +246,18 @@ fn ensureProjectStructure(
     defer allocator.free(file_qn);
 
     const ext = std.fs.path.extension(file_name);
-    const file_props = try std.fmt.allocPrint(
-        allocator,
-        "{{\"extension\":\"{s}\"}}",
-        .{ext},
-    );
+    const file_props = if (test_tagging.isTestPath(file.rel_path))
+        try std.fmt.allocPrint(
+            allocator,
+            "{{\"extension\":\"{s}\",\"is_test\":true}}",
+            .{ext},
+        )
+    else
+        try std.fmt.allocPrint(
+            allocator,
+            "{{\"extension\":\"{s}\"}}",
+            .{ext},
+        );
     defer allocator.free(file_props);
 
     const file_id = try gb.upsertNodeWithProperties(
@@ -1898,6 +1908,84 @@ test "pipeline keeps only shared decorator semantic edges" {
     try std.testing.expectEqual(@as(usize, 0), worker_port_inherits.len);
 }
 
+test "pipeline derives test tagging edges for python fixtures" {
+    const allocator = std.testing.allocator;
+
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(
+        allocator,
+        "/tmp/cbm-pipeline-test-tagging-{x}",
+        .{project_id},
+    );
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    {
+        var dir = try std.fs.cwd().openDir(project_dir, .{});
+        defer dir.close();
+
+        var widget = try dir.createFile("widget.py", .{});
+        defer widget.close();
+        try widget.writeAll(
+            \\def render_widget():
+            \\    return "widget"
+            \\
+        );
+
+        var test_widget = try dir.createFile("test_widget.py", .{});
+        defer test_widget.close();
+        try test_widget.writeAll(
+            \\from widget import render_widget
+            \\
+            \\def helper_in_test():
+            \\    return "ignored"
+            \\
+            \\def test_widget_renders():
+            \\    return render_widget()
+            \\
+        );
+    }
+
+    var db = try store.Store.openMemory(allocator);
+    defer db.deinit();
+
+    var pipeline = Pipeline.init(allocator, project_dir, .full);
+    defer pipeline.deinit();
+    try pipeline.run(&db);
+
+    const project_name = std.fs.path.basename(project_dir);
+    const render_id = try findSingleNodeByNameInFile(&db, project_name, "Function", "render_widget", "widget.py");
+    const test_id = try findSingleNodeByNameInFile(&db, project_name, "Function", "test_widget_renders", "test_widget.py");
+    const helper_in_test_id = try findSingleNodeByNameInFile(&db, project_name, "Function", "helper_in_test", "test_widget.py");
+    const test_file_id = try findExactFileNodeByPath(&db, project_name, "test_widget.py");
+    const prod_file_id = try findExactFileNodeByPath(&db, project_name, "widget.py");
+
+    const tests_edges = try db.findEdgesBySource(project_name, test_id, "TESTS");
+    defer db.freeEdges(tests_edges);
+    try std.testing.expectEqual(@as(usize, 1), tests_edges.len);
+    try std.testing.expectEqual(render_id, tests_edges[0].target_id);
+
+    const helper_edges = try db.findEdgesBySource(project_name, helper_in_test_id, "TESTS");
+    defer db.freeEdges(helper_edges);
+    try std.testing.expectEqual(@as(usize, 0), helper_edges.len);
+
+    const tests_file_edges = try db.findEdgesBySource(project_name, test_file_id, "TESTS_FILE");
+    defer db.freeEdges(tests_file_edges);
+    try std.testing.expectEqual(@as(usize, 1), tests_file_edges.len);
+    try std.testing.expectEqual(prod_file_id, tests_file_edges[0].target_id);
+
+    const test_file_nodes = try db.searchNodes(.{
+        .project = project_name,
+        .label_pattern = "File",
+        .name_pattern = "test_widget.py",
+        .limit = 5,
+    });
+    defer db.freeNodes(test_file_nodes);
+    try std.testing.expectEqual(@as(usize, 1), test_file_nodes.len);
+    try std.testing.expect(std.mem.indexOf(u8, test_file_nodes[0].properties_json, "\"is_test\":true") != null);
+}
+
 test "pipeline aligns module-level declaration usages with semantic reference sources" {
     const allocator = std.testing.allocator;
 
@@ -2430,6 +2518,25 @@ fn findSingleNodeByNameInFile(
     defer db.freeNodes(nodes);
     if (nodes.len == 0) return error.TestUnexpectedResult;
     return nodes[0].id;
+}
+
+fn findExactFileNodeByPath(db: *store.Store, project_name: []const u8, file_path: []const u8) !i64 {
+    const nodes = try db.searchNodes(.{
+        .project = project_name,
+        .label_pattern = "File",
+        .file_pattern = file_path,
+        .limit = 25,
+    });
+    defer db.freeNodes(nodes);
+    for (nodes) |node| {
+        if (std.mem.eql(u8, node.label, "File") and
+            std.mem.eql(u8, node.name, std.fs.path.basename(file_path)) and
+            std.mem.eql(u8, node.file_path, file_path))
+        {
+            return node.id;
+        }
+    }
+    return error.TestUnexpectedResult;
 }
 
 fn edgeTargetsContain(edges: []const store.Edge, target_id: i64) bool {
