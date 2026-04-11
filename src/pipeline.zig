@@ -215,6 +215,107 @@ fn extractFile(
     return try extractor.extractFile(allocator, project_name, file, gb);
 }
 
+fn normalizePath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
+    const copied = try allocator.dupe(u8, path);
+    for (copied) |*c| {
+        if (c.* == std.fs.path.sep) c.* = '/';
+    }
+    return copied;
+}
+
+fn ensureProjectStructure(
+    allocator: std.mem.Allocator,
+    project_name: []const u8,
+    file: discover.FileInfo,
+    gb: *GraphBuffer,
+) !void {
+    const project_id = try gb.upsertNode("Project", project_name, project_name, "", 0, 0);
+
+    const normalized_rel = try normalizePath(allocator, file.rel_path);
+    defer allocator.free(normalized_rel);
+
+    const file_name = std.fs.path.basename(file.rel_path);
+    const file_qn = try std.fmt.allocPrint(
+        allocator,
+        "{s}:file:{s}:{s}",
+        .{ project_name, normalized_rel, @tagName(file.language) },
+    );
+    defer allocator.free(file_qn);
+
+    const ext = std.fs.path.extension(file_name);
+    const file_props = try std.fmt.allocPrint(
+        allocator,
+        "{{\"extension\":\"{s}\"}}",
+        .{ext},
+    );
+    defer allocator.free(file_props);
+
+    const file_id = try gb.upsertNodeWithProperties(
+        "File",
+        file_name,
+        file_qn,
+        file.rel_path,
+        1,
+        1,
+        file_props,
+    );
+
+    const maybe_dir = std.fs.path.dirname(file.rel_path);
+    if (maybe_dir == null or maybe_dir.?.len == 0) {
+        _ = gb.insertEdge(project_id, file_id, "CONTAINS_FILE") catch |err| switch (err) {
+            GraphBufferError.DuplicateEdge => 0,
+            else => return err,
+        };
+        return;
+    }
+
+    const parent_id = try ensureFolderChain(allocator, project_name, maybe_dir.?, gb);
+    _ = gb.insertEdge(parent_id, file_id, "CONTAINS_FILE") catch |err| switch (err) {
+        GraphBufferError.DuplicateEdge => 0,
+        else => return err,
+    };
+}
+
+fn ensureFolderChain(
+    allocator: std.mem.Allocator,
+    project_name: []const u8,
+    dir_path: []const u8,
+    gb: *GraphBuffer,
+) !i64 {
+    const normalized_dir = try normalizePath(allocator, dir_path);
+    defer allocator.free(normalized_dir);
+
+    var built = std.ArrayList(u8).empty;
+    defer built.deinit(allocator);
+
+    var last_folder_id = gb.findNodeId(project_name) orelse 0;
+    var parts = std.mem.splitScalar(u8, normalized_dir, '/');
+    while (parts.next()) |part| {
+        if (part.len == 0) continue;
+        if (built.items.len > 0) try built.append(allocator, '/');
+        try built.appendSlice(allocator, part);
+
+        const current_path = built.items;
+        const folder_qn = try std.fmt.allocPrint(
+            allocator,
+            "{s}:folder:{s}",
+            .{ project_name, current_path },
+        );
+        defer allocator.free(folder_qn);
+
+        const folder_id = try gb.upsertNode("Folder", part, folder_qn, "", 0, 0);
+        if (last_folder_id != 0) {
+            _ = gb.insertEdge(last_folder_id, folder_id, "CONTAINS_FOLDER") catch |err| switch (err) {
+                GraphBufferError.DuplicateEdge => 0,
+                else => return err,
+            };
+        }
+        last_folder_id = folder_id;
+    }
+
+    return last_folder_id;
+}
+
 fn normalizeImportAlias(raw: []const u8) []const u8 {
     const trimmed = std.mem.trim(u8, raw, " \t\"'");
     if (trimmed.len == 0) return "";
@@ -377,6 +478,10 @@ fn collectExtractionsSequential(
     for (files) |file| {
         if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
 
+        ensureProjectStructure(self.allocator, self.project_name, file, gb) catch |err| switch (err) {
+            error.OutOfMemory => return PipelineError.OutOfMemory,
+            else => return PipelineError.DiscoveryFailed,
+        };
         const extraction = extractFile(self.allocator, self.project_name, file, gb) catch |err| {
             std.log.warn("extractor failed for {s}: {}", .{ file.rel_path, err });
             continue;
@@ -476,6 +581,10 @@ fn parallelExtractWorker(ctx: *ParallelWorkerContext) void {
         if (ctx.cancelled.load(.acquire)) return;
 
         var local_gb = GraphBuffer.init(std.heap.c_allocator, ctx.project_name);
+        ensureProjectStructure(std.heap.c_allocator, ctx.project_name, ctx.files[idx], &local_gb) catch {
+            local_gb.deinit();
+            continue;
+        };
         const extraction = extractFile(std.heap.c_allocator, ctx.project_name, ctx.files[idx], &local_gb) catch {
             local_gb.deinit();
             continue;
@@ -1891,6 +2000,70 @@ test "pipeline preserves scoped rust methods and defines-method edges" {
     const worker_edges = try db.findEdgesBySource(project_name, worker_id, "DEFINES_METHOD");
     defer db.freeEdges(worker_edges);
     try std.testing.expect(edgeTargetsContain(worker_edges, worker_run_id));
+}
+
+test "pipeline creates shared project and folder structure edges" {
+    const allocator = std.testing.allocator;
+
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(
+        allocator,
+        "/tmp/cbm-pipeline-structure-{x}",
+        .{project_id},
+    );
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    {
+        var dir = try std.fs.cwd().openDir(project_dir, .{});
+        defer dir.close();
+
+        try dir.makePath("src");
+
+        var rs = try dir.createFile("src/lib.rs", .{});
+        defer rs.close();
+        try rs.writeAll(
+            \\pub fn run() {}
+            \\
+        );
+    }
+
+    var db = try store.Store.openMemory(allocator);
+    defer db.deinit();
+
+    var pipeline = Pipeline.init(allocator, project_dir, .full);
+    defer pipeline.deinit();
+    try pipeline.run(&db);
+
+    const project_name = std.fs.path.basename(project_dir);
+    const project_nodes = try db.searchNodes(.{
+        .project = project_name,
+        .label_pattern = "Project",
+        .name_pattern = project_name,
+        .limit = 4,
+    });
+    defer db.freeNodes(project_nodes);
+    try std.testing.expectEqual(@as(usize, 1), project_nodes.len);
+
+    const folder_nodes = try db.searchNodes(.{
+        .project = project_name,
+        .label_pattern = "Folder",
+        .name_pattern = "src",
+        .limit = 4,
+    });
+    defer db.freeNodes(folder_nodes);
+    try std.testing.expectEqual(@as(usize, 1), folder_nodes.len);
+
+    const file_id = try findSingleNodeByNameInFile(&db, project_name, "File", "lib.rs", "src/lib.rs");
+
+    const project_contains = try db.findEdgesBySource(project_name, project_nodes[0].id, "CONTAINS_FOLDER");
+    defer db.freeEdges(project_contains);
+    try std.testing.expect(edgeTargetsContain(project_contains, folder_nodes[0].id));
+
+    const folder_contains = try db.findEdgesBySource(project_name, folder_nodes[0].id, "CONTAINS_FILE");
+    defer db.freeEdges(folder_contains);
+    try std.testing.expect(edgeTargetsContain(folder_contains, file_id));
 }
 
 test "pipeline indexes python module variables without promoting local assignments" {

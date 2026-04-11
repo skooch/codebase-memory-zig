@@ -114,6 +114,10 @@
   - Added a focused `src/pipeline.zig` regression that proves both Rust `run` methods survive with distinct qualified names and that `Runner` and `Worker` each own their method through `DEFINES_METHOD`.
   - Expanded `testdata/interop/manifest.json` so `rust-parity` now compares shared method inventory and `DEFINES_METHOD` rows directly against the original instead of leaving that overlap buried inside diagnostic totals.
   - Re-ran `zig fmt src/extractor.zig src/pipeline.zig`, `zig build`, `zig build test`, a fresh-binary manual Rust method probe, and `bash scripts/run_interop_alignment.sh`; the harness remains green at `67` comparisons, `58` strict matches, `9` diagnostic comparisons, `0` mismatches, and `cli_progress: match`.
+  - Ported the original’s shared structure-layer shape into the Zig pipeline by creating `Project` and `Folder` nodes plus `CONTAINS_FOLDER` / `CONTAINS_FILE` edges before per-file extraction, and wired that helper into both sequential and parallel indexing so full and incremental runs share the same structure contract.
+  - Updated `src/graph_buffer.zig` incremental deletion behavior to prune orphan `Folder` nodes after their last indexed file is removed, avoiding the stale-structure drift this slice would otherwise introduce on incremental reindex runs.
+  - Added direct regression coverage for both sides of the slice: `src/pipeline.zig` now proves nested files get the expected project→folder→file structure edges, and `src/graph_buffer.zig` now proves removing a file also removes its now-empty folder while preserving the project node.
+  - Re-ran `zig fmt src/pipeline.zig src/graph_buffer.zig`, `zig build`, `zig build test`, and `bash scripts/run_interop_alignment.sh`; the shared harness remains green at `67` comparisons, `57` strict matches, `9` diagnostic comparisons, `0` mismatches, and `cli_progress: match`, while the rust diagnostic inventory now includes the missing `Project` / `Folder` nodes and `CONTAINS_FILE` / `CONTAINS_FOLDER` edge families.
 - Files modified:
   - `docs/plans/in-progress/shared-capability-parity-plan.md`
   - `docs/plans/in-progress/shared-capability-parity-progress.md`

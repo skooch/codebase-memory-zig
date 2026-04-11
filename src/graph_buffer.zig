@@ -356,19 +356,57 @@ pub const GraphBuffer = struct {
         var removed = std.AutoHashMap(i64, void).init(self.allocator);
         defer removed.deinit();
 
+        for (self.nodes_by_id.items) |node| {
+            if (std.mem.eql(u8, node.file_path, file_path)) {
+                removed.put(node.id, {}) catch {};
+            }
+        }
+
+        self.removeNodes(&removed);
+        self.pruneOrphanFolders();
+    }
+
+    fn pruneOrphanFolders(self: *GraphBuffer) void {
+        while (true) {
+            var removed = std.AutoHashMap(i64, void).init(self.allocator);
+            defer removed.deinit();
+
+            for (self.nodes_by_id.items) |node| {
+                if (!std.mem.eql(u8, node.label, "Folder")) continue;
+                if (self.nodeHasStructureChildren(node.id)) continue;
+                removed.put(node.id, {}) catch {};
+            }
+
+            if (removed.count() == 0) return;
+            self.removeNodes(&removed);
+        }
+    }
+
+    fn nodeHasStructureChildren(self: *const GraphBuffer, node_id: i64) bool {
+        for (self.edges.items) |edge| {
+            if (edge.source_id != node_id) continue;
+            if (std.mem.eql(u8, edge.edge_type, "CONTAINS_FILE") or
+                std.mem.eql(u8, edge.edge_type, "CONTAINS_FOLDER"))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    fn removeNodes(self: *GraphBuffer, removed: *const std.AutoHashMap(i64, void)) void {
         var keep_nodes = std.ArrayList(BufferNode).empty;
         defer keep_nodes.deinit(self.allocator);
 
         for (self.nodes_by_id.items) |node| {
-            if (std.mem.eql(u8, node.file_path, file_path)) {
-                removed.put(node.id, {}) catch {};
+            if (removed.contains(node.id)) {
                 if (self.nodes_by_qn.fetchRemove(node.qualified_name)) |entry| {
                     self.allocator.free(entry.key);
                 }
                 self.freeNode(node);
-            } else {
-                keep_nodes.append(self.allocator, node) catch unreachable;
+                continue;
             }
+            keep_nodes.append(self.allocator, node) catch unreachable;
         }
 
         self.nodes_by_id.clearRetainingCapacity();
@@ -595,4 +633,24 @@ test "graph buffer can load from store and purge a file slice" {
     try std.testing.expectEqual(@as(usize, 0), gb.edgeCount());
     try std.testing.expect(gb.findNodeByQualifiedName("demo.drop") == null);
     try std.testing.expect(gb.findNodeByQualifiedName("demo.keep") != null);
+}
+
+test "graph buffer prunes orphan folders after removing their last file" {
+    var gb = GraphBuffer.init(std.testing.allocator, "demo");
+    defer gb.deinit();
+
+    const project_id = try gb.upsertNode("Project", "demo", "demo", "", 0, 0);
+    const folder_id = try gb.upsertNode("Folder", "src", "demo:folder:src", "", 0, 0);
+    const file_id = try gb.upsertNode("File", "lib.rs", "demo:file:src/lib.rs:rust", "src/lib.rs", 1, 1);
+
+    _ = try gb.insertEdge(project_id, folder_id, "CONTAINS_FOLDER");
+    _ = try gb.insertEdge(folder_id, file_id, "CONTAINS_FILE");
+
+    gb.deleteByFile("src/lib.rs");
+
+    try std.testing.expect(gb.findNodeByQualifiedName("demo") != null);
+    try std.testing.expect(gb.findNodeByQualifiedName("demo:folder:src") == null);
+    try std.testing.expect(gb.findNodeByQualifiedName("demo:file:src/lib.rs:rust") == null);
+    try std.testing.expectEqual(@as(usize, 1), gb.nodeCount());
+    try std.testing.expectEqual(@as(usize, 0), gb.edgeCount());
 }
