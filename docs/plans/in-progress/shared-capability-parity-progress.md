@@ -109,6 +109,11 @@
   - Updated `src/extractor.zig` so Python module-scope simple assignments now become `Variable` definitions without promoting function-local assignments, and added direct extractor coverage plus a pipeline regression that locks `default_mode` in while keeping `local_mode` out.
   - Extended `testdata/interop/python-parity/main.py` with an unreferenced module variable (`default_mode`) so the harness can verify shared Python code-variable inventory parity without accidentally introducing Zig-only `USAGE` edges.
   - Re-ran `zig fmt src/extractor.zig src/pipeline.zig`, `zig build`, `zig build test`, and `bash scripts/run_interop_alignment.sh`; the baseline remains green at `67` comparisons, `58` strict matches, `9` diagnostic comparisons, `0` mismatches, and `cli_progress: match`.
+  - Mined the remaining Rust diagnostic gap down to a concrete overlapping definitions issue: the original keeps separate `Runner.run` and `Worker.run` method nodes plus `DEFINES_METHOD` edges, while the Zig extractor was collapsing one method into a flat file-level `Function`.
+  - Updated `src/extractor.zig` so tree-sitter method definitions carry owner-qualified names when their enclosing class or interface is known, emit `DEFINES_METHOD` edges instead of flattening everything into module `CONTAINS`, and let the parsed-symbol fallback promote in-scope Rust methods to scoped `Method` nodes instead of reintroducing flattened duplicates.
+  - Added a focused `src/pipeline.zig` regression that proves both Rust `run` methods survive with distinct qualified names and that `Runner` and `Worker` each own their method through `DEFINES_METHOD`.
+  - Expanded `testdata/interop/manifest.json` so `rust-parity` now compares shared method inventory and `DEFINES_METHOD` rows directly against the original instead of leaving that overlap buried inside diagnostic totals.
+  - Re-ran `zig fmt src/extractor.zig src/pipeline.zig`, `zig build`, `zig build test`, a fresh-binary manual Rust method probe, and `bash scripts/run_interop_alignment.sh`; the harness remains green at `67` comparisons, `58` strict matches, `9` diagnostic comparisons, `0` mismatches, and `cli_progress: match`.
 - Files modified:
   - `docs/plans/in-progress/shared-capability-parity-plan.md`
   - `docs/plans/in-progress/shared-capability-parity-progress.md`

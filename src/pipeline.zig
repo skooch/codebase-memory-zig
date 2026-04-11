@@ -1813,6 +1813,86 @@ test "pipeline aligns module-level declaration usages with semantic reference so
     try std.testing.expect(!edgeTargetsContain(rust_usages, rust_runner_id));
 }
 
+test "pipeline preserves scoped rust methods and defines-method edges" {
+    const allocator = std.testing.allocator;
+
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(
+        allocator,
+        "/tmp/cbm-pipeline-rust-methods-{x}",
+        .{project_id},
+    );
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    {
+        var dir = try std.fs.cwd().openDir(project_dir, .{});
+        defer dir.close();
+
+        try dir.makePath("src");
+
+        var cargo = try dir.createFile("Cargo.toml", .{});
+        defer cargo.close();
+        try cargo.writeAll(
+            \\[package]
+            \\name = "rust-methods"
+            \\version = "0.1.0"
+            \\edition = "2021"
+            \\
+        );
+
+        var rs = try dir.createFile("src/lib.rs", .{});
+        defer rs.close();
+        try rs.writeAll(
+            \\pub trait Runner {
+            \\    fn run(&self) -> String;
+            \\}
+            \\
+            \\pub struct Worker;
+            \\
+            \\impl Runner for Worker {
+            \\    fn run(&self) -> String {
+            \\        "ok".to_string()
+            \\    }
+            \\}
+            \\
+        );
+    }
+
+    var db = try store.Store.openMemory(allocator);
+    defer db.deinit();
+
+    var pipeline = Pipeline.init(allocator, project_dir, .full);
+    defer pipeline.deinit();
+    try pipeline.run(&db);
+
+    const project_name = std.fs.path.basename(project_dir);
+    const runner_id = try findSingleNodeByNameInFile(&db, project_name, "Interface", "Runner", "src/lib.rs");
+    const worker_id = try findSingleNodeByNameInFile(&db, project_name, "Class", "Worker", "src/lib.rs");
+
+    const run_methods = try db.searchNodes(.{
+        .project = project_name,
+        .label_pattern = "Method",
+        .name_pattern = "run",
+        .file_pattern = "src/lib.rs",
+        .limit = 10,
+    });
+    defer db.freeNodes(run_methods);
+    try std.testing.expectEqual(@as(usize, 2), run_methods.len);
+
+    const runner_run_id = findNodeIdByQualifiedNameFragment(run_methods, "Runner.run") orelse return error.TestUnexpectedResult;
+    const worker_run_id = findNodeIdByQualifiedNameFragment(run_methods, "Worker.run") orelse return error.TestUnexpectedResult;
+
+    const runner_edges = try db.findEdgesBySource(project_name, runner_id, "DEFINES_METHOD");
+    defer db.freeEdges(runner_edges);
+    try std.testing.expect(edgeTargetsContain(runner_edges, runner_run_id));
+
+    const worker_edges = try db.findEdgesBySource(project_name, worker_id, "DEFINES_METHOD");
+    defer db.freeEdges(worker_edges);
+    try std.testing.expect(edgeTargetsContain(worker_edges, worker_run_id));
+}
+
 test "pipeline indexes python module variables without promoting local assignments" {
     const allocator = std.testing.allocator;
 
@@ -2013,4 +2093,11 @@ fn edgeTargetsContain(edges: []const store.Edge, target_id: i64) bool {
         if (edge.target_id == target_id) return true;
     }
     return false;
+}
+
+fn findNodeIdByQualifiedNameFragment(nodes: []const store.Node, fragment: []const u8) ?i64 {
+    for (nodes) |node| {
+        if (std.mem.indexOf(u8, node.qualified_name, fragment) != null) return node.id;
+    }
+    return null;
 }

@@ -14,6 +14,8 @@ const ts = @import("tree_sitter");
 const TsDefinition = struct {
     label: []const u8,
     name: []const u8,
+    container_name: []const u8 = "",
+    container_label: []const u8 = "",
     start_line: i32,
     end_line: i32,
 };
@@ -192,11 +194,8 @@ pub fn extractFile(
     }
 
     for (tree_sitter_defs.items) |def| {
-        const symbol_qn = try std.fmt.allocPrint(
-            allocator,
-            "{s}:{s}:{s}:symbol:{s}:{s}",
-            .{ project_name, qn_base, @tagName(file.language), @tagName(file.language), def.name },
-        );
+        const symbol_qn = try treeSitterQualifiedName(allocator, project_name, qn_base, file.language, def);
+        const exists = gb.findNodeByQualifiedName(symbol_qn) != null;
         const symbol_id = try gb.upsertNode(
             def.label,
             def.name,
@@ -205,14 +204,17 @@ pub fn extractFile(
             def.start_line,
             def.end_line,
         );
-        if (symbol_id > 0 and gb.findNodeById(module_id) != null) {
-            _ = gb.insertEdge(module_id, symbol_id, "CONTAINS") catch |err| switch (err) {
-                graph_buffer.GraphBufferError.DuplicateEdge => {},
-                else => {
-                    allocator.free(symbol_qn);
-                    return err;
-                },
-            };
+        if (symbol_id > 0 and !exists) {
+            const owner = treeSitterDefinitionOwner(project_name, qn_base, file.language, def, gb, module_id);
+            if (owner.id != 0 and gb.findNodeById(owner.id) != null) {
+                _ = gb.insertEdge(owner.id, symbol_id, owner.edge_type) catch |err| switch (err) {
+                    graph_buffer.GraphBufferError.DuplicateEdge => {},
+                    else => {
+                        allocator.free(symbol_qn);
+                        return err;
+                    },
+                };
+            }
             try symbols.append(allocator, .{
                 .id = symbol_id,
                 .label = try allocator.dupe(u8, def.label),
@@ -275,38 +277,63 @@ pub fn extractFile(
         const parsed_symbol = parseSymbol(file.language, clean_line);
         if (parsed_symbol) |sym| {
             const parsed_end_line = estimateParsedSymbolEndLine(bytes, file.language, line_no, sym);
-            const symbol_qn = try std.fmt.allocPrint(
-                allocator,
-                "{s}:{s}:{s}:symbol:{s}:{s}",
-                .{ project_name, qn_base, @tagName(file.language), @tagName(file.language), sym.name },
-            );
-            defer allocator.free(symbol_qn);
+            const tree_sitter_owns_declaration = supportsTreeSitterDefs(file.language) and scope_starts_here and current_scope_id != module_id;
+            var decl_node_id: i64 = 0;
+            if (tree_sitter_owns_declaration) {
+                decl_node_id = current_scope_id;
+            } else {
+                if (parsedMethodOwner(gb, current_scope_id, module_id, sym)) |owner| {
+                    decl_node_id = try addScopedMethodFromParsed(
+                        allocator,
+                        project_name,
+                        qn_base,
+                        rel,
+                        file.language,
+                        line_no,
+                        parsed_end_line,
+                        sym.name,
+                        owner,
+                        gb,
+                        &symbols,
+                    );
+                } else {
+                    const symbol_qn = try std.fmt.allocPrint(
+                        allocator,
+                        "{s}:{s}:{s}:symbol:{s}:{s}",
+                        .{ project_name, qn_base, @tagName(file.language), @tagName(file.language), sym.name },
+                    );
+                    defer allocator.free(symbol_qn);
 
-            addSymbolFromParsed(
-                allocator,
-                project_name,
-                qn_base,
-                rel,
-                file.language,
-                line_no,
-                parsed_end_line,
-                sym,
-                gb,
-                module_id,
-                &symbols,
-            ) catch |err| switch (err) {
-                error.OutOfMemory => return err,
-                else => {},
-            };
+                    addSymbolFromParsed(
+                        allocator,
+                        project_name,
+                        qn_base,
+                        rel,
+                        file.language,
+                        line_no,
+                        parsed_end_line,
+                        sym,
+                        gb,
+                        module_id,
+                        &symbols,
+                    ) catch |err| switch (err) {
+                        error.OutOfMemory => return err,
+                        else => {},
+                    };
+                    if (gb.findNodeByQualifiedName(symbol_qn)) |decl_node| {
+                        decl_node_id = decl_node.id;
+                    }
+                }
+            }
             if (sym.label.len > 0 and isDeclarationLabel(sym.label)) {
-                if (gb.findNodeByQualifiedName(symbol_qn)) |decl_node| {
-                    current_scope_id = decl_node.id;
+                if (decl_node_id != 0) {
+                    current_scope_id = decl_node_id;
                     if (parsed_end_line > line_no and parsed_end_line > active_scope_end_line) {
                         active_scope_end_line = parsed_end_line;
                     }
                     for (pending_decorators.items) |decorator_name| {
                         try semantic_hints.append(allocator, .{
-                            .child_id = decl_node.id,
+                            .child_id = decl_node_id,
                             .parent_name = try allocator.dupe(u8, decorator_name),
                             .file_path = try allocator.dupe(u8, rel),
                             .relation = try allocator.dupe(u8, "DECORATES"),
@@ -1134,6 +1161,66 @@ fn addSymbolFromParsed(
     }
 }
 
+fn parsedMethodOwner(
+    gb: *graph_buffer.GraphBuffer,
+    current_scope_id: i64,
+    module_id: i64,
+    symbol: ParsedSymbol,
+) ?*const graph_buffer.BufferNode {
+    if (!std.mem.eql(u8, symbol.label, "Function")) return null;
+    if (current_scope_id == 0 or current_scope_id == module_id) return null;
+    const scope_node = gb.findNodeById(current_scope_id) orelse return null;
+    if (!std.mem.eql(u8, scope_node.label, "Class") and !std.mem.eql(u8, scope_node.label, "Interface")) {
+        return null;
+    }
+    return scope_node;
+}
+
+fn addScopedMethodFromParsed(
+    allocator: std.mem.Allocator,
+    project_name: []const u8,
+    qn_base: []const u8,
+    rel: []const u8,
+    language: discover.Language,
+    line_no: i32,
+    end_line: i32,
+    method_name: []const u8,
+    owner: *const graph_buffer.BufferNode,
+    gb: *graph_buffer.GraphBuffer,
+    symbols: *std.ArrayList(ExtractedSymbol),
+) !i64 {
+    const symbol_qn = try std.fmt.allocPrint(
+        allocator,
+        "{s}:{s}:{s}:symbol:{s}:{s}.{s}",
+        .{ project_name, qn_base, @tagName(language), @tagName(language), owner.name, method_name },
+    );
+    defer allocator.free(symbol_qn);
+
+    const exists = gb.findNodeByQualifiedName(symbol_qn) != null;
+    const symbol_id = try gb.upsertNode(
+        "Method",
+        method_name,
+        symbol_qn,
+        rel,
+        line_no,
+        end_line,
+    );
+    if (symbol_id > 0 and !exists) {
+        _ = gb.insertEdge(owner.id, symbol_id, "DEFINES_METHOD") catch |err| switch (err) {
+            graph_buffer.GraphBufferError.DuplicateEdge => {},
+            else => return err,
+        };
+        try symbols.append(allocator, .{
+            .id = symbol_id,
+            .label = try allocator.dupe(u8, "Method"),
+            .name = try allocator.dupe(u8, method_name),
+            .qualified_name = try allocator.dupe(u8, symbol_qn),
+            .file_path = try allocator.dupe(u8, rel),
+        });
+    }
+    return symbol_id;
+}
+
 fn appendSupplementalDefinitions(
     allocator: std.mem.Allocator,
     project_name: []const u8,
@@ -1340,9 +1427,15 @@ fn collectTsDefinitions(
 ) !void {
     if (tsNodeLabel(language, node)) |label| {
         if (try extractTsName(allocator, language, bytes, node)) |name| {
+            const container = if (std.mem.eql(u8, label, "Method"))
+                try extractTsContainer(allocator, language, bytes, node)
+            else
+                null;
             try out.append(allocator, .{
                 .label = try allocator.dupe(u8, label),
                 .name = name,
+                .container_name = if (container) |found| found.name else "",
+                .container_label = if (container) |found| found.label else "",
                 .start_line = @as(i32, @intCast(node.startPoint().row)) + 1,
                 .end_line = tsDefinitionEndLine(node),
             });
@@ -1356,6 +1449,27 @@ fn collectTsDefinitions(
             try collectTsDefinitions(allocator, language, bytes, child, out);
         }
     }
+}
+
+const TsContainer = struct {
+    label: []const u8,
+    name: []const u8,
+};
+
+fn extractTsContainer(
+    allocator: std.mem.Allocator,
+    language: discover.Language,
+    bytes: []const u8,
+    node: ts.Node,
+) !?TsContainer {
+    var current = node.parent();
+    while (current) |ancestor| : (current = ancestor.parent()) {
+        const label = tsNodeLabel(language, ancestor) orelse continue;
+        if (!std.mem.eql(u8, label, "Class") and !std.mem.eql(u8, label, "Interface")) continue;
+        const name = (try extractTsName(allocator, language, bytes, ancestor)) orelse continue;
+        return .{ .label = label, .name = name };
+    }
+    return null;
 }
 
 fn tsNodeLabel(language: discover.Language, node: ts.Node) ?[]const u8 {
@@ -1580,6 +1694,11 @@ const ScopeSelection = struct {
     starts_here: bool,
 };
 
+const TreeSitterOwner = struct {
+    id: i64,
+    edge_type: []const u8,
+};
+
 fn selectScopeForLine(scope_markers: []const TsSymbol, line_no: i32, module_id: i64) ScopeSelection {
     var best: ?TsSymbol = null;
     var best_span: i32 = std.math.maxInt(i32);
@@ -1603,10 +1722,54 @@ fn selectScopeForLine(scope_markers: []const TsSymbol, line_no: i32, module_id: 
     };
 }
 
+fn treeSitterQualifiedName(
+    allocator: std.mem.Allocator,
+    project_name: []const u8,
+    qn_base: []const u8,
+    language: discover.Language,
+    def: TsDefinition,
+) ![]u8 {
+    if (std.mem.eql(u8, def.label, "Method") and def.container_name.len > 0) {
+        return std.fmt.allocPrint(
+            allocator,
+            "{s}:{s}:{s}:symbol:{s}:{s}.{s}",
+            .{ project_name, qn_base, @tagName(language), @tagName(language), def.container_name, def.name },
+        );
+    }
+    return std.fmt.allocPrint(
+        allocator,
+        "{s}:{s}:{s}:symbol:{s}:{s}",
+        .{ project_name, qn_base, @tagName(language), @tagName(language), def.name },
+    );
+}
+
+fn treeSitterDefinitionOwner(
+    project_name: []const u8,
+    qn_base: []const u8,
+    language: discover.Language,
+    def: TsDefinition,
+    gb: *graph_buffer.GraphBuffer,
+    module_id: i64,
+) TreeSitterOwner {
+    if (std.mem.eql(u8, def.label, "Method") and def.container_name.len > 0) {
+        const owner_qn = std.fmt.allocPrint(
+            std.heap.page_allocator,
+            "{s}:{s}:{s}:symbol:{s}:{s}",
+            .{ project_name, qn_base, @tagName(language), @tagName(language), def.container_name },
+        ) catch return .{ .id = module_id, .edge_type = "CONTAINS" };
+        defer std.heap.page_allocator.free(owner_qn);
+        if (gb.findNodeByQualifiedName(owner_qn)) |owner| {
+            return .{ .id = owner.id, .edge_type = "DEFINES_METHOD" };
+        }
+    }
+    return .{ .id = module_id, .edge_type = "CONTAINS" };
+}
+
 fn freePendingTsDefinitions(allocator: std.mem.Allocator, definitions: *std.ArrayList(TsDefinition)) void {
     for (definitions.items) |d| {
         allocator.free(d.label);
         allocator.free(d.name);
+        if (d.container_name.len > 0) allocator.free(d.container_name);
     }
     definitions.deinit(allocator);
 }
