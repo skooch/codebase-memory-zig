@@ -98,6 +98,10 @@
   - Added extractor regressions for the new contract: local JS variables no longer become graph definitions, config-file key parsing is covered directly, and Rust field parsing is pinned independently of the broader pipeline.
   - Expanded `testdata/interop/manifest.json` with exact `query_graph` inventory comparisons for Python/YAML variables, JavaScript variables, TypeScript variables, and Rust class/field/variable inventories so the harness now protects this definitions slice with exact row-set parity instead of only “required name” presence.
   - Re-ran `zig build`, `zig build test`, and `bash scripts/run_interop_alignment.sh`; the baseline remains green at `67` comparisons, `58` strict matches, `9` diagnostic comparisons, `0` mismatches, and `cli_progress: match`.
+  - Implemented the first shared `CONFIGURES` slice in `src/pipeline.zig` using the original repo’s key-symbol config-link strategy: config-file `Variable` nodes from YAML/TOML are normalized and linked to matching non-config `Function`/`Variable`/`Class` nodes when the normalized config key matches or is a substring of the code symbol name.
+  - Extended the Python parity fixture with a two-token config key and matching code symbol (`max_connections` ↔ `get_max_connections`) so the shared `CONFIGURES` overlap is now exercised by the harness instead of remaining theoretical.
+  - Added a direct `src/pipeline.zig` regression proving the `CONFIGURES` edge is emitted for the minimal YAML/Python case, and expanded `testdata/interop/manifest.json` with an exact `query_graph` comparison for `CONFIGURES` rows on the Python parity fixture.
+  - Re-ran `zig build`, `zig build test`, and `bash scripts/run_interop_alignment.sh`; the baseline remains green at `67` comparisons, `58` strict matches, `9` diagnostic comparisons, `0` mismatches, and `cli_progress: match`.
 - Files modified:
   - `docs/plans/in-progress/shared-capability-parity-plan.md`
   - `docs/plans/in-progress/shared-capability-parity-progress.md`

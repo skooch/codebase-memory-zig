@@ -434,6 +434,16 @@
             "expect": {
               "columns": ["n.name"]
             }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:CONFIGURES]->(b) RETURN a.name, b.name ORDER BY a.name, b.name",
+              "project": "python-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["a.name", "b.name"]
+            }
           }
         ],
         "trace_call_path": [

@@ -1,2 +1,3 @@
 mode: batch
 feature: tracing
+max_connections: 10

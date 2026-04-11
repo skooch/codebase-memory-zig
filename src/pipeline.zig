@@ -120,6 +120,7 @@ pub const Pipeline = struct {
         try collectExtractions(self, discovered_files, &gb, &reg, &extractions);
 
         try resolveExtractions(&gb, &reg, extractions.items, &self.cancelled);
+        try runConfigLinkPass(self.allocator, &gb);
         try runSimilarityPass(self.allocator, self.repo_path, &gb);
 
         try gb.dumpToStore(db);
@@ -182,6 +183,7 @@ pub const Pipeline = struct {
         try collectExtractions(self, classification.changed_files, &gb, &reg, &extractions);
 
         try resolveExtractions(&gb, &reg, extractions.items, &self.cancelled);
+        try runConfigLinkPass(self.allocator, &gb);
         try runSimilarityPass(self.allocator, self.repo_path, &gb);
 
         try db.deleteProject(self.project_name);
@@ -688,6 +690,143 @@ fn runSimilarityPass(
             try emitted_per_node.put(candidate.node_id, (emitted_per_node.get(candidate.node_id) orelse 0) + 1);
         }
     }
+}
+
+const ConfigEntry = struct {
+    node_id: i64,
+    name: []const u8,
+    normalized: []const u8,
+};
+
+const CodeEntry = struct {
+    node_id: i64,
+    normalized: []const u8,
+};
+
+fn runConfigLinkPass(
+    allocator: std.mem.Allocator,
+    gb: *GraphBuffer,
+) error{OutOfMemory}!void {
+    var config_entries = std.ArrayList(ConfigEntry).empty;
+    defer {
+        for (config_entries.items) |entry| {
+            allocator.free(entry.name);
+            allocator.free(entry.normalized);
+        }
+        config_entries.deinit(allocator);
+    }
+
+    var code_entries = std.ArrayList(CodeEntry).empty;
+    defer {
+        for (code_entries.items) |entry| allocator.free(entry.normalized);
+        code_entries.deinit(allocator);
+    }
+
+    for (gb.nodes()) |node| {
+        if (std.mem.eql(u8, node.label, "Variable") and hasConfigExtension(node.file_path)) {
+            const normalized = normalizeConfigName(allocator, node.name, true) orelse continue;
+            try config_entries.append(allocator, .{
+                .node_id = node.id,
+                .name = try allocator.dupe(u8, node.name),
+                .normalized = normalized,
+            });
+            continue;
+        }
+
+        if (hasConfigExtension(node.file_path)) continue;
+        if (!std.mem.eql(u8, node.label, "Function") and
+            !std.mem.eql(u8, node.label, "Variable") and
+            !std.mem.eql(u8, node.label, "Class"))
+        {
+            continue;
+        }
+        const normalized = normalizeConfigName(allocator, node.name, false) orelse continue;
+        try code_entries.append(allocator, .{
+            .node_id = node.id,
+            .normalized = normalized,
+        });
+    }
+
+    for (config_entries.items) |cfg| {
+        for (code_entries.items) |code| {
+            var confidence: f64 = 0.0;
+            if (std.mem.eql(u8, code.normalized, cfg.normalized)) {
+                confidence = 1.0;
+            } else if (std.mem.indexOf(u8, code.normalized, cfg.normalized) != null) {
+                confidence = 0.75;
+            }
+            if (confidence <= 0.0) continue;
+            const props = try std.fmt.allocPrint(
+                allocator,
+                "{{\"strategy\":\"key_symbol\",\"confidence\":{d:.2},\"config_key\":\"{s}\"}}",
+                .{ confidence, cfg.name },
+            );
+            defer allocator.free(props);
+            _ = gb.insertEdgeWithProperties(code.node_id, cfg.node_id, "CONFIGURES", props) catch |err| switch (err) {
+                GraphBufferError.DuplicateEdge => 0,
+                else => return error.OutOfMemory,
+            };
+        }
+    }
+}
+
+fn hasConfigExtension(path: []const u8) bool {
+    return std.mem.endsWith(u8, path, ".yaml") or
+        std.mem.endsWith(u8, path, ".yml") or
+        std.mem.endsWith(u8, path, ".toml") or
+        std.mem.endsWith(u8, path, ".json") or
+        std.mem.endsWith(u8, path, ".ini") or
+        std.mem.endsWith(u8, path, ".xml");
+}
+
+fn normalizeConfigName(
+    allocator: std.mem.Allocator,
+    name: []const u8,
+    require_two_long_tokens: bool,
+) ?[]u8 {
+    if (name.len == 0) return null;
+    var out = std.ArrayList(u8).empty;
+    defer out.deinit(allocator);
+
+    var token_lengths = std.ArrayList(usize).empty;
+    defer token_lengths.deinit(allocator);
+
+    var current_len: usize = 0;
+    var prev_was_separator = true;
+    var i: usize = 0;
+    while (i < name.len) : (i += 1) {
+        const ch = name[i];
+        if (!std.ascii.isAlphanumeric(ch)) {
+            if (current_len > 0) {
+                token_lengths.append(allocator, current_len) catch return null;
+                current_len = 0;
+            }
+            prev_was_separator = true;
+            continue;
+        }
+        if (std.ascii.isUpper(ch) and !prev_was_separator and current_len > 0) {
+            token_lengths.append(allocator, current_len) catch return null;
+            current_len = 0;
+            prev_was_separator = true;
+        }
+        if (prev_was_separator and out.items.len > 0) {
+            out.append(allocator, ' ') catch return null;
+        }
+        out.append(allocator, std.ascii.toLower(ch)) catch return null;
+        current_len += 1;
+        prev_was_separator = false;
+    }
+    if (current_len > 0) {
+        token_lengths.append(allocator, current_len) catch return null;
+    }
+    if (out.items.len == 0) return null;
+    if (require_two_long_tokens) {
+        if (token_lengths.items.len < 2) return null;
+        for (token_lengths.items) |len| {
+            if (len < 3) return null;
+        }
+    }
+    return out.toOwnedSlice(allocator) catch null;
 }
 
 fn lessFunctionNodeIndex(gb: *const GraphBuffer, lhs: usize, rhs: usize) bool {
@@ -1672,6 +1811,55 @@ test "pipeline aligns module-level declaration usages with semantic reference so
     try std.testing.expect(edgeTargetsContain(rust_usages, rust_worker_id));
     try std.testing.expect(edgeTargetsContain(rust_usages, rust_config_id));
     try std.testing.expect(!edgeTargetsContain(rust_usages, rust_runner_id));
+}
+
+test "pipeline links matching config keys to code symbols" {
+    const allocator = std.testing.allocator;
+
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(
+        allocator,
+        "/tmp/cbm-pipeline-configlink-{x}",
+        .{project_id},
+    );
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    {
+        var dir = try std.fs.cwd().openDir(project_dir, .{});
+        defer dir.close();
+
+        var cfg = try dir.createFile("settings.yaml", .{});
+        defer cfg.close();
+        try cfg.writeAll(
+            \\mode: batch
+            \\max_connections: 10
+            \\
+        );
+
+        var py = try dir.createFile("main.py", .{});
+        defer py.close();
+        try py.writeAll(
+            \\def get_max_connections():
+            \\    return 10
+            \\
+        );
+    }
+
+    var db = try store.Store.openMemory(allocator);
+    defer db.deinit();
+
+    var pipeline = Pipeline.init(allocator, project_dir, .full);
+    defer pipeline.deinit();
+    try pipeline.run(&db);
+
+    const project_name = std.fs.path.basename(project_dir);
+    const getter_id = try findSingleNodeByNameInFile(&db, project_name, "Function", "get_max_connections", "main.py");
+    const config_id = try findSingleNodeByNameInFile(&db, project_name, "Variable", "max_connections", "settings.yaml");
+    const configures = try db.findEdgesBySource(project_name, getter_id, "CONFIGURES");
+    defer db.freeEdges(configures);
+    try std.testing.expect(edgeTargetsContain(configures, config_id));
 }
 
 test "pipeline emits similarity edges and fingerprints for near-duplicate functions" {
