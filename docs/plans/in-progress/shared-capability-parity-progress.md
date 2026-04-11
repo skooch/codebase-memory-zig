@@ -126,6 +126,7 @@
   - Added focused regression coverage for that contract in `src/extractor.zig`, `src/pipeline.zig`, and `testdata/interop/manifest.json`, including a direct `python-parity` `MATCH (a)-[r:IMPORTS]->(b)` query so the shared import row shape is no longer left diagnostic-only.
   - Confirmed the next shared definitions drift in the JS/TS parity fixtures with controlled Zig/C probes: the Zig port was still indexing `package.json` / `tsconfig.json` as extra `File` / `Module` pairs and was promoting TypeScript interface signatures into `Method` nodes that the original does not persist.
   - Tightened discovery and tree-sitter extraction to match that shared contract in `src/discover.zig` and `src/extractor.zig`: `package.json` and `tsconfig.json` are now skipped during indexing, and TypeScript `method_signature` nodes only become `Method` definitions when they occur under actual class syntax rather than interface declarations.
+  - Tightened Python module-variable parity for the shared basic fixture in `src/extractor.zig` and `src/pipeline.zig`: assignments inside top-level control-flow blocks no longer get promoted as unconditional module `Variable` definitions, and the basic harness now asserts that `python-basic` keeps its variable inventory empty like the original.
 - Files modified:
   - `docs/plans/in-progress/shared-capability-parity-plan.md`
   - `docs/plans/in-progress/shared-capability-parity-progress.md`

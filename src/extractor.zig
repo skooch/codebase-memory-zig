@@ -358,7 +358,7 @@ pub fn extractFile(
                 project_name,
                 qn_base,
                 file.language,
-                clean_line,
+                line_raw,
                 rel,
                 line_no,
                 gb,
@@ -1253,7 +1253,7 @@ fn appendSupplementalDefinitions(
     module_id: i64,
     symbols: *std.ArrayList(ExtractedSymbol),
 ) !void {
-    if (language == .python and current_scope_id == module_id) {
+    if (language == .python and currentScopeOwnsPythonModuleVariable(line, current_scope_id, module_id)) {
         const variable_name = parsePythonVariableName(line) orelse return;
         return addSymbolFromParsed(
             allocator,
@@ -1300,6 +1300,12 @@ fn appendSupplementalDefinitions(
             .file_path = try allocator.dupe(u8, file_path),
         });
     }
+}
+
+fn currentScopeOwnsPythonModuleVariable(line: []const u8, current_scope_id: i64, module_id: i64) bool {
+    if (current_scope_id != module_id) return false;
+    const trimmed_left = std.mem.trimLeft(u8, line, " \t");
+    return trimmed_left.len == line.len;
 }
 
 fn parseRustFieldName(line: []const u8) ?[]const u8 {

@@ -2123,6 +2123,8 @@ test "pipeline indexes python module variables without promoting local assignmen
         defer py.close();
         try py.writeAll(
             \\default_mode = "batch"
+            \\if __name__ == "__main__":
+            \\    result = bootstrap()
             \\
             \\def bootstrap():
             \\    local_mode = default_mode
@@ -2149,6 +2151,15 @@ test "pipeline indexes python module variables without promoting local assignmen
     });
     defer db.freeNodes(local_nodes);
     try std.testing.expectEqual(@as(usize, 0), local_nodes.len);
+
+    const guarded_nodes = try db.searchNodes(.{
+        .project = project_name,
+        .name_pattern = "result",
+        .label_pattern = "Variable",
+        .limit = 10,
+    });
+    defer db.freeNodes(guarded_nodes);
+    try std.testing.expectEqual(@as(usize, 0), guarded_nodes.len);
 }
 
 test "pipeline keeps python import edges file-scoped while preserving alias resolution" {
