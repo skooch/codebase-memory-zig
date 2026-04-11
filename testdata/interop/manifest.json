@@ -521,6 +521,21 @@
           },
           {
             "args": {
+              "query": "MATCH (a)-[r:IMPORTS]->(b) RETURN a.label, a.name, b.label, b.name ORDER BY a.name",
+              "project": "python-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": [
+                "a.label",
+                "a.name",
+                "b.label",
+                "b.name"
+              ]
+            }
+          },
+          {
+            "args": {
               "query": "MATCH (a)-[r:DEFINES]->(b) WHERE a.name = \"main.py\" AND b.label = \"Module\" RETURN b.name",
               "project": "python-parity",
               "max_rows": 20

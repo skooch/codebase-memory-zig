@@ -44,6 +44,7 @@ pub const UnresolvedImport = struct {
     import_name: []const u8,
     binding_alias: []const u8,
     file_path: []const u8,
+    emit_edge: bool = true,
 };
 
 pub const UnresolvedUsage = struct {
@@ -371,7 +372,7 @@ pub fn extractFile(
             allocator,
             file.language,
             clean_line,
-            current_scope_id,
+            file_id,
             rel,
             &unresolved_imports,
         );
@@ -506,6 +507,7 @@ fn parsePythonImports(
                     .import_name = try allocator.dupe(u8, module),
                     .binding_alias = try allocator.dupe(u8, ""),
                     .file_path = try allocator.dupe(u8, file_path),
+                    .emit_edge = true,
                 });
                 const imported = std.mem.trim(u8, after_from[import_kw.? + " import ".len ..], " \t");
                 var imported_names = std.mem.splitSequence(u8, imported, ",");
@@ -519,6 +521,7 @@ fn parsePythonImports(
                         .import_name = try allocator.dupe(u8, namespace),
                         .binding_alias = try allocator.dupe(u8, importAliasOrDefault(parsed.target, parsed.alias)),
                         .file_path = try allocator.dupe(u8, file_path),
+                        .emit_edge = false,
                     });
                 }
             }
@@ -534,6 +537,7 @@ fn parsePythonImports(
                 .import_name = try allocator.dupe(u8, parsed.target),
                 .binding_alias = try allocator.dupe(u8, importAliasOrDefault(parsed.target, parsed.alias)),
                 .file_path = try allocator.dupe(u8, file_path),
+                .emit_edge = true,
             });
         }
     }
@@ -2623,6 +2627,9 @@ test "extractor preserves import aliases across language forms" {
 
     try parsePythonImports(std.testing.allocator, "from util import helper as renamed, other", 1, "app.py", &imports);
     try std.testing.expectEqual(@as(usize, 3), imports.items.len);
+    try std.testing.expect(imports.items[0].emit_edge);
+    try std.testing.expect(!imports.items[1].emit_edge);
+    try std.testing.expect(!imports.items[2].emit_edge);
     try std.testing.expectEqualStrings("util.helper", imports.items[1].import_name);
     try std.testing.expectEqualStrings("renamed", imports.items[1].binding_alias);
     try std.testing.expectEqualStrings("util.other", imports.items[2].import_name);

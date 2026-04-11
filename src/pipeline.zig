@@ -1052,6 +1052,41 @@ fn seedRegistryFromGraphBuffer(gb: *const GraphBuffer, reg: *Registry) !void {
     }
 }
 
+fn resolveImportTarget(
+    gb: *GraphBuffer,
+    reg: *Registry,
+    imp: extractor.UnresolvedImport,
+    importer_file_path: []const u8,
+) ?i64 {
+    if (reg.resolve(imp.import_name, imp.importer_id, importer_file_path, null)) |res| {
+        if (gb.findNodeByQualifiedName(res.qualified_name)) |target| {
+            return target.id;
+        }
+    }
+
+    if (!std.mem.endsWith(u8, imp.file_path, ".py") or imp.binding_alias.len > 0) return null;
+
+    var module_path_buf: [512]u8 = undefined;
+    if (pythonImportModulePath(imp.import_name, &module_path_buf)) |module_path| {
+        for (gb.nodes()) |node| {
+            if (!std.mem.eql(u8, node.label, "Module")) continue;
+            if (std.mem.eql(u8, node.file_path, module_path)) return node.id;
+        }
+    }
+    return null;
+}
+
+fn pythonImportModulePath(import_name: []const u8, buf: []u8) ?[]const u8 {
+    if (import_name.len == 0 or import_name.len + 3 > buf.len) return null;
+    var idx: usize = 0;
+    for (import_name) |ch| {
+        buf[idx] = if (ch == '.') '/' else ch;
+        idx += 1;
+    }
+    @memcpy(buf[idx .. idx + 3], ".py");
+    return buf[0 .. idx + 3];
+}
+
 fn resolveExtractions(
     gb: *GraphBuffer,
     reg: *Registry,
@@ -1064,9 +1099,10 @@ fn resolveExtractions(
 
         for (extraction.unresolved_imports) |imp| {
             const importer_node = gb.findNodeById(imp.importer_id) orelse continue;
-            if (reg.resolve(imp.import_name, imp.importer_id, importer_node.file_path, null)) |res| {
-                if (gb.findNodeByQualifiedName(res.qualified_name)) |target| {
-                    _ = gb.insertEdge(imp.importer_id, target.id, "IMPORTS") catch {};
+            if (!imp.emit_edge) continue;
+            if (resolveImportTarget(gb, reg, imp, importer_node.file_path)) |target_id| {
+                if (target_id != imp.importer_id) {
+                    _ = gb.insertEdge(imp.importer_id, target_id, "IMPORTS") catch {};
                 }
             }
         }
@@ -2113,6 +2149,79 @@ test "pipeline indexes python module variables without promoting local assignmen
     });
     defer db.freeNodes(local_nodes);
     try std.testing.expectEqual(@as(usize, 0), local_nodes.len);
+}
+
+test "pipeline keeps python import edges file-scoped while preserving alias resolution" {
+    const allocator = std.testing.allocator;
+
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(
+        allocator,
+        "/tmp/cbm-pipeline-python-imports-{x}",
+        .{project_id},
+    );
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    {
+        var dir = try std.fs.cwd().openDir(project_dir, .{});
+        defer dir.close();
+
+        var main_py = try dir.createFile("main.py", .{});
+        defer main_py.close();
+        try main_py.writeAll(
+            \\from models import Worker as ActiveWorker
+            \\from models import trace
+            \\
+            \\@trace
+            \\def bootstrap() -> ActiveWorker:
+            \\    worker = ActiveWorker("primary")
+            \\    worker.run()
+            \\    return worker
+            \\
+        );
+
+        var models_py = try dir.createFile("models.py", .{});
+        defer models_py.close();
+        try models_py.writeAll(
+            \\class Worker:
+            \\    def run(self):
+            \\        return None
+            \\
+            \\def trace(fn):
+            \\    return fn
+            \\
+        );
+    }
+
+    var db = try store.Store.openMemory(allocator);
+    defer db.deinit();
+
+    var pipeline = Pipeline.init(allocator, project_dir, .full);
+    defer pipeline.deinit();
+    try pipeline.run(&db);
+
+    const project_name = std.fs.path.basename(project_dir);
+    const main_file_id = try findSingleNodeByNameInFile(&db, project_name, "File", "main.py", "main.py");
+    const main_module_id = try findSingleNodeByNameInFile(&db, project_name, "Module", "main.py", "main.py");
+    const models_module_id = try findSingleNodeByNameInFile(&db, project_name, "Module", "models.py", "models.py");
+    const trace_id = try findSingleNodeByNameInFile(&db, project_name, "Function", "trace", "models.py");
+    const bootstrap_id = try findSingleNodeByNameInFile(&db, project_name, "Function", "bootstrap", "main.py");
+    const run_id = try findSingleNodeByNameInFile(&db, project_name, "Method", "run", "models.py");
+
+    const import_edges = try db.findEdgesBySource(project_name, main_file_id, "IMPORTS");
+    defer db.freeEdges(import_edges);
+    try std.testing.expectEqual(@as(usize, 1), import_edges.len);
+    try std.testing.expectEqual(models_module_id, import_edges[0].target_id);
+
+    const call_edges = try db.findEdgesBySource(project_name, bootstrap_id, "CALLS");
+    defer db.freeEdges(call_edges);
+    try std.testing.expect(edgeTargetsContain(call_edges, run_id));
+
+    const usage_edges = try db.findEdgesBySource(project_name, main_module_id, "USAGE");
+    defer db.freeEdges(usage_edges);
+    try std.testing.expect(edgeTargetsContain(usage_edges, trace_id));
 }
 
 test "pipeline links matching config keys to code symbols" {
