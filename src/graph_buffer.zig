@@ -211,7 +211,6 @@ pub const GraphBuffer = struct {
         properties_json: []const u8,
     ) !i64 {
         if (source_id <= 0 or target_id <= 0) return 0;
-        if (source_id == target_id) return 0;
         if (self.findNodeById(source_id) == null or self.findNodeById(target_id) == null) {
             return 0;
         }
@@ -549,6 +548,10 @@ test "graph buffer basic ops" {
     };
     try std.testing.expectEqual(@as(i64, 0), dedup);
     try std.testing.expectEqual(@as(usize, 1), gb.edgeCount());
+
+    const self_edge = try gb.insertEdge(id1, id1, "CALLS");
+    try std.testing.expect(self_edge > 0);
+    try std.testing.expectEqual(@as(usize, 2), gb.edgeCount());
 }
 
 fn graphBufferNodeInsertAllocationFailureImpl(allocator: std.mem.Allocator) !void {

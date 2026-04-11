@@ -1102,7 +1102,7 @@ fn resolveExtractions(
             if (!imp.emit_edge) continue;
             if (resolveImportTarget(gb, reg, imp, importer_node.file_path)) |target_id| {
                 if (target_id != imp.importer_id) {
-                    _ = gb.insertEdge(imp.importer_id, target_id, "IMPORTS") catch {};
+                    try insertResolvedEdge(gb, imp.importer_id, target_id, "IMPORTS");
                 }
             }
         }
@@ -1112,9 +1112,7 @@ fn resolveExtractions(
             if (reg.resolve(call.callee_name, call.caller_id, caller_node.file_path, null)) |res| {
                 if (gb.findNodeByQualifiedName(res.qualified_name)) |target| {
                     if (std.mem.eql(u8, target.label, "Class") or std.mem.eql(u8, target.label, "Interface")) continue;
-                    if (target.id != call.caller_id) {
-                        _ = gb.insertEdge(call.caller_id, target.id, "CALLS") catch {};
-                    }
+                    try insertResolvedEdge(gb, call.caller_id, target.id, "CALLS");
                 }
             }
         }
@@ -1124,7 +1122,7 @@ fn resolveExtractions(
             if (reg.resolve(usage.ref_name, usage.user_id, user_node.file_path, null)) |res| {
                 if (gb.findNodeByQualifiedName(res.qualified_name)) |target| {
                     if (target.id != usage.user_id) {
-                        _ = gb.insertEdge(usage.user_id, target.id, "USAGE") catch {};
+                        try insertResolvedEdge(gb, usage.user_id, target.id, "USAGE");
                     }
                 }
             }
@@ -1134,11 +1132,23 @@ fn resolveExtractions(
             const child_node = gb.findNodeById(hint.child_id) orelse continue;
             if (resolveSemanticTarget(reg, hint, child_node.file_path)) |res| {
                 if (gb.findNodeByQualifiedName(res.qualified_name)) |target| {
-                    _ = gb.insertEdge(hint.child_id, target.id, hint.relation) catch {};
+                    try insertResolvedEdge(gb, hint.child_id, target.id, hint.relation);
                 }
             }
         }
     }
+}
+
+fn insertResolvedEdge(
+    gb: *GraphBuffer,
+    source_id: i64,
+    target_id: i64,
+    edge_type: []const u8,
+) PipelineError!void {
+    _ = gb.insertEdge(source_id, target_id, edge_type) catch |err| switch (err) {
+        GraphBufferError.DuplicateEdge => 0,
+        GraphBufferError.OutOfMemory => return PipelineError.OutOfMemory,
+    };
 }
 
 test "pipeline run handles simple extraction pipeline" {
@@ -1297,6 +1307,47 @@ test "pipeline resolves aliased imports across files" {
     defer db.freeNode(target);
     try std.testing.expectEqualStrings("helper", target.name);
     try std.testing.expectEqualStrings("util.py", target.file_path);
+}
+
+test "pipeline preserves self call edges" {
+    const allocator = std.testing.allocator;
+
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(
+        allocator,
+        "/tmp/cbm-pipeline-self-call-{x}",
+        .{project_id},
+    );
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    {
+        var dir = try std.fs.cwd().openDir(project_dir, .{});
+        defer dir.close();
+
+        var app = try dir.createFile("app.py", .{});
+        defer app.close();
+        try app.writeAll(
+            \\def loop():
+            \\    return loop()
+            \\
+        );
+    }
+
+    var db = try store.Store.openMemory(allocator);
+    defer db.deinit();
+
+    var pipeline = Pipeline.init(allocator, project_dir, .full);
+    defer pipeline.deinit();
+    try pipeline.run(&db);
+
+    const project_name = std.fs.path.basename(project_dir);
+    const loop_id = try findSingleNodeByNameInFile(&db, project_name, "Function", "loop", "app.py");
+    const calls = try db.findEdgesBySource(project_name, loop_id, "CALLS");
+    defer db.freeEdges(calls);
+    try std.testing.expectEqual(@as(usize, 1), calls.len);
+    try std.testing.expectEqual(loop_id, calls[0].target_id);
 }
 
 test "pipeline incremental reindexes only changed files against stored hashes" {
