@@ -247,10 +247,9 @@ def call_mcp_sequence(
     impl: str,
 ) -> dict[str, Any]:
     env = os.environ.copy()
-    temp_home: tempfile.TemporaryDirectory[str] | None = None
-    if impl == "c":
-        temp_home = tempfile.TemporaryDirectory(prefix="cbm-interop-")
-        env["HOME"] = temp_home.name
+    temp_home = tempfile.TemporaryDirectory(prefix=f"cbm-interop-{impl}-")
+    env["HOME"] = temp_home.name
+    env["CBM_CACHE_DIR"] = str(Path(temp_home.name) / ".cache" / "codebase-memory-zig")
 
     process = subprocess.Popen(
         [bin_path],
@@ -333,8 +332,7 @@ def call_mcp_sequence(
             process.kill()
             raise
         finally:
-            if temp_home is not None:
-                temp_home.cleanup()
+            temp_home.cleanup()
 
     return tool_results
 

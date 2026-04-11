@@ -12,12 +12,19 @@
   - Added a follow-on shared-parity section to `docs/zig-port-plan.md` so the repo-level roadmap now points at this narrower full-parity plan instead of leaving the post-Phase-7 state as a generic deferred bucket.
   - Expanded `testdata/interop/manifest.json` from 5 fixtures to 9 fixtures and added new parity fixture repos for Python, JavaScript, TypeScript, and Rust with aliasing, semantic-edge, type-reference, and config-touching examples.
   - Validated that the expanded manifest parses as schema version `0.2` with 9 fixtures.
-  - Attempted to run `bash scripts/run_interop_alignment.sh` against the enlarged fixture corpus; the run did not yield a new report promptly, so the harness-expansion item remains the active Phase 1 blocker.
+  - Attempted to run `bash scripts/run_interop_alignment.sh` against the enlarged fixture corpus; the run did not yield a new report promptly, so I traced the failure down to Zig MCP stdio transport rather than the fixture corpus itself.
+  - Reproduced the stall with direct `initialize` + `index_repository` requests, confirmed the CLI path still worked, and sampled the live process to show `src/mcp.zig` `runFiles` was back in its read loop instead of consuming the second JSON-RPC line.
+  - Replaced the stdio `runFiles` delimiter reader with an explicit newline-framed file read loop in `src/mcp.zig` and added a pipe-backed regression test for multiple sequential requests.
+  - Isolated both the Zig and C interop runs in per-fixture temp runtimes by setting `HOME` and `CBM_CACHE_DIR` inside `scripts/run_interop_alignment.sh`, eliminating machine-local project cache bleed from `list_projects`.
+  - Re-ran `zig build`, `zig build test`, the direct two-request MCP repro, and `bash scripts/run_interop_alignment.sh`; the 9-fixture harness now completes and reports real remaining mismatches in `javascript-parity` search coverage plus `rust-parity` interface/query parity.
 - Files modified:
   - `docs/plans/in-progress/shared-capability-parity-plan.md`
   - `docs/plans/in-progress/shared-capability-parity-progress.md`
   - `docs/gap-analysis.md`
   - `docs/zig-port-plan.md`
+  - `CLAUDE.md`
+  - `src/mcp.zig`
+  - `scripts/run_interop_alignment.sh`
   - `testdata/interop/manifest.json`
   - `testdata/interop/python-parity/main.py`
   - `testdata/interop/python-parity/models.py`

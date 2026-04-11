@@ -110,12 +110,25 @@ pub const McpServer = struct {
 
     /// Run MCP over stdio line-delimited JSON.
     pub fn runFiles(self: *McpServer, stdin_file: std.fs.File, stdout_file: std.fs.File) !void {
-        var line_buf: [64 * 1024]u8 = undefined;
-        var out_buf: [64 * 1024]u8 = undefined;
-        var reader = stdin_file.reader(&line_buf);
-        var writer = stdout_file.writer(&out_buf);
-        try self.run(&reader.interface, &writer.interface);
-        try writer.interface.flush();
+        var read_buf: [4096]u8 = undefined;
+        var pending = std.ArrayList(u8).empty;
+        defer pending.deinit(self.allocator);
+
+        while (true) {
+            const read_len = try stdin_file.read(&read_buf);
+            if (read_len == 0) {
+                try self.handlePendingFileLine(&pending, stdout_file);
+                return;
+            }
+
+            for (read_buf[0..read_len]) |byte| {
+                if (byte == '\n') {
+                    try self.handlePendingFileLine(&pending, stdout_file);
+                    continue;
+                }
+                try pending.append(self.allocator, byte);
+            }
+        }
     }
 
     /// Test helper: line-delimited reader loop.
@@ -135,6 +148,20 @@ pub const McpServer = struct {
                 try writer.writeByte('\n');
                 try writer.flush();
             }
+        }
+    }
+
+    fn handlePendingFileLine(self: *McpServer, pending: *std.ArrayList(u8), stdout_file: std.fs.File) !void {
+        defer pending.clearRetainingCapacity();
+
+        const line_text = std.mem.trim(u8, pending.items, " \r\n\t ");
+        if (line_text.len == 0) return;
+
+        const response = try self.handleLine(line_text);
+        if (response) |resp| {
+            defer self.allocator.free(resp);
+            try stdout_file.writeAll(resp);
+            try stdout_file.writeAll("\n");
         }
     }
 
@@ -2097,6 +2124,65 @@ test "index_repository registers watcher state and delete_project unwatches it" 
     const delete_response = (try srv.handleRequest(delete_request)).?;
     defer allocator.free(delete_response);
     try std.testing.expectEqual(@as(usize, 0), watcher_ref.watchCount());
+}
+
+test "runFiles processes multiple newline-delimited requests" {
+    const allocator = std.testing.allocator;
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(allocator, "/tmp/cbm-mcp-runfiles-{x}", .{project_id});
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    const main_path = try std.fs.path.join(allocator, &.{ project_dir, "main.py" });
+    defer allocator.free(main_path);
+    var main_file = try std.fs.cwd().createFile(main_path, .{});
+    defer main_file.close();
+    try main_file.writeAll(
+        \\def run():
+        \\    return 1
+        \\
+    );
+
+    var s = try store.Store.openMemory(allocator);
+    defer s.deinit();
+    var srv = McpServer.init(allocator, &s);
+    defer srv.deinit();
+
+    const stdin_pipe = try std.posix.pipe();
+    const stdout_pipe = try std.posix.pipe();
+
+    var stdin_reader = std.fs.File{ .handle = stdin_pipe[0] };
+    defer stdin_reader.close();
+    var stdin_writer = std.fs.File{ .handle = stdin_pipe[1] };
+
+    var stdout_reader = std.fs.File{ .handle = stdout_pipe[0] };
+    defer stdout_reader.close();
+    var stdout_writer = std.fs.File{ .handle = stdout_pipe[1] };
+
+    const input = try std.fmt.allocPrint(
+        allocator,
+        "{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{{}}}}\n" ++
+            "{{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{{\"name\":\"index_repository\",\"arguments\":{{\"project_path\":\"{s}\"}}}}}}\n",
+        .{project_dir},
+    );
+    defer allocator.free(input);
+    try stdin_writer.writeAll(input);
+    stdin_writer.close();
+
+    try srv.runFiles(stdin_reader, stdout_writer);
+    stdout_writer.close();
+
+    const output = try stdout_reader.readToEndAlloc(allocator, 64 * 1024);
+    defer allocator.free(output);
+
+    var responses = std.mem.splitScalar(u8, output, '\n');
+    const initialize_response = responses.next() orelse return error.Unexpected;
+    const index_response = responses.next() orelse return error.Unexpected;
+
+    try std.testing.expect(std.mem.indexOf(u8, initialize_response, "\"protocolVersion\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, index_response, "\"project\":\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, index_response, "\"nodes\":") != null);
 }
 
 test "get_code_snippet returns source, match metadata, and suggestions" {

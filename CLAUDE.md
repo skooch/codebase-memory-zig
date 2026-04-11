@@ -49,6 +49,8 @@ src/
 - Tests live in `*_test.zig` files alongside their module
 - `zig fmt` for formatting (enforced)
 - `find src -name '*.zig' | zlint -S` for Zig lint checks
+- `zlint` is not bootstrapped by `mise` in this repo today; check `command -v zlint` before relying on that lint command, and if it is missing report the verification as blocked instead of treating it as a source failure.
+- If MCP stdio starts acknowledging only the first request in a piped session, treat `src/mcp.zig` `runFiles` framing as suspect first; this repo has already tripped over `std.Io.Reader.takeDelimiterExclusive` there, and the durable fix is an explicit newline-framed file read loop.
 - If `git commit` or `git add` fails because `.git/index.lock` already exists, treat it as a stale lock, remove it with a non-interactive `rm -f .git/index.lock`, and retry the git command.
 
 ## Porting from C
