@@ -317,6 +317,19 @@ pub fn extractFile(
                 }
             }
         }
+        if (parsed_symbol == null) {
+            try appendSupplementalScopedDefinitions(
+                allocator,
+                file.language,
+                clean_line,
+                rel,
+                line_no,
+                gb,
+                current_scope_id,
+                module_id,
+                &symbols,
+            );
+        }
         try parseImports(
             allocator,
             file.language,
@@ -1052,6 +1065,8 @@ fn parseSymbol(language: discover.Language, line: []const u8) ?ParsedSymbol {
         .javascript, .typescript, .tsx => parseJsDefs(line),
         .rust => parseRustDefs(line),
         .zig => parseZigDefs(line),
+        .yaml => parseYamlDefs(line),
+        .toml => parseTomlDefs(line),
         else => null,
     };
 }
@@ -1115,6 +1130,70 @@ fn addSymbolFromParsed(
             .file_path = try allocator.dupe(u8, rel),
         });
     }
+}
+
+fn appendSupplementalScopedDefinitions(
+    allocator: std.mem.Allocator,
+    language: discover.Language,
+    line: []const u8,
+    file_path: []const u8,
+    line_no: i32,
+    gb: *graph_buffer.GraphBuffer,
+    current_scope_id: i64,
+    module_id: i64,
+    symbols: *std.ArrayList(ExtractedSymbol),
+) !void {
+    if (language != .rust or current_scope_id == 0 or current_scope_id == module_id) return;
+    const scope_node = gb.findNodeById(current_scope_id) orelse return;
+    if (!std.mem.eql(u8, scope_node.label, "Class")) return;
+    const field_name = parseRustFieldName(line) orelse return;
+    const field_qn = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ scope_node.qualified_name, field_name });
+    defer allocator.free(field_qn);
+
+    const exists = gb.findNodeByQualifiedName(field_qn) != null;
+    const field_id = try gb.upsertNode(
+        "Field",
+        field_name,
+        field_qn,
+        file_path,
+        line_no,
+        line_no,
+    );
+    if (field_id > 0 and !exists) {
+        _ = gb.insertEdge(current_scope_id, field_id, "CONTAINS") catch |err| switch (err) {
+            graph_buffer.GraphBufferError.DuplicateEdge => {},
+            else => return err,
+        };
+        try symbols.append(allocator, .{
+            .id = field_id,
+            .label = try allocator.dupe(u8, "Field"),
+            .name = try allocator.dupe(u8, field_name),
+            .qualified_name = try allocator.dupe(u8, field_qn),
+            .file_path = try allocator.dupe(u8, file_path),
+        });
+    }
+}
+
+fn parseRustFieldName(line: []const u8) ?[]const u8 {
+    const trimmed = std.mem.trim(u8, line, " \t,");
+    if (trimmed.len == 0) return null;
+    if (std.mem.startsWith(u8, trimmed, "fn ") or
+        std.mem.startsWith(u8, trimmed, "pub fn ") or
+        std.mem.startsWith(u8, trimmed, "impl ") or
+        std.mem.startsWith(u8, trimmed, "where "))
+    {
+        return null;
+    }
+    if (std.mem.indexOfScalar(u8, trimmed, '(') != null or std.mem.indexOfScalar(u8, trimmed, '=') != null) return null;
+    const colon = std.mem.indexOfScalar(u8, trimmed, ':') orelse return null;
+    var name = std.mem.trim(u8, trimmed[0..colon], " \t");
+    if (std.mem.startsWith(u8, name, "pub ")) {
+        name = std.mem.trim(u8, name["pub ".len..], " \t");
+    }
+    if (name.len == 0 or !isIdentifierStart(name[0])) return null;
+    var end: usize = 1;
+    while (end < name.len and isIdentifierChar(name[end])) end += 1;
+    return name[0..end];
 }
 
 fn supportsTreeSitterDefs(language: discover.Language) bool {
@@ -1292,6 +1371,7 @@ fn tsNodeLabel(language: discover.Language, node: ts.Node) ?[]const u8 {
 }
 
 fn jsTsVariableDeclaratorLabel(node: ts.Node) ?[]const u8 {
+    if (jsTsVariableDeclaratorIsLocal(node)) return null;
     const value_node = node.childByFieldName("value") orelse return "Variable";
     const value_kind = value_node.kind();
     if (std.mem.eql(u8, value_kind, "arrow_function") or
@@ -1301,6 +1381,23 @@ fn jsTsVariableDeclaratorLabel(node: ts.Node) ?[]const u8 {
         return null;
     }
     return "Variable";
+}
+
+fn jsTsVariableDeclaratorIsLocal(node: ts.Node) bool {
+    var current = node.parent();
+    while (current) |ancestor| : (current = ancestor.parent()) {
+        const kind = ancestor.kind();
+        if (std.mem.eql(u8, kind, "function_declaration") or
+            std.mem.eql(u8, kind, "function_expression") or
+            std.mem.eql(u8, kind, "arrow_function") or
+            std.mem.eql(u8, kind, "generator_function") or
+            std.mem.eql(u8, kind, "generator_function_declaration") or
+            std.mem.eql(u8, kind, "method_definition"))
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 fn jsTsFunctionExpressionIsDefinition(node: ts.Node) bool {
@@ -1590,6 +1687,33 @@ fn parseZigDefs(line: []const u8) ?ParsedSymbol {
         return .{ .label = "Test", .name = test_name };
     }
     return null;
+}
+
+fn parseYamlDefs(line: []const u8) ?ParsedSymbol {
+    const key = extractConfigKey(line, ':') orelse return null;
+    return .{ .label = "Variable", .name = key };
+}
+
+fn parseTomlDefs(line: []const u8) ?ParsedSymbol {
+    const trimmed = std.mem.trim(u8, line, " \t");
+    if (trimmed.len >= 3 and trimmed[0] == '[' and trimmed[trimmed.len - 1] == ']') {
+        const section = std.mem.trim(u8, trimmed[1 .. trimmed.len - 1], " \t");
+        if (section.len == 0) return null;
+        return .{ .label = "Class", .name = section };
+    }
+    const key = extractConfigKey(line, '=') orelse return null;
+    return .{ .label = "Variable", .name = key };
+}
+
+fn extractConfigKey(line: []const u8, separator: u8) ?[]const u8 {
+    const trimmed = std.mem.trim(u8, line, " \t");
+    if (trimmed.len == 0 or trimmed[0] == '#' or trimmed[0] == '[') return null;
+    const sep_idx = std.mem.indexOfScalar(u8, trimmed, separator) orelse return null;
+    const key = std.mem.trim(u8, trimmed[0..sep_idx], " \t\"'");
+    if (key.len == 0 or !isIdentifierStart(key[0])) return null;
+    var end: usize = 1;
+    while (end < key.len and (isIdentifierChar(key[end]) or key[end] == '-' or key[end] == '.')) end += 1;
+    return key[0..end];
 }
 
 fn parseJsInheritance(line: []const u8) ?[]const u8 {
@@ -2395,6 +2519,28 @@ test "tree-sitter keeps javascript decorator-assigned named functions as variabl
     try std.testing.expect(!definitionPresent(defs.items, "Function", "boot", 5));
 }
 
+test "tree-sitter ignores javascript function-local variables" {
+    var defs = std.ArrayList(TsDefinition).empty;
+    defer freePendingTsDefinitions(std.testing.allocator, &defs);
+
+    try collectDefinitionsWithTreeSitter(
+        std.testing.allocator,
+        \\const settings = { mode: "json" };
+        \\
+        \\function boot() {
+        \\    const logger = createLogger();
+        \\    return logger.run();
+        \\}
+        \\
+    ,
+        .javascript,
+        &defs,
+    );
+
+    try std.testing.expect(definitionPresent(defs.items, "Variable", "settings", 1));
+    try std.testing.expect(!definitionPresent(defs.items, "Variable", "logger", 4));
+}
+
 test "tree-sitter extracts typescript definitions with labels and line numbers" {
     var defs = std.ArrayList(TsDefinition).empty;
     defer freePendingTsDefinitions(std.testing.allocator, &defs);
@@ -2763,4 +2909,24 @@ test "semantic helpers capture decorators and multi-parent relationships" {
     try std.testing.expectEqualStrings("Base, Mixin", parsePythonInheritanceList("class Worker(Base, Mixin):") orelse return error.TestUnexpectedResult);
     try std.testing.expectEqualStrings("Port, Disposable", parseTypeScriptImplements("class Worker implements Port, Disposable {") orelse return error.TestUnexpectedResult);
     try std.testing.expectEqualStrings("BasePort, ExtraPort", parseTypeScriptInterfaceExtends("interface WorkerPort extends BasePort, ExtraPort {") orelse return error.TestUnexpectedResult);
+}
+
+test "config definition helpers parse yaml and toml keys" {
+    const yaml = parseSymbol(.yaml, "mode: batch") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("Variable", yaml.label);
+    try std.testing.expectEqualStrings("mode", yaml.name);
+
+    const toml_section = parseSymbol(.toml, "[package]") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("Class", toml_section.label);
+    try std.testing.expectEqualStrings("package", toml_section.name);
+
+    const toml_key = parseSymbol(.toml, "version = \"0.1.0\"") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("Variable", toml_key.label);
+    try std.testing.expectEqualStrings("version", toml_key.name);
+}
+
+test "rust field helper parses struct fields without matching functions" {
+    try std.testing.expectEqualStrings("config", parseRustFieldName("    pub config: Config,") orelse return error.TestUnexpectedResult);
+    try std.testing.expectEqualStrings("mode", parseRustFieldName("mode: String,") orelse return error.TestUnexpectedResult);
+    try std.testing.expect(parseRustFieldName("fn run(&self) -> String {") == null);
 }

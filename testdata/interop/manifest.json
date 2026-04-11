@@ -424,6 +424,16 @@
             "expect": {
               "columns": ["a.label", "a.name", "b.label", "b.name"]
             }
+          },
+          {
+            "args": {
+              "query": "MATCH (n) WHERE n.label = \"Variable\" RETURN n.name ORDER BY n.name ASC",
+              "project": "python-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["n.name"]
+            }
           }
         ],
         "trace_call_path": [
@@ -573,6 +583,16 @@
               "columns": ["a.label", "a.file_path", "b.label", "b.name"],
               "required_rows_min": 1
             }
+          },
+          {
+            "args": {
+              "query": "MATCH (n) WHERE n.label = \"Variable\" RETURN n.name ORDER BY n.name ASC",
+              "project": "javascript-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["n.name"]
+            }
           }
         ],
         "trace_call_path": [
@@ -720,6 +740,16 @@
             },
             "expect": {
               "columns": ["a.label", "a.name", "b.label", "b.name"]
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (n) WHERE n.label = \"Variable\" RETURN n.name ORDER BY n.name ASC",
+              "project": "typescript-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["n.name"]
             }
           }
         ],
@@ -880,6 +910,36 @@
             "expect": {
               "columns": ["a.label", "a.file_path", "b.label", "b.name"],
               "required_rows_min": 1
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (n) WHERE n.label = \"Class\" RETURN n.name ORDER BY n.name ASC",
+              "project": "rust-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["n.name"]
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (n) WHERE n.label = \"Field\" RETURN n.name ORDER BY n.name ASC",
+              "project": "rust-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["n.name"]
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (n) WHERE n.label = \"Variable\" RETURN n.name ORDER BY n.name ASC",
+              "project": "rust-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["n.name"]
             }
           }
         ],
