@@ -104,6 +104,11 @@
   - Re-ran `zig build`, `zig build test`, and `bash scripts/run_interop_alignment.sh`; the baseline remains green at `67` comparisons, `58` strict matches, `9` diagnostic comparisons, `0` mismatches, and `cli_progress: match`.
   - Tightened the shared call-resolution evidence in `testdata/interop/manifest.json` by switching the parity-fixture `CALLS` queries from unordered sample rows to exact ordered row-set comparisons, so the harness now protects the actual overlapping call edges instead of only “some calls exist” assertions.
   - Re-ran `bash scripts/run_interop_alignment.sh`; the baseline remains green at `67` comparisons, `58` strict matches, `9` diagnostic comparisons, `0` mismatches, and `cli_progress: match`.
+  - Probed the original implementation with fresh temp-runtime repos before touching `READS` / `WRITES`; those controlled checks showed the shared JS, TS, and Python micro-cases still do not emit a stable overlapping read/write surface, so the next evidence-backed gap remained definition parity rather than edge-family guessing.
+  - Confirmed a concrete missing shared definition contract in Python: the original indexes simple module-level assignments like `status_flag = "ready"` as `Variable` nodes, while the Zig port still skipped them.
+  - Updated `src/extractor.zig` so Python module-scope simple assignments now become `Variable` definitions without promoting function-local assignments, and added direct extractor coverage plus a pipeline regression that locks `default_mode` in while keeping `local_mode` out.
+  - Extended `testdata/interop/python-parity/main.py` with an unreferenced module variable (`default_mode`) so the harness can verify shared Python code-variable inventory parity without accidentally introducing Zig-only `USAGE` edges.
+  - Re-ran `zig fmt src/extractor.zig src/pipeline.zig`, `zig build`, `zig build test`, and `bash scripts/run_interop_alignment.sh`; the baseline remains green at `67` comparisons, `58` strict matches, `9` diagnostic comparisons, `0` mismatches, and `cli_progress: match`.
 - Files modified:
   - `docs/plans/in-progress/shared-capability-parity-plan.md`
   - `docs/plans/in-progress/shared-capability-parity-progress.md`
@@ -111,3 +116,4 @@
   - `src/pipeline.zig`
   - `src/store_test.zig`
   - `testdata/interop/manifest.json`
+  - `testdata/interop/python-parity/main.py`

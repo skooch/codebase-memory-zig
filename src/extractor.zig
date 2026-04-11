@@ -318,8 +318,10 @@ pub fn extractFile(
             }
         }
         if (parsed_symbol == null) {
-            try appendSupplementalScopedDefinitions(
+            try appendSupplementalDefinitions(
                 allocator,
+                project_name,
+                qn_base,
                 file.language,
                 clean_line,
                 rel,
@@ -1132,8 +1134,10 @@ fn addSymbolFromParsed(
     }
 }
 
-fn appendSupplementalScopedDefinitions(
+fn appendSupplementalDefinitions(
     allocator: std.mem.Allocator,
+    project_name: []const u8,
+    qn_base: []const u8,
     language: discover.Language,
     line: []const u8,
     file_path: []const u8,
@@ -1143,6 +1147,23 @@ fn appendSupplementalScopedDefinitions(
     module_id: i64,
     symbols: *std.ArrayList(ExtractedSymbol),
 ) !void {
+    if (language == .python and current_scope_id == module_id) {
+        const variable_name = parsePythonVariableName(line) orelse return;
+        return addSymbolFromParsed(
+            allocator,
+            project_name,
+            qn_base,
+            file_path,
+            language,
+            line_no,
+            line_no,
+            .{ .label = "Variable", .name = variable_name },
+            gb,
+            module_id,
+            symbols,
+        );
+    }
+
     if (language != .rust or current_scope_id == 0 or current_scope_id == module_id) return;
     const scope_node = gb.findNodeById(current_scope_id) orelse return;
     if (!std.mem.eql(u8, scope_node.label, "Class")) return;
@@ -1194,6 +1215,34 @@ fn parseRustFieldName(line: []const u8) ?[]const u8 {
     var end: usize = 1;
     while (end < name.len and isIdentifierChar(name[end])) end += 1;
     return name[0..end];
+}
+
+fn parsePythonVariableName(line: []const u8) ?[]const u8 {
+    const trimmed = std.mem.trim(u8, line, " \t");
+    if (trimmed.len == 0 or
+        std.mem.startsWith(u8, trimmed, "def ") or
+        std.mem.startsWith(u8, trimmed, "async def ") or
+        std.mem.startsWith(u8, trimmed, "class ") or
+        std.mem.startsWith(u8, trimmed, "import ") or
+        std.mem.startsWith(u8, trimmed, "from ") or
+        std.mem.startsWith(u8, trimmed, "@"))
+    {
+        return null;
+    }
+
+    const equals = std.mem.indexOfScalar(u8, trimmed, '=') orelse return null;
+    if (equals == 0) return null;
+    if (trimmed[equals - 1] == '=' or (equals + 1 < trimmed.len and trimmed[equals + 1] == '=')) return null;
+
+    var lhs = std.mem.trim(u8, trimmed[0..equals], " \t");
+    if (std.mem.indexOfScalar(u8, lhs, ':')) |annotation| {
+        lhs = std.mem.trim(u8, lhs[0..annotation], " \t");
+    }
+    if (lhs.len == 0 or !isIdentifierStart(lhs[0])) return null;
+    var end: usize = 1;
+    while (end < lhs.len and isIdentifierChar(lhs[end])) end += 1;
+    if (end != lhs.len) return null;
+    return lhs;
 }
 
 fn supportsTreeSitterDefs(language: discover.Language) bool {
@@ -2923,6 +2972,14 @@ test "config definition helpers parse yaml and toml keys" {
     const toml_key = parseSymbol(.toml, "version = \"0.1.0\"") orelse return error.TestUnexpectedResult;
     try std.testing.expectEqualStrings("Variable", toml_key.label);
     try std.testing.expectEqualStrings("version", toml_key.name);
+}
+
+test "python variable helper keeps only simple module assignments" {
+    try std.testing.expectEqualStrings("default_mode", parsePythonVariableName("default_mode = \"batch\"") orelse return error.TestUnexpectedResult);
+    try std.testing.expectEqualStrings("status_flag", parsePythonVariableName("status_flag: str = \"ready\"") orelse return error.TestUnexpectedResult);
+    try std.testing.expect(parsePythonVariableName("worker.status = \"done\"") == null);
+    try std.testing.expect(parsePythonVariableName("left, right = pair") == null);
+    try std.testing.expect(parsePythonVariableName("if status_flag == \"ready\":") == null);
 }
 
 test "rust field helper parses struct fields without matching functions" {

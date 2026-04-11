@@ -1813,6 +1813,55 @@ test "pipeline aligns module-level declaration usages with semantic reference so
     try std.testing.expect(!edgeTargetsContain(rust_usages, rust_runner_id));
 }
 
+test "pipeline indexes python module variables without promoting local assignments" {
+    const allocator = std.testing.allocator;
+
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(
+        allocator,
+        "/tmp/cbm-pipeline-python-vars-{x}",
+        .{project_id},
+    );
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    {
+        var dir = try std.fs.cwd().openDir(project_dir, .{});
+        defer dir.close();
+
+        var py = try dir.createFile("main.py", .{});
+        defer py.close();
+        try py.writeAll(
+            \\default_mode = "batch"
+            \\
+            \\def bootstrap():
+            \\    local_mode = default_mode
+            \\    return local_mode
+            \\
+        );
+    }
+
+    var db = try store.Store.openMemory(allocator);
+    defer db.deinit();
+
+    var pipeline = Pipeline.init(allocator, project_dir, .full);
+    defer pipeline.deinit();
+    try pipeline.run(&db);
+
+    const project_name = std.fs.path.basename(project_dir);
+    _ = try findSingleNodeByNameInFile(&db, project_name, "Variable", "default_mode", "main.py");
+
+    const local_nodes = try db.searchNodes(.{
+        .project = project_name,
+        .name_pattern = "local_mode",
+        .label_pattern = "Variable",
+        .limit = 10,
+    });
+    defer db.freeNodes(local_nodes);
+    try std.testing.expectEqual(@as(usize, 0), local_nodes.len);
+}
+
 test "pipeline links matching config keys to code symbols" {
     const allocator = std.testing.allocator;
 
