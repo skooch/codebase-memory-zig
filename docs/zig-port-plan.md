@@ -28,8 +28,8 @@ Completed now:
   - Rust
   - Zig
 - The committed fixture corpus and harness currently report:
-  - `Strict matches: 20`
-  - `Diagnostic-only comparisons: 5`
+  - `Strict matches: 57`
+  - `Diagnostic-only comparisons: 9`
   - `Mismatches: 0`
 - Runtime lifecycle and scale are implemented for the current target contract:
   - watcher-driven auto-index and auto-reindex
@@ -53,7 +53,6 @@ Intentionally deferred after Phase 7:
 
 The current target contract is complete, but a follow-on plan now tracks the shared capabilities that exist in both implementations and still fall short of full parity:
 
-- `tools/list`
 - `cli --progress`
 - `query_graph`
 - `get_architecture`

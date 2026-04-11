@@ -35,8 +35,8 @@ Completed now:
   - Rust
   - Zig
 - The current fixture harness baseline is:
-  - `Strict matches: 20`
-  - `Diagnostic-only comparisons: 5`
+  - `Strict matches: 57`
+  - `Diagnostic-only comparisons: 9`
   - `Mismatches: 0`
 
 Completed after the readiness gate:
@@ -64,12 +64,11 @@ The current target contract is complete, but the following shared capabilities s
 
 | Capability row | Current gap | Full-parity acceptance rule | Primary Zig files | Verification target |
 |----------------|-------------|-----------------------------|-------------------|---------------------|
-| `tools/list` | Zig exposes fewer overlapping shared tool schemas and a thinner schema payload than the original | The Zig MCP server advertises the same overlapping shared tools with equivalent schema fields, descriptions, and argument metadata as the original for every tool the port claims to implement | `src/mcp.zig`, `src/main.zig` | Expanded interop harness compares normalized `tools/list` payloads from both servers |
 | `cli --progress` | Zig emits only minimal lifecycle events | The Zig CLI emits the same overlapping phase-oriented progress event categories, ordering, and payload fields as the original for shared commands | `src/main.zig`, `src/mcp.zig` | Temp-HOME CLI parity check plus captured progress-stream comparison |
 | `query_graph` | Zig supports only a narrower read-only Cypher subset | The Zig engine accepts and returns the same overlapping read-only query shapes, column ordering, row ordering, and error semantics as the original for the parity fixtures and harness query set | `src/cypher.zig`, `src/store.zig`, `src/mcp.zig` | Expanded interop harness compares normalized query results and errors |
-| `get_architecture` | Zig returns a thinner architecture summary | The Zig handler returns the same overlapping architecture sections, counts, and structured summary fields as the original for the shared fixture and repo probes | `src/mcp.zig`, `src/store.zig`, `src/cypher.zig` | Expanded interop harness compares canonicalized architecture payloads |
-| `search_code` | Zig ships useful output but not full shared ranking/dedup parity | The Zig handler matches the original for overlapping compact/full/files behavior, result grouping, dedup into containing symbols, and ranking of the parity fixture hits | `src/mcp.zig`, `src/store.zig` | Expanded interop harness compares normalized search-code result sets |
-| `detect_changes` | Zig has impacted-symbol output but not full shared reporting depth | The Zig handler matches the original overlapping git-diff, impacted-symbol, blast-radius, and shared reporting fields for controlled repo deltas | `src/mcp.zig`, `src/store.zig`, `src/pipeline.zig` | Expanded interop harness runs controlled git-diff scenarios against parity fixtures |
+| `get_architecture` | Zig now matches the shared summary contract, but the original still exposes a richer architecture-analysis surface | The Zig handler returns the same overlapping architecture sections, counts, and structured summary fields as the original for the shared fixture and repo probes, and any remaining richer original-only sections are either ported or explicitly reclassified out of the parity row | `src/mcp.zig`, `src/store.zig`, `src/cypher.zig` | Expanded interop harness compares canonicalized architecture payloads plus focused repo probes for richer sections |
+| `search_code` | Zig now matches the current fixture contract, but the original still has broader ranking/dedup behavior and richer output detail | The Zig handler matches the original for overlapping compact/full/files behavior, result grouping, dedup into containing symbols, and ranking of the parity fixture hits across the broader fixture set | `src/mcp.zig`, `src/store.zig` | Expanded interop harness compares normalized search-code result sets |
+| `detect_changes` | Zig now matches the original mode-style `scope` contract, but still lacks the original's fuller risk/reporting shape | The Zig handler matches the original overlapping git-diff, impacted-symbol, blast-radius, and shared reporting fields for controlled repo deltas, including the richer risk/reporting metadata this row still lacks | `src/mcp.zig`, `src/store.zig`, `src/pipeline.zig` | Expanded interop harness runs controlled git-diff scenarios against parity fixtures |
 | Definitions extraction | Zig reaches daily-use fidelity but not full shared overlap | For already-overlapping target languages, the Zig extractor emits the same symbol labels, names, nesting roles, and declaration retention as the original on parity fixtures | `src/extractor.zig`, `src/pipeline.zig` | Extractor tests plus interop fixture comparisons |
 | Call resolution | Zig misses some shared alias-heavy and suffix-heavy cases | The Zig pipeline resolves the same overlapping call edges as the original on parity fixtures with aliasing and cross-file imports | `src/registry.zig`, `src/pipeline.zig` | Pipeline tests plus interop trace/search assertions |
 | Usage / type-reference edges | Zig has useful `USAGE` output but not full shared parity | The Zig graph emits the same overlapping usage and type-reference facts as the original where both implementations already model them | `src/extractor.zig`, `src/pipeline.zig`, `src/store.zig` | Pipeline/store tests plus parity fixture graph queries |

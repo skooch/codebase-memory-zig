@@ -46,7 +46,7 @@ Phase 2
 - **Status:** completed
 
 ### Phase 2: Bring the MCP Query and Protocol Surface to Full Parity
-- [ ] Update `src/mcp.zig` so `tools/list` advertises the full overlapping implemented tool surface with the same tool-level visibility the original exposes for shared features.
+- [x] Update `src/mcp.zig` so `tools/list` advertises the full overlapping implemented tool surface with the same tool-level visibility the original exposes for shared features.
 - [ ] Expand `src/main.zig` and `src/mcp.zig` so `cli --progress` emits the richer phase-aware progress events needed to match the original shared progress contract for overlapping commands.
 - [ ] Extend `src/cypher.zig`, `src/store.zig`, and `src/mcp.zig` so `query_graph` covers the original overlapping read-only Cypher shapes this repo currently marks as partial, including the query forms needed by `get_architecture`, `search_code`, and `detect_changes`.
 - [ ] Broaden `src/mcp.zig` output shaping for `get_architecture`, `search_code`, and `detect_changes` so their payload richness, ranking/dedup behavior, and summary fields match the original for shared capabilities instead of the current narrower daily-use summaries.
