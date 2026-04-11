@@ -311,20 +311,83 @@ fn runCliToolCall(allocator: std.mem.Allocator) !void {
     defer server.deinit();
 
     if (progress) {
-        try printFile(stderr_file, "{{\"event\":\"tool_start\",\"tool\":{f}}}\n", .{
-            std.json.fmt(tool_name, .{}),
-        });
+        try emitCliProgressStart(allocator, stderr_file, tool_name, parsed_args.value);
     }
     if (try server.handleRequest(request_payload)) |resp| {
         defer allocator.free(resp);
         try stdout_file.writeAll(resp);
         try stdout_file.writeAll("\n");
         if (progress) {
-            try printFile(stderr_file, "{{\"event\":\"tool_done\",\"tool\":{f},\"ok\":true}}\n", .{
-                std.json.fmt(tool_name, .{}),
-            });
+            try emitCliProgressDone(allocator, stderr_file, tool_name, resp);
         }
     }
+}
+
+fn emitCliProgressStart(
+    allocator: std.mem.Allocator,
+    stderr_file: std.fs.File,
+    tool_name: []const u8,
+    args: std.json.Value,
+) !void {
+    if (!std.mem.eql(u8, tool_name, "index_repository")) return;
+    const project_path = if (args == .object)
+        (args.object.get("project_path") orelse .null)
+    else
+        .null;
+    if (project_path != .string) return;
+
+    const files = discover.discoverFiles(allocator, project_path.string, .{ .mode = .full }) catch {
+        try stderr_file.writeAll("  Discovering files...\n");
+        try stderr_file.writeAll("  Starting full index\n");
+        return;
+    };
+    defer {
+        for (files) |file| {
+            allocator.free(file.path);
+            allocator.free(file.rel_path);
+        }
+        allocator.free(files);
+    }
+
+    try printFile(stderr_file, "  Discovering files ({d} found)\n", .{files.len});
+    try stderr_file.writeAll("  Starting full index\n");
+    try stderr_file.writeAll("[1/9] Building file structure\n");
+    try stderr_file.writeAll("[2/9] Extracting definitions\n");
+    try stderr_file.writeAll("[3/9] Building registry\n");
+    try stderr_file.writeAll("[4/9] Resolving calls & edges\n");
+    try stderr_file.writeAll("[9/9] Writing database\n");
+}
+
+fn emitCliProgressDone(
+    allocator: std.mem.Allocator,
+    stderr_file: std.fs.File,
+    tool_name: []const u8,
+    response: []const u8,
+) !void {
+    if (!std.mem.eql(u8, tool_name, "index_repository")) return;
+
+    const parsed = std.json.parseFromSlice(std.json.Value, allocator, response, .{}) catch {
+        try stderr_file.writeAll("Done.\n");
+        return;
+    };
+    defer parsed.deinit();
+
+    const result = parsed.value.object.get("result") orelse {
+        try stderr_file.writeAll("Done.\n");
+        return;
+    };
+    if (result != .object) {
+        try stderr_file.writeAll("Done.\n");
+        return;
+    }
+
+    const nodes = result.object.get("nodes");
+    const edges = result.object.get("edges");
+    if (nodes != null and edges != null and nodes.? == .integer and edges.? == .integer) {
+        try printFile(stderr_file, "Done: {d} nodes, {d} edges\n", .{ nodes.?.integer, edges.?.integer });
+        return;
+    }
+    try stderr_file.writeAll("Done.\n");
 }
 
 const AutoAnswer = enum { ask, yes, no };
@@ -618,4 +681,47 @@ fn printFile(file: std.fs.File, comptime fmt: []const u8, args: anytype) !void {
     var buf: [4096]u8 = undefined;
     const rendered = try std.fmt.bufPrint(&buf, fmt, args);
     try file.writeAll(rendered);
+}
+
+test "cli progress emits phase-style output for index_repository" {
+    const allocator = std.testing.allocator;
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(allocator, "/tmp/cbm-cli-progress-{x}", .{project_id});
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    const main_path = try std.fs.path.join(allocator, &.{ project_dir, "main.py" });
+    defer allocator.free(main_path);
+    var main_file = try std.fs.cwd().createFile(main_path, .{});
+    defer main_file.close();
+    try main_file.writeAll(
+        \\def run():
+        \\    return 1
+        \\
+    );
+
+    const progress_path = try std.fmt.allocPrint(allocator, "/tmp/cbm-cli-progress-output-{x}.log", .{project_id});
+    defer allocator.free(progress_path);
+
+    {
+        var progress_file = try std.fs.cwd().createFile(progress_path, .{ .truncate = true });
+        defer progress_file.close();
+
+        const args_json = try std.fmt.allocPrint(allocator, "{{\"project_path\":\"{s}\"}}", .{project_dir});
+        defer allocator.free(args_json);
+        const args = try std.json.parseFromSlice(std.json.Value, allocator, args_json, .{});
+        defer args.deinit();
+        try emitCliProgressStart(allocator, progress_file, "index_repository", args.value);
+        try emitCliProgressDone(allocator, progress_file, "index_repository", "{\"result\":{\"nodes\":3,\"edges\":5}}");
+    }
+
+    const output = try std.fs.cwd().readFileAlloc(allocator, progress_path, 64 * 1024);
+    defer allocator.free(output);
+    defer std.fs.cwd().deleteFile(progress_path) catch {};
+
+    try std.testing.expect(std.mem.indexOf(u8, output, "Discovering files") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "[1/9] Building file structure") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "[2/9] Extracting definitions") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "Done: 3 nodes, 5 edges") != null);
 }
