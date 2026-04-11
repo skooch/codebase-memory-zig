@@ -28,7 +28,7 @@ Completed now:
   - Rust
   - Zig
 - The committed fixture corpus and harness currently report:
-  - `Strict matches: 57`
+  - `Strict matches: 58`
   - `Diagnostic-only comparisons: 9`
   - `Mismatches: 0`
 - Runtime lifecycle and scale are implemented for the current target contract:
@@ -41,6 +41,15 @@ Completed now:
   - `install`, `uninstall`, `update`, and `config`
   - `cli --progress`
   - installer support for Codex CLI and Claude Code
+- The shared-surface Phase 2 parity slice is complete for:
+  - `tools/list`
+  - `cli --progress`
+  - `query_graph`
+  - `get_architecture`
+  - `search_code`
+  - `detect_changes`
+  - verified by `zig build`, `zig build test`, and `bash scripts/run_interop_alignment.sh`
+  - current evidence: `Comparisons: 67`, `Strict matches: 58`, `Diagnostic-only comparisons: 9`, `Mismatches: 0`, `cli_progress: match`
 
 Intentionally deferred after Phase 7:
 - Remaining MCP surface beyond the current daily-use slice, especially `manage_adr`.
@@ -51,13 +60,8 @@ Intentionally deferred after Phase 7:
 
 ### Follow-On Shared Parity Plan
 
-The current target contract is complete, but a follow-on plan now tracks the shared capabilities that exist in both implementations and still fall short of full parity:
+The current target contract is complete, and the shared Phase 2 protocol/query slice is now complete as well. The remaining follow-on plan tracks the shared capabilities that still fall short of full parity:
 
-- `cli --progress`
-- `query_graph`
-- `get_architecture`
-- `search_code`
-- `detect_changes`
 - definitions extraction on overlapping target languages
 - call resolution
 - usage/type-reference parity
@@ -97,19 +101,16 @@ The completed execution order for the current target contract was:
    - CLI parity, install/update/config flows, and selective defer decisions
    - reason: user-facing packaging and long-tail features should settle after core runtime behavior stops shifting
 
-The next recommended order for the shared-surface parity follow-on is:
+The next recommended order for the remaining shared-surface parity follow-on is:
 
-1. **Lock the parity contract and harness**
-   - rewrite the acceptance rules in docs
-   - expand the interop harness and fixture corpus
-2. **Close shared MCP/query payload gaps**
-   - `tools/list`, progress events, `query_graph`, `get_architecture`, `search_code`, `detect_changes`
-3. **Close shared graph-fidelity gaps**
+1. **Carry the Phase 2 baseline forward**
+   - preserve the green interop harness and the documented acceptance rules while Phase 3 work lands
+2. **Close shared graph-fidelity gaps**
    - definitions, call resolution, usage/type-ref, semantic, and config/type edge families
-4. **Close shared CLI/productization gaps**
+3. **Close shared CLI/productization gaps**
    - `install`, `uninstall`, `update`, and shared agent detection
-5. **Flip documentation only after evidence exists**
-   - update `docs/port-comparison.md` after the verification surface is green
+4. **Flip documentation only after evidence exists**
+   - update `docs/port-comparison.md` row by row only when the corresponding verification stays green
 
 ---
 

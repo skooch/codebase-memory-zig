@@ -3,7 +3,7 @@
 ## Session: 2026-04-11
 
 ### Phase 1: Lock the Full-Parity Contract and Verification Surface
-- **Status:** in progress
+- **Status:** completed
 - Actions:
   - Moved `docs/plans/new/shared-capability-parity-plan.md` to `docs/plans/in-progress/shared-capability-parity-plan.md` to start execution under the repo's plan convention.
   - Re-read `docs/port-comparison.md`, `docs/gap-analysis.md`, `docs/zig-port-plan.md`, and `scripts/run_interop_alignment.sh` to pin the exact shared-but-not-interoperable surface and the current verification limitations.
@@ -50,3 +50,25 @@
   - `testdata/interop/typescript-parity/tsconfig.json`
   - `testdata/interop/rust-parity/Cargo.toml`
   - `testdata/interop/rust-parity/src/lib.rs`
+
+### Phase 2: Bring the MCP Query and Protocol Surface to Full Parity
+- **Status:** completed
+- Actions:
+  - Expanded `cli --progress` parity from minimal lifecycle messages to the shared phase-aware stream the original emits for overlapping commands, then wired the interop harness to compare canonicalized stderr progress lines in an isolated temp-HOME environment.
+  - Confirmed and fixed the last `query_graph` ordering mismatch by changing edge-query execution to expand rows in source-node order rather than global edge-table order, matching the original shared read-only contract for the parity fixtures.
+  - Added a targeted `src/cypher.zig` regression test so the shared default edge ordering stays locked unless an explicit `ORDER BY` changes it.
+  - Closed the remaining `search_code` and shared extractor-contract gap for Rust and JavaScript by inferring multiline declaration end spans more accurately in `src/extractor.zig` and widening stored node spans in `src/graph_buffer.zig` when later passes discover a better extent.
+  - Rebuilt the Zig binary after the `src/main.zig` progress changes and recorded the stale-binary hazard in `CLAUDE.md` so future Phase 2 work does not trust an old `zig-out/bin/cbm` after compile failures.
+  - Re-ran the shared-harness protocol/query slice after each fix until `cli --progress`, `query_graph`, `get_architecture`, `search_code`, and `detect_changes` were all green together instead of being verified one tool at a time.
+  - Re-ran `zig build`, `zig build test`, and `bash scripts/run_interop_alignment.sh`; the final Phase 2 report now shows 67 comparisons, 58 strict matches, 9 diagnostic comparisons, 0 mismatches, and `cli_progress: match`.
+  - Checked the optional lint step with `command -v zlint`; it is still unavailable in this shell, so `zlint` verification remains blocked rather than failed.
+- Files modified:
+  - `CLAUDE.md`
+  - `scripts/run_interop_alignment.sh`
+  - `src/cypher.zig`
+  - `src/extractor.zig`
+  - `src/graph_buffer.zig`
+  - `src/main.zig`
+  - `src/mcp.zig`
+  - `src/pipeline.zig`
+  - `testdata/interop/manifest.json`

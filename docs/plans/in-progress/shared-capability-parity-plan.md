@@ -4,7 +4,7 @@
 Bring every currently shared-but-not-interoperable capability in `docs/port-comparison.md` up to full parity with `codebase-memory-mcp`, then update the comparison docs to mark those rows as interoperable.
 
 ## Current Phase
-Phase 2
+Phase 3
 
 ## File Map
 - Modify: `docs/plans/in-progress/shared-capability-parity-plan.md`
@@ -47,11 +47,11 @@ Phase 2
 
 ### Phase 2: Bring the MCP Query and Protocol Surface to Full Parity
 - [x] Update `src/mcp.zig` so `tools/list` advertises the full overlapping implemented tool surface with the same tool-level visibility the original exposes for shared features.
-- [ ] Expand `src/main.zig` and `src/mcp.zig` so `cli --progress` emits the richer phase-aware progress events needed to match the original shared progress contract for overlapping commands.
-- [ ] Extend `src/cypher.zig`, `src/store.zig`, and `src/mcp.zig` so `query_graph` covers the original overlapping read-only Cypher shapes this repo currently marks as partial, including the query forms needed by `get_architecture`, `search_code`, and `detect_changes`.
-- [ ] Broaden `src/mcp.zig` output shaping for `get_architecture`, `search_code`, and `detect_changes` so their payload richness, ranking/dedup behavior, and summary fields match the original for shared capabilities instead of the current narrower daily-use summaries.
-- [ ] Add or extend regression coverage in `src/mcp.zig`, `src/cypher.zig`, and `src/store.zig` for the upgraded contracts, then wire the new harness assertions in `scripts/run_interop_alignment.sh` to fail when the Zig payload shape drifts from the original.
-- **Status:** in progress
+- [x] Expand `src/main.zig` and `src/mcp.zig` so `cli --progress` emits the richer phase-aware progress events needed to match the original shared progress contract for overlapping commands.
+- [x] Extend `src/cypher.zig`, `src/store.zig`, and `src/mcp.zig` so `query_graph` covers the original overlapping read-only Cypher shapes this repo currently marks as partial, including the query forms needed by `get_architecture`, `search_code`, and `detect_changes`.
+- [x] Broaden `src/mcp.zig` output shaping for `get_architecture`, `search_code`, and `detect_changes` so their payload richness, ranking/dedup behavior, and summary fields match the original for shared capabilities instead of the current narrower daily-use summaries.
+- [x] Add or extend regression coverage in `src/mcp.zig`, `src/cypher.zig`, and `src/store.zig` for the upgraded contracts, then wire the new harness assertions in `scripts/run_interop_alignment.sh` to fail when the Zig payload shape drifts from the original.
+- **Status:** completed
 
 ### Phase 3: Bring Shared Graph Construction and Edge Semantics to Full Parity
 - [ ] Expand `src/extractor.zig`, `src/pipeline.zig`, and `src/registry.zig` so definitions extraction on already-overlapping target languages matches the original’s shared behavior for nested declarations, aliases, and symbol-role labeling rather than stopping at the current daily-use subset.
@@ -72,7 +72,7 @@ Phase 2
 - [ ] Re-run `zig build`, `zig build test`, and the expanded `bash scripts/run_interop_alignment.sh` against the new parity fixtures until every targeted shared row has a concrete green verification path.
 - [ ] Run the temp-HOME CLI parity checks for `install`, `uninstall`, `update`, agent detection, and `cli --progress`, and record the exact commands and outcomes in the final plan/progress notes.
 - [ ] Update `docs/port-comparison.md` so every row targeted by this plan flips to `Interoperable? Yes` only after the corresponding verification evidence exists.
-- [ ] Refresh `docs/gap-analysis.md` and `docs/zig-port-plan.md` to remove the completed shared-surface parity gaps while leaving still-missing subsystems such as `manage_adr`, route graphs, UI, and test-tagging explicitly outside this plan.
+- [x] Refresh `docs/gap-analysis.md` and `docs/zig-port-plan.md` to remove the completed shared-surface parity gaps while leaving still-missing subsystems such as `manage_adr`, route graphs, UI, and test-tagging explicitly outside this plan.
 - [ ] Move this plan from `docs/plans/new/` to `docs/plans/in-progress/` before implementation starts, then to `docs/plans/implemented/` only after every verification item above is complete.
 - **Status:** pending
 

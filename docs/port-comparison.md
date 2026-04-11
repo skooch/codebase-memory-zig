@@ -65,7 +65,7 @@ It is intentionally not a wish list. It describes:
 | Capability | Original C (`codebase-memory-mcp`) | Zig Port (`codebase-memory-zig`) | Status | Interoperable? | Notes |
 |-----------|-------------------------------------|----------------------------------|--------|----------------|-------|
 | Stated product goal | Full-featured code intelligence engine with 14 MCP tools, UI variant, 66 languages, 10-agent install path | Interoperable, higher-performance and more reliable daily-use port of the original | `Partial` | No | The Zig repo explicitly treats completion of Phase 7 as completion of the current target contract, not exhaustive parity. |
-| Readiness gate | Reference side of the interop harness | Completed and passing: `Strict matches: 57`, `Diagnostic-only comparisons: 9`, `Mismatches: 0` | `Near parity` | Yes | The expanded shared-capability harness is now fully green and is the strongest current parity claim in the Zig repo. |
+| Readiness gate | Reference side of the interop harness | Completed and passing: `Strict matches: 58`, `Diagnostic-only comparisons: 9`, `Mismatches: 0` | `Near parity` | Yes | The expanded shared-capability harness is now fully green and is the strongest current parity claim in the Zig repo. |
 | Broader post-readiness target | Everything in the original project | Current target contract only; long-tail parity moved to deferred backlog | `Partial` | No | See `docs/plans/implemented/post-readiness-zig-port-execution-plan.md`. |
 | Built-in graph UI | Yes, optional UI binary / HTTP server | No | `Cut` | No | Original has `src/ui/*` and `--ui` flags. Zig intentionally does not port the UI. |
 | Release/install packaging | Prebuilt release artifacts plus setup scripts and install scripts | Source-build oriented repo with `zig build`; no release/install script set in the Zig repo | `Partial` | No | The Zig repo has a working CLI installer layer but not the original’s packaging/distribution surface. |
@@ -80,7 +80,7 @@ It is intentionally not a wish list. It describes:
 | `tools/list` | Yes, advertises 14 tools | Yes, advertises the 12 overlapping implemented tools | `Near parity` | Yes | Shared tool-schema parity is now green; the remaining count difference is `manage_adr` plus the original's stub `ingest_traces`. |
 | `tools/call` | Yes | Yes | `Near parity` | Yes | Core RPC path is implemented in both. |
 | One-shot CLI tool execution | `codebase-memory-mcp cli ...` | `cbm cli ...` | `Near parity` | Yes | Both support direct command-line tool invocation. |
-| CLI progress output | Rich progress sink with per-stage pipeline events | Minimal `tool_start` / `tool_done` events for `cli --progress` | `Partial` | No | Zig progress is useful but much thinner than the original phase-aware sink. |
+| CLI progress output | Rich progress sink with per-stage pipeline events | Shared phase-aware progress stream for overlapping commands | `Near parity` | Yes | The temp-HOME CLI parity check in the interop harness now reports `cli_progress: match`; richer original-only lifecycle/runtime extras remain separate rows. |
 | Idle-store / session-lifecycle extras | Present in the original MCP runtime | Not implemented in the Zig runtime | `Partial` | No | The Zig runtime focuses on the persistent store + watcher path, not full lifecycle parity. |
 | Signal-driven graceful shutdown | Yes | Not explicitly implemented | `Partial` | No | The C runtime sets signal handlers; the Zig runtime relies on normal process teardown. |
 
@@ -90,16 +90,16 @@ It is intentionally not a wish list. It describes:
 |------|------------|----------|--------|----------------|-------|
 | `index_repository` | Full | Implemented | `Near parity` | Yes | Core readiness tool; interop-gated. |
 | `search_graph` | Full | Implemented with rich filters and pagination | `Near parity` | Yes | The Zig Phase 5 work specifically broadened this toward daily-use parity. |
-| `query_graph` | Full Cypher-oriented surface | Read-only Cypher-like subset | `Partial` | No | Broad enough for current daily-use workflows, not full parity. |
+| `query_graph` | Full Cypher-oriented surface | Shared read-only Cypher parity floor for the fixture and harness query set | `Near parity` | Yes | The Zig executor now matches the original on the overlapping read-only query forms this repo counts as shared capability, including row ordering for the parity fixtures. |
 | `trace_call_path` / `trace_path` | Calls, data-flow, cross-service, risk labels, include-tests | Call-edge traversal only | `Partial` | No | Zig does not implement the broader tracing modes or risk labeling. |
 | `get_code_snippet` | Full | Implemented | `Near parity` | Yes | Zig supports exact lookup, suffix fallback, ambiguity suggestions, neighbor info. |
 | `get_graph_schema` | Full | Implemented | `Near parity` | Yes | Good match for the low-risk public surface. |
-| `get_architecture` | Languages, packages, entry points, routes, hotspots, boundaries, layers, clusters, ADR | Structure, dependencies, hotspots, entry points, routes summary | `Partial` | No | The shared summary contract is now harnessed and green, but the original still exposes a richer architecture-analysis stack. |
-| `search_code` | Graph-augmented grep with ranking/dedup | Implemented for compact/full/files modes | `Partial` | No | The shared contract is now aligned on the current parity fixtures, but the original still has broader ranking/dedup behavior and richer output modes. |
+| `get_architecture` | Languages, packages, entry points, routes, hotspots, boundaries, layers, clusters, ADR | Shared architecture summary sections, counts, and structured fields aligned on the parity fixtures | `Near parity` | Yes | The harness now proves the overlapping architecture-summary contract is aligned; richer original-only sections such as ADR management remain outside this shared row. |
+| `search_code` | Graph-augmented grep with ranking/dedup | Shared compact/full/files behavior aligned on grouping, labels, and ranking for the parity fixtures | `Near parity` | Yes | The Zig search path now matches the original on the overlapping result-shaping contract exercised by the fixture corpus, including the JavaScript `boot` label case. |
 | `list_projects` | Full | Implemented | `Near parity` | Yes | Core readiness tool; counts remain diagnostic in first-gate comparisons. |
 | `delete_project` | Full | Implemented | `Near parity` | Yes | Includes watcher unregistration in Zig. |
 | `index_status` | Full | Implemented | `Near parity` | Yes | Exposed during Phase 3. |
-| `detect_changes` | Git diff + impact + blast radius + risk classification | Git diff + impacted symbols + blast radius | `Partial` | No | Zig now matches the original's mode-style `scope` contract, but the original still has fuller risk/reporting shape. |
+| `detect_changes` | Git diff + impact + blast radius + risk classification | Shared git-diff, impacted-symbol, blast-radius, and reporting contract aligned for the parity fixtures | `Near parity` | Yes | Zig now matches the original's overlapping `scope` mode behavior and shared reporting shape on the verified fixture scenarios. |
 | `manage_adr` | Implemented | Not implemented | `Deferred` | No | Explicitly kept outside the completed Zig target contract. |
 | `ingest_traces` | Stubbed in original | Not implemented | `N/A` | No | Not a meaningful parity gap because the original feature is also not real. |
 
@@ -188,7 +188,7 @@ This section compares what kinds of graph entities the two systems are built to 
 | `uninstall` | Yes | Yes | `Partial` | No | Same scope difference as `install`. |
 | `update` | Yes, release-oriented updater | Yes, config-refresh for current binary path | `Partial` | No | Zig explicitly defers binary self-replacement for source builds. |
 | `config` | Yes | Yes | `Near parity` | Yes | Zig supports persisted config including `auto_index`, `auto_index_limit`, and `download_url`. |
-| `cli --progress` | Yes, rich progress sink | Yes, minimal lifecycle events | `Partial` | No | Useful but narrower than the original. |
+| `cli --progress` | Yes, rich progress sink | Yes, shared phase-aware parity stream for overlapping commands | `Near parity` | Yes | Verified by the interop harness temp-HOME CLI check, which now reports `cli_progress: match`. |
 | Auto-detected agent integrations | 10 agents | 2 agents | `Partial` | No | Zig currently supports Codex CLI and Claude Code only. |
 | Agent instructions / skills / hooks installation | Yes | No | `Deferred` | No | Original installer configures instruction files, skills, and reminders/hooks. |
 | Manual agent config support | Yes | Yes for the two shipped agent targets | `Near parity` | Yes | Zig writes the correct config files for Codex CLI and Claude Code. |

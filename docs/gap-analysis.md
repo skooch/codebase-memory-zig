@@ -35,7 +35,7 @@ Completed now:
   - Rust
   - Zig
 - The current fixture harness baseline is:
-  - `Strict matches: 57`
+  - `Strict matches: 58`
   - `Diagnostic-only comparisons: 9`
   - `Mismatches: 0`
 
@@ -50,6 +50,15 @@ Completed after the readiness gate:
   - `install`, `uninstall`, `update`, and `config`
   - `cli --progress`
   - installer support for Codex CLI and Claude Code
+- Shared Phase 2 protocol/query parity slice:
+  - `tools/list`
+  - `cli --progress`
+  - `query_graph`
+  - `get_architecture`
+  - `search_code`
+  - `detect_changes`
+  - verified by `zig build`, `zig build test`, and `bash scripts/run_interop_alignment.sh`
+  - current evidence: `Comparisons: 67`, `Strict matches: 58`, `Diagnostic-only comparisons: 9`, `Mismatches: 0`, `cli_progress: match`
 
 Intentionally deferred after Phase 7:
 - The remaining MCP tools outside the current daily-use slice, especially `manage_adr`.
@@ -60,15 +69,12 @@ Intentionally deferred after Phase 7:
 
 ## Shared Capability Full-Parity Follow-On
 
-The current target contract is complete, but the following shared capabilities still exist in both implementations without full parity. These are the rows the follow-on parity plan must close before `docs/port-comparison.md` can flip them to `Interoperable? Yes`.
+Phase 2 of the follow-on parity plan is now complete: `cli --progress`, `query_graph`, `get_architecture`, `search_code`, and `detect_changes` are now backed by green shared-capability evidence and can be marked `Interoperable? Yes` in [port-comparison.md](/Users/skooch/projects/codebase-memory-zig/docs/port-comparison.md).
+
+The remaining shared capabilities that still exist in both implementations without full parity are below. These are the rows the next phases must close before the remaining `Interoperable? No` entries can flip.
 
 | Capability row | Current gap | Full-parity acceptance rule | Primary Zig files | Verification target |
 |----------------|-------------|-----------------------------|-------------------|---------------------|
-| `cli --progress` | Zig emits only minimal lifecycle events | The Zig CLI emits the same overlapping phase-oriented progress event categories, ordering, and payload fields as the original for shared commands | `src/main.zig`, `src/mcp.zig` | Temp-HOME CLI parity check plus captured progress-stream comparison |
-| `query_graph` | Zig supports only a narrower read-only Cypher subset | The Zig engine accepts and returns the same overlapping read-only query shapes, column ordering, row ordering, and error semantics as the original for the parity fixtures and harness query set | `src/cypher.zig`, `src/store.zig`, `src/mcp.zig` | Expanded interop harness compares normalized query results and errors |
-| `get_architecture` | Zig now matches the shared summary contract, but the original still exposes a richer architecture-analysis surface | The Zig handler returns the same overlapping architecture sections, counts, and structured summary fields as the original for the shared fixture and repo probes, and any remaining richer original-only sections are either ported or explicitly reclassified out of the parity row | `src/mcp.zig`, `src/store.zig`, `src/cypher.zig` | Expanded interop harness compares canonicalized architecture payloads plus focused repo probes for richer sections |
-| `search_code` | Zig now matches the current fixture contract, but the original still has broader ranking/dedup behavior and richer output detail | The Zig handler matches the original for overlapping compact/full/files behavior, result grouping, dedup into containing symbols, and ranking of the parity fixture hits across the broader fixture set | `src/mcp.zig`, `src/store.zig` | Expanded interop harness compares normalized search-code result sets |
-| `detect_changes` | Zig now matches the original mode-style `scope` contract, but still lacks the original's fuller risk/reporting shape | The Zig handler matches the original overlapping git-diff, impacted-symbol, blast-radius, and shared reporting fields for controlled repo deltas, including the richer risk/reporting metadata this row still lacks | `src/mcp.zig`, `src/store.zig`, `src/pipeline.zig` | Expanded interop harness runs controlled git-diff scenarios against parity fixtures |
 | Definitions extraction | Zig reaches daily-use fidelity but not full shared overlap | For already-overlapping target languages, the Zig extractor emits the same symbol labels, names, nesting roles, and declaration retention as the original on parity fixtures | `src/extractor.zig`, `src/pipeline.zig` | Extractor tests plus interop fixture comparisons |
 | Call resolution | Zig misses some shared alias-heavy and suffix-heavy cases | The Zig pipeline resolves the same overlapping call edges as the original on parity fixtures with aliasing and cross-file imports | `src/registry.zig`, `src/pipeline.zig` | Pipeline tests plus interop trace/search assertions |
 | Usage / type-reference edges | Zig has useful `USAGE` output but not full shared parity | The Zig graph emits the same overlapping usage and type-reference facts as the original where both implementations already model them | `src/extractor.zig`, `src/pipeline.zig`, `src/store.zig` | Pipeline/store tests plus parity fixture graph queries |
@@ -91,8 +97,8 @@ Deferred or optional future slices:
 - Public surface expansion:
   - `manage_adr`
 - Query/runtime expansion:
-  - full Cypher lexer/parser/executor parity beyond the current day-to-day subset
-  - broader traversal/risk/reporting parity beyond the current `detect_changes` implementation
+  - full Cypher lexer/parser/executor parity beyond the verified shared read-only floor
+  - broader traversal and query-analysis parity beyond the current shared `detect_changes` contract
 - Indexing/runtime expansion:
   - deeper usage/type-ref extraction parity beyond the current daily-use slice
 - Metadata and enrichment:
@@ -103,7 +109,7 @@ Deferred or optional future slices:
   - richer decorator/enrichment promotion
 - Productization beyond the current contract:
   - broader installer/self-update behavior
-  - richer progress sinks and diagnostics
+  - broader agent integration coverage and installer diagnostics
 
 ### Recommended Sequencing
 
