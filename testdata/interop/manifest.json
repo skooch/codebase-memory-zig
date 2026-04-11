@@ -414,6 +414,16 @@
               "columns": ["a.label", "a.file_path", "b.label", "b.name"],
               "required_rows_min": 1
             }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:INHERITS]->(b) RETURN a.label, a.name, b.label, b.name ORDER BY a.name, b.name",
+              "project": "python-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["a.label", "a.name", "b.label", "b.name"]
+            }
           }
         ],
         "trace_call_path": [
@@ -700,6 +710,16 @@
             "expect": {
               "columns": ["a.name", "b.name"],
               "required_rows_min": 1
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:IMPLEMENTS]->(b) RETURN a.label, a.name, b.label, b.name ORDER BY a.name, b.name",
+              "project": "typescript-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["a.label", "a.name", "b.label", "b.name"]
             }
           }
         ],

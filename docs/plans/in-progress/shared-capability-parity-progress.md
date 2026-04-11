@@ -88,9 +88,15 @@
     - Rust `Config`
     - Rust `Worker`
   - Re-ran `zig build`, `zig build test`, and `bash scripts/run_interop_alignment.sh`; the interop baseline remains green at `67` comparisons, `58` strict matches, `9` diagnostic comparisons, `0` mismatches, and `cli_progress: match`.
+  - Ran controlled Zig/C semantic-edge probes for Python inheritance, TypeScript `implements`, and TypeScript interface `extends`, then confirmed with fresh temp-runtime repos that the original does not persist those edge families for the shared syntax forms the Zig port was currently enriching.
+  - Tightened `src/extractor.zig` so the shared semantic-edge contract only retains the decorator edge class the original actually exposes on the parity fixtures, while keeping the inheritance and declaration helpers available for module-level `USAGE` extraction.
+  - Updated `src/pipeline.zig` and `src/store_test.zig` so local regression coverage now reflects the stricter interoperability contract: decorators remain persisted, while inheritance/implements expectations moved to the overlapping `USAGE` shape instead of asserting Zig-only semantic edges.
+  - Expanded `testdata/interop/manifest.json` with parity checks that lock the now-shared empty-result contract for Python `INHERITS` and TypeScript `IMPLEMENTS`.
+  - Re-ran `zig build`, `zig build test`, and `bash scripts/run_interop_alignment.sh`; the baseline remains green at `67` comparisons, `58` strict matches, `9` diagnostic comparisons, `0` mismatches, and `cli_progress: match`.
 - Files modified:
   - `docs/plans/in-progress/shared-capability-parity-plan.md`
   - `docs/plans/in-progress/shared-capability-parity-progress.md`
   - `src/extractor.zig`
   - `src/pipeline.zig`
+  - `src/store_test.zig`
   - `testdata/interop/manifest.json`

@@ -770,43 +770,12 @@ fn appendSemanticHints(
     file_path: []const u8,
     out: *std.ArrayList(SemanticHint),
 ) !void {
-    if (child_id == 0) return;
-
-    switch (language) {
-        .python => try appendDelimitedSemanticHints(
-            allocator,
-            child_id,
-            file_path,
-            parsePythonInheritanceList(line),
-            "INHERITS",
-            out,
-        ),
-        .javascript, .typescript, .tsx => {
-            if (parseJsInheritance(line)) |parent_name| {
-                try appendSemanticHint(allocator, child_id, file_path, parent_name, "INHERITS", out);
-            }
-            try appendDelimitedSemanticHints(
-                allocator,
-                child_id,
-                file_path,
-                parseTypeScriptImplements(line),
-                "IMPLEMENTS",
-                out,
-            );
-            try appendDelimitedSemanticHints(
-                allocator,
-                child_id,
-                file_path,
-                parseTypeScriptInterfaceExtends(line),
-                "INHERITS",
-                out,
-            );
-        },
-        .rust => if (parseRustSemanticHint(line)) |hint| {
-            try appendSemanticHint(allocator, child_id, file_path, hint.trait_name, hint.relation, out);
-        },
-        else => {},
-    }
+    _ = allocator;
+    _ = language;
+    _ = line;
+    _ = child_id;
+    _ = file_path;
+    _ = out;
 }
 
 fn parseRustSemanticHint(line: []const u8) ?struct {

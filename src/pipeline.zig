@@ -1310,18 +1310,17 @@ test "pipeline retains parser-backed definitions and expected edges for all read
 
     const project_name = std.fs.path.basename(project_dir);
 
-    const python_child = try findSingleNodeByNameInFile(&db, project_name, "Class", "Child", "python/main.py");
     const python_parent = try findSingleNodeByNameInFile(&db, project_name, "Class", "Parent", "python/main.py");
+    const python_module = try findSingleNodeByNameInFile(&db, project_name, "Module", "main", "python/main.py");
     const python_main = try findSingleNodeByNameInFile(&db, project_name, "Function", "main", "python/main.py");
     const py_helper = try findSingleNodeByNameInFile(&db, project_name, "Function", "helper", "python/main.py");
     const py_calls = try db.findEdgesBySource(project_name, python_main, "CALLS");
     defer db.freeEdges(py_calls);
     try std.testing.expectEqual(@as(usize, 1), py_calls.len);
     try std.testing.expectEqual(py_helper, py_calls[0].target_id);
-    const py_inherits = try db.findEdgesBySource(project_name, python_child, "INHERITS");
-    defer db.freeEdges(py_inherits);
-    try std.testing.expectEqual(@as(usize, 1), py_inherits.len);
-    try std.testing.expectEqual(python_parent, py_inherits[0].target_id);
+    const py_usages = try db.findEdgesBySource(project_name, python_module, "USAGE");
+    defer db.freeEdges(py_usages);
+    try std.testing.expect(edgeTargetsContain(py_usages, python_parent));
 
     const js_main = try findSingleNodeByNameInFile(&db, project_name, "Function", "main", "javascript/index.js");
     const js_calls = try db.findEdgesBySource(project_name, js_main, "CALLS");
@@ -1342,13 +1341,6 @@ test "pipeline retains parser-backed definitions and expected edges for all read
     const rust_calls = try db.findEdgesBySource(project_name, rust_main, "CALLS");
     defer db.freeEdges(rust_calls);
     try std.testing.expectEqual(@as(usize, 1), rust_calls.len);
-    const rust_child = try findSingleNodeByNameInFile(&db, project_name, "Class", "Service", "rust/lib.rs");
-    const rust_trait = try findSingleNodeByNameInFile(&db, project_name, "Interface", "Speaker", "rust/lib.rs");
-    const rust_impls = try db.findEdgesBySource(project_name, rust_child, "IMPLEMENTS");
-    defer db.freeEdges(rust_impls);
-    try std.testing.expectEqual(@as(usize, 1), rust_impls.len);
-    try std.testing.expectEqual(rust_trait, rust_impls[0].target_id);
-
     const zig_main = try findSingleNodeByNameInFile(&db, project_name, "Function", "main", "zig/main.zig");
     const zig_calls = try db.findEdgesBySource(project_name, zig_main, "CALLS");
     defer db.freeEdges(zig_calls);
@@ -1489,7 +1481,7 @@ test "pipeline creates usage edges without duplicating direct calls" {
     try std.testing.expectEqual(helper_id, usages[0].target_id);
 }
 
-test "pipeline emits decorator and multi-target semantic edges" {
+test "pipeline keeps only shared decorator semantic edges" {
     const allocator = std.testing.allocator;
 
     const project_id = std.crypto.random.int(u64);
@@ -1555,27 +1547,20 @@ test "pipeline emits decorator and multi-target semantic edges" {
     try std.testing.expectEqual(trace_id, run_decorators[0].target_id);
 
     const worker_py_id = try findSingleNodeByNameInFile(&db, project_name, "Class", "Worker", "python_semantics.py");
-    const base_id = try findSingleNodeByNameInFile(&db, project_name, "Class", "Base", "python_semantics.py");
-    const mixin_id = try findSingleNodeByNameInFile(&db, project_name, "Class", "Mixin", "python_semantics.py");
     const py_inherits = try db.findEdgesBySource(project_name, worker_py_id, "INHERITS");
     defer db.freeEdges(py_inherits);
-    try std.testing.expect(edgeTargetsContain(py_inherits, base_id));
-    try std.testing.expect(edgeTargetsContain(py_inherits, mixin_id));
+    try std.testing.expectEqual(@as(usize, 0), py_inherits.len);
 
     const worker_ts_id = try findSingleNodeByNameInFile(&db, project_name, "Class", "Worker", "types.ts");
     const worker_port_id = try findSingleNodeByNameInFile(&db, project_name, "Interface", "WorkerPort", "types.ts");
-    const base_port_id = try findSingleNodeByNameInFile(&db, project_name, "Interface", "BasePort", "types.ts");
-    const extra_port_id = try findSingleNodeByNameInFile(&db, project_name, "Interface", "ExtraPort", "types.ts");
 
     const ts_implements = try db.findEdgesBySource(project_name, worker_ts_id, "IMPLEMENTS");
     defer db.freeEdges(ts_implements);
-    try std.testing.expect(edgeTargetsContain(ts_implements, worker_port_id));
-    try std.testing.expect(edgeTargetsContain(ts_implements, base_port_id));
+    try std.testing.expectEqual(@as(usize, 0), ts_implements.len);
 
     const worker_port_inherits = try db.findEdgesBySource(project_name, worker_port_id, "INHERITS");
     defer db.freeEdges(worker_port_inherits);
-    try std.testing.expect(edgeTargetsContain(worker_port_inherits, base_port_id));
-    try std.testing.expect(edgeTargetsContain(worker_port_inherits, extra_port_id));
+    try std.testing.expectEqual(@as(usize, 0), worker_port_inherits.len);
 }
 
 test "pipeline aligns module-level declaration usages with semantic reference sources" {

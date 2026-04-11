@@ -21,7 +21,7 @@ test "open and close multiple times" {
     }
 }
 
-test "store persists parser-backed extraction and call/inherit edges" {
+test "store persists parser-backed extraction and call/usage edges" {
     const allocator = std.testing.allocator;
 
     const project_id = std.crypto.random.int(u64);
@@ -69,6 +69,7 @@ test "store persists parser-backed extraction and call/inherit edges" {
         return err;
     };
     const child_node = try findSingleNodeInStore(&db, project_name, "Class", "Child", "main.py");
+    const module_node = try findSingleNodeInStore(&db, project_name, "Module", "main", "main.py");
     const helper_node = try findSingleNodeInStore(&db, project_name, "Function", "helper", "main.py");
     const main_node = try findSingleNodeInStore(&db, project_name, "Function", "main", "main.py");
 
@@ -87,10 +88,17 @@ test "store persists parser-backed extraction and call/inherit edges" {
     try std.testing.expectEqual(@as(usize, 1), calls.len);
     try std.testing.expectEqual(helper_node, calls[0].target_id);
 
-    const inherits = try db.findEdgesBySource(project_name, child_node, "INHERITS");
-    defer db.freeEdges(inherits);
-    try std.testing.expectEqual(@as(usize, 1), inherits.len);
-    try std.testing.expectEqual(base_node, inherits[0].target_id);
+    const usages = try db.findEdgesBySource(project_name, module_node, "USAGE");
+    defer db.freeEdges(usages);
+    try std.testing.expect(edgeTargetsContain(usages, base_node));
+    try std.testing.expect(!edgeTargetsContain(usages, child_node));
+}
+
+fn edgeTargetsContain(edges: []const store.Edge, target_id: i64) bool {
+    for (edges) |edge| {
+        if (edge.target_id == target_id) return true;
+    }
+    return false;
 }
 
 fn findSingleNodeInStore(
