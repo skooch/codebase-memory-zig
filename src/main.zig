@@ -470,8 +470,8 @@ fn runInstallCommand(allocator: std.mem.Allocator) !void {
         .dry_run = parsed.dry_run,
         .force = parsed.force,
     });
-    try printInstallReport(stdout_file, "Install", report, parsed.dry_run);
-    if (report.codex == .skipped and report.claude == .skipped and !parsed.force) {
+    try printInstallReport(allocator, stdout_file, home, binary_path, "Install", report, parsed.dry_run);
+    if (!report.detected.codex and !report.detected.claude and !parsed.force) {
         try stdout_file.writeAll("No supported agents detected. Use --force to create config files.\n");
         std.process.exit(1);
     }
@@ -491,7 +491,7 @@ fn runUninstallCommand(allocator: std.mem.Allocator) !void {
     const home = try cli.homeDir(allocator);
     defer allocator.free(home);
     const report = try cli.uninstallAgentConfigs(allocator, home, parsed.dry_run);
-    try printInstallReport(stdout_file, "Uninstall", report, parsed.dry_run);
+    try printInstallReport(allocator, stdout_file, home, null, "Uninstall", report, parsed.dry_run);
 }
 
 fn runUpdateCommand(allocator: std.mem.Allocator) !void {
@@ -515,13 +515,21 @@ fn runUpdateCommand(allocator: std.mem.Allocator) !void {
     const report = try cli.installAgentConfigs(allocator, home, .{
         .binary_path = binary_path,
         .dry_run = parsed.dry_run,
-        .force = false,
+        .force = parsed.force,
     });
-    try printInstallReport(stdout_file, "Update", report, parsed.dry_run);
+    try printInstallReport(allocator, stdout_file, home, binary_path, "Update", report, parsed.dry_run);
+    if (!report.detected.codex and !report.detected.claude and !parsed.force) {
+        try stdout_file.writeAll("No supported agents detected. Use --force to create config files.\n");
+        std.process.exit(1);
+    }
     if (config.download_url) |_| {
         try stdout_file.writeAll("download_url is configured, but binary self-replacement is intentionally deferred for source builds.\n");
     } else {
-        try stdout_file.writeAll("Agent configs were refreshed to the current binary path.\n");
+        if (parsed.dry_run) {
+            try stdout_file.writeAll("Dry run complete. Agent configs would be refreshed to the current binary path.\n");
+        } else {
+            try stdout_file.writeAll("Agent configs were refreshed to the current binary path.\n");
+        }
     }
 }
 
@@ -599,21 +607,42 @@ fn confirmAction(question: []const u8, answer: AutoAnswer) !bool {
 }
 
 fn printInstallReport(
+    allocator: std.mem.Allocator,
     stdout_file: std.fs.File,
+    home: []const u8,
+    binary_path: ?[]const u8,
     label: []const u8,
     report: cli.InstallReport,
     dry_run: bool,
 ) !void {
+    const codex_path = try cli.codexConfigPath(allocator, home);
+    defer allocator.free(codex_path);
+    const claude_nested_path = try cli.claudeNestedConfigPath(allocator, home);
+    defer allocator.free(claude_nested_path);
+    const claude_legacy_path = try cli.claudeLegacyConfigPath(allocator, home);
+    defer allocator.free(claude_legacy_path);
+
+    try printFile(stdout_file, "{s}{s}\n", .{ label, if (dry_run) " (dry run)" else "" });
+    try stdout_file.writeAll("Detected agents:");
+    if (!report.detected.codex and !report.detected.claude) {
+        try stdout_file.writeAll(" none\n");
+    } else {
+        if (report.detected.claude) try stdout_file.writeAll(" Claude Code");
+        if (report.detected.codex) try stdout_file.writeAll(" Codex CLI");
+        try stdout_file.writeAll("\n");
+    }
+    if (binary_path) |path| {
+        try printFile(stdout_file, "Binary path: {s}\n", .{path});
+    }
+    try printFile(stdout_file, "  Codex CLI: {s} ({s})\n", .{ @tagName(report.codex), codex_path });
     try printFile(
         stdout_file,
-        "{s}{s}\n  Codex CLI: {s}\n  Claude Code: {s}\n",
-        .{
-            label,
-            if (dry_run) " (dry run)" else "",
-            @tagName(report.codex),
-            @tagName(report.claude),
-        },
+        "  Claude Code: {s} ({s}, {s})\n",
+        .{ @tagName(report.claude), claude_nested_path, claude_legacy_path },
     );
+    if (dry_run) {
+        try stdout_file.writeAll("(dry-run - no files were modified)\n");
+    }
 }
 
 fn writeConfigValue(stdout_file: std.fs.File, key: []const u8, config: cli.AppConfig) !void {

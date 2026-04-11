@@ -30,6 +30,7 @@ pub const InstallOptions = struct {
 };
 
 pub const InstallReport = struct {
+    detected: AgentSet = .{},
     codex: Action = .skipped,
     claude: Action = .skipped,
 
@@ -138,13 +139,25 @@ pub fn detectAgents(home: []const u8) AgentSet {
     };
 }
 
+pub fn codexConfigPath(allocator: std.mem.Allocator, home: []const u8) ![]u8 {
+    return std.fs.path.join(allocator, &.{ home, ".codex", "config.toml" });
+}
+
+pub fn claudeNestedConfigPath(allocator: std.mem.Allocator, home: []const u8) ![]u8 {
+    return std.fs.path.join(allocator, &.{ home, ".claude", ".mcp.json" });
+}
+
+pub fn claudeLegacyConfigPath(allocator: std.mem.Allocator, home: []const u8) ![]u8 {
+    return std.fs.path.join(allocator, &.{ home, ".claude.json" });
+}
+
 pub fn installAgentConfigs(
     allocator: std.mem.Allocator,
     home: []const u8,
     options: InstallOptions,
 ) !InstallReport {
     const detected = detectAgents(home);
-    var report = InstallReport{};
+    var report = InstallReport{ .detected = detected };
 
     if (detected.codex or options.force) {
         report.codex = try installCodexConfig(allocator, home, options);
@@ -160,7 +173,7 @@ pub fn uninstallAgentConfigs(
     home: []const u8,
     dry_run: bool,
 ) !InstallReport {
-    var report = InstallReport{};
+    var report = InstallReport{ .detected = detectAgents(home) };
     report.codex = try uninstallCodexConfig(allocator, home, dry_run);
     report.claude = try uninstallClaudeConfig(allocator, home, dry_run);
     return report;
@@ -234,18 +247,14 @@ fn installClaudeConfig(
 ) !InstallReport.Action {
     const claude_dir = try std.fs.path.join(allocator, &.{ home, ".claude" });
     defer allocator.free(claude_dir);
-    const config_path = try std.fs.path.join(allocator, &.{ claude_dir, ".mcp.json" });
-    defer allocator.free(config_path);
+    const nested_path = try claudeNestedConfigPath(allocator, home);
+    defer allocator.free(nested_path);
+    const legacy_path = try claudeLegacyConfigPath(allocator, home);
+    defer allocator.free(legacy_path);
 
-    const updated = try updateClaudeConfigJson(allocator, config_path, options.binary_path, true);
-    defer allocator.free(updated);
-    if (updated.len == 0) return .unchanged;
-    if (options.dry_run) return .updated;
-
-    try std.fs.cwd().makePath(claude_dir);
-    var file = try std.fs.cwd().createFile(config_path, .{ .truncate = true });
-    defer file.close();
-    try file.writeAll(updated);
+    const nested_changed = try syncClaudeConfigPath(allocator, claude_dir, nested_path, options);
+    const legacy_changed = try syncClaudeConfigPath(allocator, home, legacy_path, options);
+    if (!nested_changed and !legacy_changed) return .unchanged;
     return .updated;
 }
 
@@ -254,18 +263,49 @@ fn uninstallClaudeConfig(
     home: []const u8,
     dry_run: bool,
 ) !InstallReport.Action {
-    const config_path = try std.fs.path.join(allocator, &.{ home, ".claude", ".mcp.json" });
-    defer allocator.free(config_path);
+    const nested_path = try claudeNestedConfigPath(allocator, home);
+    defer allocator.free(nested_path);
+    const legacy_path = try claudeLegacyConfigPath(allocator, home);
+    defer allocator.free(legacy_path);
 
+    const nested_removed = try removeClaudeConfigPath(allocator, nested_path, dry_run);
+    const legacy_removed = try removeClaudeConfigPath(allocator, legacy_path, dry_run);
+    if (!nested_removed and !legacy_removed) return .skipped;
+    return .removed;
+}
+
+fn syncClaudeConfigPath(
+    allocator: std.mem.Allocator,
+    dir_path: []const u8,
+    config_path: []const u8,
+    options: InstallOptions,
+) !bool {
+    const updated = try updateClaudeConfigJson(allocator, config_path, options.binary_path, true);
+    defer allocator.free(updated);
+    if (updated.len == 0) return false;
+    if (options.dry_run) return true;
+
+    try std.fs.cwd().makePath(dir_path);
+    var file = try std.fs.cwd().createFile(config_path, .{ .truncate = true });
+    defer file.close();
+    try file.writeAll(updated);
+    return true;
+}
+
+fn removeClaudeConfigPath(
+    allocator: std.mem.Allocator,
+    config_path: []const u8,
+    dry_run: bool,
+) !bool {
     const updated = try updateClaudeConfigJson(allocator, config_path, "", false);
     defer allocator.free(updated);
-    if (updated.len == 0) return .skipped;
-    if (dry_run) return .removed;
+    if (updated.len == 0) return false;
+    if (dry_run) return true;
 
     var file = try std.fs.cwd().createFile(config_path, .{ .truncate = true });
     defer file.close();
     try file.writeAll(updated);
-    return .removed;
+    return true;
 }
 
 fn updateClaudeConfigJson(
@@ -324,7 +364,14 @@ fn updateClaudeConfigJson(
     defer out.deinit(allocator);
     try out.writer(allocator).print("{f}", .{std.json.fmt(root, .{ .whitespace = .indent_2 })});
     try out.append(allocator, '\n');
-    return out.toOwnedSlice(allocator);
+    const rendered = try out.toOwnedSlice(allocator);
+    if (existing) |contents| {
+        if (std.mem.eql(u8, contents, rendered)) {
+            allocator.free(rendered);
+            return allocator.dupe(u8, "");
+        }
+    }
+    return rendered;
 }
 
 fn replaceManagedBlock(
@@ -440,9 +487,135 @@ test "claude install and uninstall manage mcp json entry" {
     defer allocator.free(contents);
     try std.testing.expect(std.mem.indexOf(u8, contents, server_name) != null);
 
+    const legacy_path = try std.fs.path.join(allocator, &.{ home, ".claude.json" });
+    defer allocator.free(legacy_path);
+    const legacy = try std.fs.cwd().readFileAlloc(allocator, legacy_path, 1024 * 1024);
+    defer allocator.free(legacy);
+    try std.testing.expect(std.mem.indexOf(u8, legacy, server_name) != null);
+
     const uninstall = try uninstallAgentConfigs(allocator, home, false);
     try std.testing.expectEqual(InstallReport.Action.removed, uninstall.claude);
     const updated = try std.fs.cwd().readFileAlloc(allocator, config_path, 1024 * 1024);
     defer allocator.free(updated);
     try std.testing.expect(std.mem.indexOf(u8, updated, server_name) == null);
+    const legacy_updated = try std.fs.cwd().readFileAlloc(allocator, legacy_path, 1024 * 1024);
+    defer allocator.free(legacy_updated);
+    try std.testing.expect(std.mem.indexOf(u8, legacy_updated, server_name) == null);
+}
+
+test "detect agents matches supported directories" {
+    const allocator = std.testing.allocator;
+    const home = try std.fmt.allocPrint(allocator, "/tmp/cbm-home-detect-{x}", .{std.crypto.random.int(u64)});
+    defer allocator.free(home);
+    defer std.fs.cwd().deleteTree(home) catch {};
+
+    try std.fs.cwd().makePath(home);
+    var detected = detectAgents(home);
+    try std.testing.expect(!detected.codex);
+    try std.testing.expect(!detected.claude);
+
+    const codex_dir = try std.fs.path.join(allocator, &.{ home, ".codex" });
+    defer allocator.free(codex_dir);
+    const claude_dir = try std.fs.path.join(allocator, &.{ home, ".claude" });
+    defer allocator.free(claude_dir);
+    try std.fs.cwd().makePath(codex_dir);
+    try std.fs.cwd().makePath(claude_dir);
+
+    detected = detectAgents(home);
+    try std.testing.expect(detected.codex);
+    try std.testing.expect(detected.claude);
+}
+
+test "install dry run preserves filesystem for supported agents" {
+    const allocator = std.testing.allocator;
+    const home = try std.fmt.allocPrint(allocator, "/tmp/cbm-home-dry-run-{x}", .{std.crypto.random.int(u64)});
+    defer allocator.free(home);
+    defer std.fs.cwd().deleteTree(home) catch {};
+
+    const codex_dir = try std.fs.path.join(allocator, &.{ home, ".codex" });
+    defer allocator.free(codex_dir);
+    const claude_dir = try std.fs.path.join(allocator, &.{ home, ".claude" });
+    defer allocator.free(claude_dir);
+    try std.fs.cwd().makePath(codex_dir);
+    try std.fs.cwd().makePath(claude_dir);
+
+    const report = try installAgentConfigs(allocator, home, .{
+        .binary_path = "/tmp/cbm",
+        .dry_run = true,
+    });
+    try std.testing.expectEqual(InstallReport.Action.updated, report.codex);
+    try std.testing.expectEqual(InstallReport.Action.updated, report.claude);
+
+    const codex_path = try codexConfigPath(allocator, home);
+    defer allocator.free(codex_path);
+    try std.testing.expectError(error.FileNotFound, std.fs.cwd().access(codex_path, .{}));
+
+    const claude_nested = try claudeNestedConfigPath(allocator, home);
+    defer allocator.free(claude_nested);
+    try std.testing.expectError(error.FileNotFound, std.fs.cwd().access(claude_nested, .{}));
+
+    const claude_legacy = try claudeLegacyConfigPath(allocator, home);
+    defer allocator.free(claude_legacy);
+    try std.testing.expectError(error.FileNotFound, std.fs.cwd().access(claude_legacy, .{}));
+}
+
+test "claude install is unchanged when both config files already match" {
+    const allocator = std.testing.allocator;
+    const home = try std.fmt.allocPrint(allocator, "/tmp/cbm-home-claude-unchanged-{x}", .{std.crypto.random.int(u64)});
+    defer allocator.free(home);
+    defer std.fs.cwd().deleteTree(home) catch {};
+    const claude_dir = try std.fs.path.join(allocator, &.{ home, ".claude" });
+    defer allocator.free(claude_dir);
+    try std.fs.cwd().makePath(claude_dir);
+
+    _ = try installAgentConfigs(allocator, home, .{
+        .binary_path = "/tmp/cbm",
+        .force = true,
+    });
+
+    const report = try installAgentConfigs(allocator, home, .{
+        .binary_path = "/tmp/cbm",
+        .force = true,
+    });
+    try std.testing.expectEqual(InstallReport.Action.unchanged, report.claude);
+}
+
+test "uninstall dry run keeps supported agent config entries" {
+    const allocator = std.testing.allocator;
+    const home = try std.fmt.allocPrint(allocator, "/tmp/cbm-home-uninstall-dry-{x}", .{std.crypto.random.int(u64)});
+    defer allocator.free(home);
+    defer std.fs.cwd().deleteTree(home) catch {};
+    const codex_dir = try std.fs.path.join(allocator, &.{ home, ".codex" });
+    defer allocator.free(codex_dir);
+    const claude_dir = try std.fs.path.join(allocator, &.{ home, ".claude" });
+    defer allocator.free(claude_dir);
+    try std.fs.cwd().makePath(codex_dir);
+    try std.fs.cwd().makePath(claude_dir);
+
+    _ = try installAgentConfigs(allocator, home, .{
+        .binary_path = "/tmp/cbm",
+        .force = true,
+    });
+
+    const report = try uninstallAgentConfigs(allocator, home, true);
+    try std.testing.expectEqual(InstallReport.Action.removed, report.codex);
+    try std.testing.expectEqual(InstallReport.Action.removed, report.claude);
+
+    const codex_path = try codexConfigPath(allocator, home);
+    defer allocator.free(codex_path);
+    const codex_contents = try std.fs.cwd().readFileAlloc(allocator, codex_path, 1024 * 1024);
+    defer allocator.free(codex_contents);
+    try std.testing.expect(std.mem.indexOf(u8, codex_contents, server_name) != null);
+
+    const claude_nested = try claudeNestedConfigPath(allocator, home);
+    defer allocator.free(claude_nested);
+    const nested_contents = try std.fs.cwd().readFileAlloc(allocator, claude_nested, 1024 * 1024);
+    defer allocator.free(nested_contents);
+    try std.testing.expect(std.mem.indexOf(u8, nested_contents, server_name) != null);
+
+    const claude_legacy = try claudeLegacyConfigPath(allocator, home);
+    defer allocator.free(claude_legacy);
+    const legacy_contents = try std.fs.cwd().readFileAlloc(allocator, claude_legacy, 1024 * 1024);
+    defer allocator.free(legacy_contents);
+    try std.testing.expect(std.mem.indexOf(u8, legacy_contents, server_name) != null);
 }

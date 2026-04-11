@@ -140,3 +140,27 @@
   - `src/store_test.zig`
   - `testdata/interop/manifest.json`
   - `testdata/interop/python-parity/main.py`
+
+### Phase 4: Bring CLI and Productization Overlap to Full Parity
+- **Status:** completed
+- Actions:
+  - Re-read the Zig CLI surface in `src/cli.zig` and `src/main.zig` against the original `src/cli/cli.c` installer flow instead of assuming the remaining Phase 4 gap was only test coverage.
+  - Confirmed a real shared Claude-config parity gap: the original shared installer writes both `~/.claude/.mcp.json` and `~/.claude.json`, while the Zig path had only been managing `~/.claude/.mcp.json`.
+  - Expanded `src/cli.zig` with shared config-path helpers for Codex and Claude, carried detected-agent state through `InstallReport`, and updated the Claude install/uninstall path so the Zig installer now manages both shared Claude MCP config locations instead of only the nested one.
+  - Tightened Zig CLI idempotence for the shared Claude config flow: repeated installs against already-matching config files now report `unchanged` rather than always rewriting and reporting `updated`.
+  - Updated `src/main.zig` reporting so shared installer commands now print detected agents, target config paths, the active binary path for install/update, and an explicit dry-run notice, bringing the user-facing overlap much closer to the original shared workflow without pulling in the original's out-of-scope hooks, skills, or broader agent ecosystem.
+  - Made Zig `update` honor the same `--force` creation semantics as `install` for the shared targets, and tightened the no-agent path so `install` and `update` now fail clearly unless the user opts into forced config creation.
+  - Broadened `src/cli.zig` unit coverage for the shared Phase 4 contract: supported-agent detection, dry-run filesystem preservation, Claude dual-config install/uninstall behavior, Claude no-op idempotence, and uninstall dry-run preservation are now covered directly in Zig tests.
+  - Added `scripts/run_cli_parity.sh`, a temp-HOME-safe scripted parity check that builds the Zig binary, runs Zig and C `install`, `update --dry-run`, `uninstall --dry-run`, and `uninstall` flows against isolated Codex/Claude homes, and compares the overlapping contract through config-file effects plus shared reporting markers without touching live user config.
+  - Recorded the concrete verification commands and outcomes for the completed Phase 4 slice:
+    - `zig build` → passed
+    - `zig build test` → passed
+    - `bash scripts/run_cli_parity.sh` → passed with `18` shared checks and `0` mismatches
+    - `bash scripts/run_interop_alignment.sh` → passed with `Comparisons: 67`, `Strict matches: 58`, `Diagnostic-only comparisons: 9`, `Mismatches: 0`, `cli_progress: match`
+  - Confirmed the remaining installer differences are now the explicitly out-of-scope rows already called out elsewhere in the repo docs: broader agent coverage, Claude hooks/skills, Codex instructions, PATH editing, and binary self-replacement / release-downloader behavior.
+- Files modified:
+  - `docs/plans/in-progress/shared-capability-parity-plan.md`
+  - `docs/plans/in-progress/shared-capability-parity-progress.md`
+  - `scripts/run_cli_parity.sh`
+  - `src/cli.zig`
+  - `src/main.zig`

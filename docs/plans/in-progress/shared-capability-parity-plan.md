@@ -4,7 +4,7 @@
 Bring every currently shared-but-not-interoperable capability in `docs/port-comparison.md` up to full parity with `codebase-memory-mcp`, then update the comparison docs to mark those rows as interoperable.
 
 ## Current Phase
-Phase 4
+Phase 5
 
 ## File Map
 - Modify: `docs/plans/in-progress/shared-capability-parity-plan.md`
@@ -62,11 +62,11 @@ Phase 4
 - **Status:** completed
 
 ### Phase 4: Bring CLI and Productization Overlap to Full Parity
-- [ ] Extend `src/cli.zig` and `src/main.zig` so `install`, `uninstall`, and `update` match the original overlapping workflow expectations for shared agent targets, reporting, and persisted config handling instead of the current narrower source-build path.
-- [ ] Expand `src/cli.zig` agent detection so the auto-detected integration surface matches the original wherever the underlying agent config format is already supported by the Zig repo, and document any truly unsupported targets as out-of-scope only if they are no longer counted as shared capability rows.
-- [ ] Preserve the current temp-HOME-safe testing approach while broadening `src/cli.zig` tests to cover the parity-level install, uninstall, update, detection, and reporting behavior this plan is targeting.
-- [ ] Add manual verification commands and, where practical, scripted checks that compare Zig CLI output against the original for overlapping installer/config flows without touching live user config.
-- **Status:** pending
+- [x] Extend `src/cli.zig` and `src/main.zig` so `install`, `uninstall`, and `update` match the original overlapping workflow expectations for shared agent targets, reporting, and persisted config handling instead of the current narrower source-build path.
+- [x] Expand `src/cli.zig` agent detection so the auto-detected integration surface matches the original wherever the underlying agent config format is already supported by the Zig repo, and document any truly unsupported targets as out-of-scope only if they are no longer counted as shared capability rows.
+- [x] Preserve the current temp-HOME-safe testing approach while broadening `src/cli.zig` tests to cover the parity-level install, uninstall, update, detection, and reporting behavior this plan is targeting.
+- [x] Add manual verification commands and, where practical, scripted checks that compare Zig CLI output against the original for overlapping installer/config flows without touching live user config.
+- **Status:** completed
 
 ### Phase 5: Close the Loop with Full-Parity Verification and Documentation
 - [ ] Re-run `zig build`, `zig build test`, and the expanded `bash scripts/run_interop_alignment.sh` against the new parity fixtures until every targeted shared row has a concrete green verification path.
