@@ -59,7 +59,7 @@ Phase 3
 - [ ] Upgrade `src/extractor.zig`, `src/pipeline.zig`, `src/store.zig`, and `src/graph_buffer.zig` so `USAGE`, type-reference, semantic-edge, `CONFIGURES`, `WRITES`, and `USES_TYPE` behavior match the original overlapping graph contract rather than the current approximations.
 - [ ] Add the necessary parser/build integration changes in `build.zig` and `build.zig.zon` only where the extractor work requires new vendored parser inputs for already-overlapping language behavior, and keep the phase scoped away from entirely new subsystems such as route graphs or UI.
 - [ ] Add direct regression coverage in `src/extractor.zig`, `src/pipeline.zig`, `src/registry.zig`, and `src/store.zig`, then expand `testdata/interop/manifest.json` and `scripts/run_interop_alignment.sh` so the new parity fixtures prove the upgraded graph facts against the original implementation.
-- **Status:** pending
+- **Status:** in progress
 
 ### Phase 4: Bring CLI and Productization Overlap to Full Parity
 - [ ] Extend `src/cli.zig` and `src/main.zig` so `install`, `uninstall`, and `update` match the original overlapping workflow expectations for shared agent targets, reporting, and persisted config handling instead of the current narrower source-build path.

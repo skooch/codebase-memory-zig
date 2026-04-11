@@ -1578,6 +1578,117 @@ test "pipeline emits decorator and multi-target semantic edges" {
     try std.testing.expect(edgeTargetsContain(worker_port_inherits, extra_port_id));
 }
 
+test "pipeline aligns module-level declaration usages with semantic reference sources" {
+    const allocator = std.testing.allocator;
+
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(
+        allocator,
+        "/tmp/cbm-pipeline-decl-usage-{x}",
+        .{project_id},
+    );
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    {
+        var dir = try std.fs.cwd().openDir(project_dir, .{});
+        defer dir.close();
+
+        var py = try dir.createFile("python_semantics.py", .{});
+        defer py.close();
+        try py.writeAll(
+            \\def trace(fn):
+            \\    return fn
+            \\
+            \\class Base:
+            \\    pass
+            \\
+            \\@trace
+            \\def run() -> int:
+            \\    return 1
+            \\
+            \\class Worker(Base):
+            \\    pass
+            \\
+        );
+
+        var js = try dir.createFile("logger.js", .{});
+        defer js.close();
+        try js.writeAll(
+            \\class BaseLogger {
+            \\  write(message) {
+            \\    return message;
+            \\  }
+            \\}
+            \\
+            \\class FileLogger extends BaseLogger {
+            \\  log(message) {
+            \\    return this.write(message);
+            \\  }
+            \\}
+            \\
+        );
+
+        try dir.makePath("src");
+        var rs = try dir.createFile("src/lib.rs", .{});
+        defer rs.close();
+        try rs.writeAll(
+            \\pub trait Runner {
+            \\    fn run(&self) -> String;
+            \\}
+            \\
+            \\pub struct Config {
+            \\    pub mode: String,
+            \\}
+            \\
+            \\pub struct Worker {
+            \\    pub config: Config,
+            \\}
+            \\
+            \\impl Runner for Worker {
+            \\    fn run(&self) -> String {
+            \\        self.config.mode.clone()
+            \\    }
+            \\}
+            \\
+        );
+    }
+
+    var db = try store.Store.openMemory(allocator);
+    defer db.deinit();
+
+    var pipeline = Pipeline.init(allocator, project_dir, .full);
+    defer pipeline.deinit();
+    try pipeline.run(&db);
+
+    const project_name = std.fs.path.basename(project_dir);
+
+    const py_module_id = try findSingleNodeByNameInFile(&db, project_name, "Module", "python_semantics", "python_semantics.py");
+    const trace_id = try findSingleNodeByNameInFile(&db, project_name, "Function", "trace", "python_semantics.py");
+    const base_id = try findSingleNodeByNameInFile(&db, project_name, "Class", "Base", "python_semantics.py");
+    const py_usages = try db.findEdgesBySource(project_name, py_module_id, "USAGE");
+    defer db.freeEdges(py_usages);
+    try std.testing.expect(edgeTargetsContain(py_usages, trace_id));
+    try std.testing.expect(edgeTargetsContain(py_usages, base_id));
+
+    const js_module_id = try findSingleNodeByNameInFile(&db, project_name, "Module", "logger", "logger.js");
+    const js_base_id = try findSingleNodeByNameInFile(&db, project_name, "Class", "BaseLogger", "logger.js");
+    const js_usages = try db.findEdgesBySource(project_name, js_module_id, "USAGE");
+    defer db.freeEdges(js_usages);
+    try std.testing.expect(edgeTargetsContain(js_usages, js_base_id));
+
+    const rust_module_id = try findSingleNodeByNameInFile(&db, project_name, "Module", "lib", "src/lib.rs");
+    const rust_worker_id = try findSingleNodeByNameInFile(&db, project_name, "Class", "Worker", "src/lib.rs");
+    const rust_config_id = try findSingleNodeByNameInFile(&db, project_name, "Class", "Config", "src/lib.rs");
+    const rust_runner_id = try findSingleNodeByNameInFile(&db, project_name, "Interface", "Runner", "src/lib.rs");
+    const rust_usages = try db.findEdgesBySource(project_name, rust_module_id, "USAGE");
+    defer db.freeEdges(rust_usages);
+    try std.testing.expect(edgeTargetsContain(rust_usages, rust_worker_id));
+    try std.testing.expect(edgeTargetsContain(rust_usages, rust_config_id));
+    try std.testing.expect(!edgeTargetsContain(rust_usages, rust_runner_id));
+}
+
 test "pipeline emits similarity edges and fingerprints for near-duplicate functions" {
     const allocator = std.testing.allocator;
 

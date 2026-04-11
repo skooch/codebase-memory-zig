@@ -72,3 +72,25 @@
   - `src/mcp.zig`
   - `src/pipeline.zig`
   - `testdata/interop/manifest.json`
+
+### Phase 3: Bring Shared Graph Construction and Edge Semantics to Full Parity
+- **Status:** in progress
+- Actions:
+  - Started the phase with the first evidence-backed graph-fidelity slice instead of trying to move every remaining edge family at once: declaration-context `USAGE` parity for the shared Python, JavaScript, and Rust fixtures.
+  - Confirmed from direct Zig/C fixture probes that the original emits module-scoped usage facts for decorator references, inheritance bases, and some Rust declaration-time type references that the Zig extractor either missed or attributed differently.
+  - Updated `src/extractor.zig` so decorator references now also emit module-scoped unresolved usage facts, Python and JavaScript inheritance lines can emit module-scoped usage references alongside semantic hints, and Rust `impl Trait for Type` lines emit the `Type` usage fact without incorrectly emitting the trait as a usage target.
+  - Tightened rust bare-usage collection so struct-literal type names used as call arguments no longer produce the extra function-scoped `USAGE` edge that the original does not emit on the parity fixture.
+  - Added a focused `src/pipeline.zig` regression test that proves module-level declaration usages for Python decorators and bases, JavaScript `extends`, and Rust declaration references while explicitly checking that the rust module usage set does not incorrectly include the `Runner` interface.
+  - Expanded `testdata/interop/manifest.json` with narrow `query_graph` assertions for the newly shared usage facts:
+    - Python `trace`
+    - Python `BaseWorker`
+    - JavaScript `BaseLogger`
+    - Rust `Config`
+    - Rust `Worker`
+  - Re-ran `zig build`, `zig build test`, and `bash scripts/run_interop_alignment.sh`; the interop baseline remains green at `67` comparisons, `58` strict matches, `9` diagnostic comparisons, `0` mismatches, and `cli_progress: match`.
+- Files modified:
+  - `docs/plans/in-progress/shared-capability-parity-plan.md`
+  - `docs/plans/in-progress/shared-capability-parity-progress.md`
+  - `src/extractor.zig`
+  - `src/pipeline.zig`
+  - `testdata/interop/manifest.json`

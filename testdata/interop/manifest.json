@@ -392,6 +392,28 @@
               "columns": ["a.name", "b.name"],
               "required_rows_min": 1
             }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:USAGE]->(b) WHERE b.name = \"trace\" RETURN a.label, a.file_path, b.label, b.name ORDER BY a.file_path, b.name",
+              "project": "python-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["a.label", "a.file_path", "b.label", "b.name"],
+              "required_rows_min": 1
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:USAGE]->(b) WHERE b.name = \"BaseWorker\" RETURN a.label, a.file_path, b.label, b.name ORDER BY a.file_path, b.name",
+              "project": "python-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["a.label", "a.file_path", "b.label", "b.name"],
+              "required_rows_min": 1
+            }
           }
         ],
         "trace_call_path": [
@@ -528,6 +550,17 @@
             },
             "expect": {
               "columns": ["a.name", "b.name"],
+              "required_rows_min": 1
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:USAGE]->(b) WHERE b.name = \"BaseLogger\" RETURN a.label, a.file_path, b.label, b.name ORDER BY a.file_path, b.name",
+              "project": "javascript-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["a.label", "a.file_path", "b.label", "b.name"],
               "required_rows_min": 1
             }
           }
@@ -804,6 +837,28 @@
             },
             "expect": {
               "columns": ["a.name", "b.name"],
+              "required_rows_min": 1
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:USAGE]->(b) WHERE b.name = \"Config\" RETURN a.label, a.file_path, b.label, b.name ORDER BY a.file_path, b.name",
+              "project": "rust-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["a.label", "a.file_path", "b.label", "b.name"],
+              "required_rows_min": 1
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:USAGE]->(b) WHERE b.name = \"Worker\" RETURN a.label, a.file_path, b.label, b.name ORDER BY a.file_path, b.name",
+              "project": "rust-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["a.label", "a.file_path", "b.label", "b.name"],
               "required_rows_min": 1
             }
           }

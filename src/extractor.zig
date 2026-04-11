@@ -248,6 +248,7 @@ pub fn extractFile(
 
         if (parseDecoratorReference(clean_line)) |decorator_name| {
             try pending_decorators.append(allocator, try allocator.dupe(u8, decorator_name));
+            try appendUnresolvedUsageRef(allocator, module_id, decorator_name, rel, &unresolved_usages);
             continue;
         }
 
@@ -333,6 +334,24 @@ pub fn extractFile(
             rel,
             &semantic_hints,
         );
+        try appendModuleDeclarationUsages(
+            allocator,
+            file.language,
+            clean_line,
+            module_id,
+            rel,
+            &unresolved_usages,
+        );
+        try appendRustModuleFieldTypeUsages(
+            allocator,
+            file.language,
+            clean_line,
+            current_scope_id,
+            module_id,
+            rel,
+            gb,
+            &unresolved_usages,
+        );
 
         const collect_definition_calls_at_module = shouldCollectDefinitionCallsAtModuleScope(file.language, clean_line, parsed_symbol);
         const call_scope_id = if (collect_definition_calls_at_module) module_id else current_scope_id;
@@ -374,7 +393,7 @@ pub fn extractFile(
             defer freeStringSlices(allocator, names);
             for (names) |ref_name| {
                 if (ref_name.len == 0) continue;
-                const user_id = if (current_scope_id != 0) current_scope_id else module_id;
+                const user_id = usageOwnerForLine(parsed_symbol, current_scope_id, module_id);
                 try unresolved_usages.append(allocator, .{
                     .user_id = user_id,
                     .ref_name = try allocator.dupe(u8, ref_name),
@@ -833,6 +852,89 @@ fn appendDelimitedSemanticHints(
     }
 }
 
+fn appendModuleDeclarationUsages(
+    allocator: std.mem.Allocator,
+    language: discover.Language,
+    line: []const u8,
+    module_id: i64,
+    file_path: []const u8,
+    out: *std.ArrayList(UnresolvedUsage),
+) !void {
+    if (module_id == 0) return;
+
+    switch (language) {
+        .python => try appendDelimitedUnresolvedUsages(
+            allocator,
+            module_id,
+            file_path,
+            parsePythonInheritanceList(line),
+            out,
+        ),
+        .javascript => if (parseJsInheritance(line)) |parent_name| {
+            try appendUnresolvedUsageRef(allocator, module_id, parent_name, file_path, out);
+        },
+        .rust => if (parseRustImplParts(line)) |parts| {
+            try appendUnresolvedUsageRef(allocator, module_id, parts.target_name, file_path, out);
+        },
+        else => {},
+    }
+}
+
+fn appendUnresolvedUsageRef(
+    allocator: std.mem.Allocator,
+    user_id: i64,
+    ref_name: []const u8,
+    file_path: []const u8,
+    out: *std.ArrayList(UnresolvedUsage),
+) !void {
+    if (user_id == 0 or ref_name.len == 0) return;
+    try out.append(allocator, .{
+        .user_id = user_id,
+        .ref_name = try allocator.dupe(u8, ref_name),
+        .file_path = try allocator.dupe(u8, file_path),
+    });
+}
+
+fn appendRustModuleFieldTypeUsages(
+    allocator: std.mem.Allocator,
+    language: discover.Language,
+    line: []const u8,
+    current_scope_id: i64,
+    module_id: i64,
+    file_path: []const u8,
+    gb: *const graph_buffer.GraphBuffer,
+    out: *std.ArrayList(UnresolvedUsage),
+) !void {
+    if (language != .rust or module_id == 0 or current_scope_id == 0 or current_scope_id == module_id) return;
+    const scope_node = gb.findNodeById(current_scope_id) orelse return;
+    if (!std.mem.eql(u8, scope_node.label, "Class")) return;
+    if (std.mem.indexOfScalar(u8, line, '(') != null) return;
+
+    var names: std.ArrayList([]const u8) = .empty;
+    defer freePendingStringSlices(allocator, &names);
+    try appendReferencesAfterMarker(allocator, line, ":", &names);
+    dedupeStringArray(allocator, &names);
+    for (names.items) |name| {
+        try appendUnresolvedUsageRef(allocator, module_id, name, file_path, out);
+    }
+}
+
+fn appendDelimitedUnresolvedUsages(
+    allocator: std.mem.Allocator,
+    user_id: i64,
+    file_path: []const u8,
+    raw_names: ?[]const u8,
+    out: *std.ArrayList(UnresolvedUsage),
+) !void {
+    const names = raw_names orelse return;
+    var iter = std.mem.splitSequence(u8, names, ",");
+    while (iter.next()) |raw_name| {
+        if (normalizeReferenceName(raw_name)) |name| {
+            try appendUnresolvedUsageRef(allocator, user_id, name, file_path, out);
+        }
+    }
+}
+
 fn collectUsages(
     allocator: std.mem.Allocator,
     line: []const u8,
@@ -854,19 +956,31 @@ fn collectUsages(
     }
     if (parsed_symbol) |sym| {
         if (!isDeclarationLabel(sym.label)) {
-            try appendBareUsageCandidates(allocator, line, &names);
+            try appendBareUsageCandidates(allocator, line, language, &names);
         } else {
             if (names.items.len == 0) return null;
             dedupeStringArray(allocator, &names);
             return try names.toOwnedSlice(allocator);
         }
     } else {
-        try appendBareUsageCandidates(allocator, line, &names);
+        try appendBareUsageCandidates(allocator, line, language, &names);
     }
 
     if (names.items.len == 0) return null;
     dedupeStringArray(allocator, &names);
     return try names.toOwnedSlice(allocator);
+}
+
+fn usageOwnerForLine(parsed_symbol: ?ParsedSymbol, current_scope_id: i64, module_id: i64) i64 {
+    const fallback = if (current_scope_id != 0) current_scope_id else module_id;
+    const symbol = parsed_symbol orelse return fallback;
+    if (std.mem.eql(u8, symbol.label, "Function") or std.mem.eql(u8, symbol.label, "Method")) {
+        return fallback;
+    }
+    if (isDeclarationLabel(symbol.label)) {
+        return if (module_id != 0) module_id else fallback;
+    }
+    return fallback;
 }
 
 fn collectCalls(
@@ -1683,7 +1797,9 @@ fn appendTypeUsageCandidates(
         },
         .rust => {
             try appendReferencesAfterMarker(allocator, line, ":", out);
-            try appendReferencesAfterMarker(allocator, line, "impl ", out);
+            if (std.mem.indexOf(u8, line, " for ") == null) {
+                try appendReferencesAfterMarker(allocator, line, "impl ", out);
+            }
             try appendReferencesAfterMarker(allocator, line, "->", out);
         },
         else => {},
@@ -1716,15 +1832,16 @@ fn appendReferencesAfterMarker(
 fn appendBareUsageCandidates(
     allocator: std.mem.Allocator,
     line: []const u8,
+    language: discover.Language,
     out: *std.ArrayList([]const u8),
 ) !void {
     if (assignmentRhs(line)) |rhs| {
-        try appendReferenceCandidatesFromExpr(allocator, rhs, out);
+        try appendReferenceCandidatesFromExpr(allocator, rhs, language, out);
     }
     if (std.mem.indexOf(u8, line, "return ")) |return_pos| {
-        try appendReferenceCandidatesFromExpr(allocator, line[return_pos + "return ".len ..], out);
+        try appendReferenceCandidatesFromExpr(allocator, line[return_pos + "return ".len ..], language, out);
     }
-    try appendArgumentReferenceCandidates(allocator, line, out);
+    try appendArgumentReferenceCandidates(allocator, line, language, out);
 }
 
 fn assignmentRhs(line: []const u8) ?[]const u8 {
@@ -1741,6 +1858,7 @@ fn assignmentRhs(line: []const u8) ?[]const u8 {
 fn appendArgumentReferenceCandidates(
     allocator: std.mem.Allocator,
     line: []const u8,
+    language: discover.Language,
     out: *std.ArrayList([]const u8),
 ) !void {
     var depth: usize = 0;
@@ -1757,7 +1875,7 @@ fn appendArgumentReferenceCandidates(
             depth -= 1;
             if (depth == 0) {
                 if (segment_start) |start| {
-                    try appendReferenceCandidatesFromExpr(allocator, line[start..idx], out);
+                    try appendReferenceCandidatesFromExpr(allocator, line[start..idx], language, out);
                     segment_start = null;
                 }
             }
@@ -1768,6 +1886,7 @@ fn appendArgumentReferenceCandidates(
 fn appendReferenceCandidatesFromExpr(
     allocator: std.mem.Allocator,
     expr: []const u8,
+    language: discover.Language,
     out: *std.ArrayList([]const u8),
 ) !void {
     var i: usize = 0;
@@ -1815,7 +1934,8 @@ fn appendReferenceCandidatesFromExpr(
 
         const next = skipWhitespace(expr, end);
         const candidate = expr[start..end];
-        if (candidate.len > 0 and (next >= expr.len or expr[next] != '(')) {
+        const starts_struct_literal = next < expr.len and expr[next] == '{';
+        if (candidate.len > 0 and (next >= expr.len or expr[next] != '(') and !(language == .rust and starts_struct_literal)) {
             const tail = lastImportSegment(candidate);
             if (!isKeywordCandidate(tail)) {
                 try out.append(allocator, try allocator.dupe(u8, candidate));
