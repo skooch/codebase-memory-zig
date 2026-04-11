@@ -81,8 +81,8 @@ It is intentionally not a wish list. It describes:
 | `tools/call` | Yes | Yes | `Near parity` | Yes | Core RPC path is implemented in both. |
 | One-shot CLI tool execution | `codebase-memory-mcp cli ...` | `cbm cli ...` | `Near parity` | Yes | Both support direct command-line tool invocation. |
 | CLI progress output | Rich progress sink with per-stage pipeline events | Shared phase-aware progress stream for overlapping commands | `Near parity` | Yes | The temp-HOME CLI parity check in the interop harness now reports `cli_progress: match`; richer original-only lifecycle/runtime extras remain separate rows. |
-| Idle-store / session-lifecycle extras | Present in the original MCP runtime | Not implemented in the Zig runtime | `Partial` | No | The Zig runtime focuses on the persistent store + watcher path, not full lifecycle parity. |
-| Signal-driven graceful shutdown | Yes | Not explicitly implemented | `Partial` | No | The C runtime sets signal handlers; the Zig runtime relies on normal process teardown. |
+| Idle-store / session-lifecycle extras | Present in the original MCP runtime | Not implemented in the Zig runtime | `Partial` | No | The Zig runtime now matches the smaller shutdown/update-notice overlap, but it still does not implement the original's broader idle-store and session-lifecycle behavior. |
+| Signal-driven graceful shutdown | Yes | Yes | `Near parity` | Yes | Zig now installs `SIGINT` / `SIGTERM` handlers and the runtime harness verifies clean shutdown while stdio is active. |
 
 ### 2.2 MCP Tools
 
@@ -178,7 +178,7 @@ This section compares what kinds of graph entities the two systems are built to 
 | Startup auto-index | Yes | Yes | `Near parity` | Yes | Zig supports config-driven or env-driven startup auto-index. |
 | Previously indexed project watcher registration | Yes | Yes | `Near parity` | Yes | Explicitly wired in Zig Phase 6. |
 | UI runtime flags (`--ui`, `--port`) | Yes | No | `Cut` | No | Zig does not ship the UI server. |
-| Startup update notification | Yes | No | `Deferred` | No | The original README documents update checks on startup. |
+| Startup update notification | Yes | Yes, one-shot notice on the first post-initialize response | `Near parity` | Yes | Zig now starts an update check on `initialize` and surfaces a single `update_notice`, with deterministic env overrides covered by the runtime harness. |
 | Benchmarking / soak / security scripts | Present | Initial benchmark suite now present, but much narrower than the original script set | `Partial` | No | Zig now ships `scripts/run_benchmark_suite.sh` for first-slice accuracy and performance comparisons, but it does not yet reproduce the original's broader benchmark, soak, and security script surface. |
 
 ## 7. CLI and Productization

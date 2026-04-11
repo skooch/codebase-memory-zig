@@ -2,6 +2,7 @@ const std = @import("std");
 const cbm = @import("cbm");
 const build_options = @import("build_options");
 const cli = @import("cli.zig");
+const runtime_lifecycle = cbm.runtime_lifecycle;
 
 const usage =
     \\Usage: cbm [COMMAND] [OPTIONS]
@@ -105,12 +106,16 @@ const RuntimeState = struct {
 fn runMcpServer(allocator: std.mem.Allocator) !void {
     _ = allocator;
     const runtime_allocator = std.heap.c_allocator;
+    runtime_lifecycle.installSignalHandlers();
 
     var runtime = RuntimeState{
         .allocator = runtime_allocator,
         .db_path = try runtimeDbPath(runtime_allocator),
     };
     defer runtime.deinit();
+
+    var lifecycle = runtime_lifecycle.RuntimeLifecycle.init(runtime_allocator, build_options.version);
+    defer lifecycle.deinit();
 
     var db = try openStoreAtPath(runtime_allocator, runtime.db_path);
     defer db.deinit();
@@ -129,12 +134,16 @@ fn runMcpServer(allocator: std.mem.Allocator) !void {
     var server = cbm.McpServer.init(runtime_allocator, &db);
     server.setWatcher(&watcher);
     server.setIndexGuard(&runtime.index_busy);
+    server.setRuntimeLifecycle(&lifecycle);
     defer server.deinit();
 
     const stdin_file = std.fs.File.stdin();
     const stdout_file = std.fs.File.stdout();
 
-    try server.runFiles(stdin_file, stdout_file);
+    server.runFiles(stdin_file, stdout_file) catch |err| {
+        if (runtime_lifecycle.shutdownRequested()) return;
+        return err;
+    };
 }
 
 fn watcherThreadMain(watcher: *cbm.watcher.Watcher) void {

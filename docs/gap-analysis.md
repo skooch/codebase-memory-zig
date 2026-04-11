@@ -45,6 +45,8 @@ Completed after the readiness gate:
   - incremental indexing
   - parallel extraction and graph-buffer merge
   - MinHash/LSH similarity edges
+  - signal-driven graceful shutdown for stdio MCP sessions
+  - one-shot startup update notification on the first post-initialize response
 - CLI and productization baseline:
   - persisted runtime config
   - `install`, `uninstall`, `update`, and `config`
@@ -66,6 +68,7 @@ Intentionally deferred after Phase 7:
 - Deeper usage/type-reference extraction parity and broader cross-language semantics beyond the current target daily-use slice.
 - Git-history coupling, route nodes, config-linking, and richer decorator/enrichment follow-ons.
 - Broader installer/self-update behavior beyond the current source-build-friendly Codex CLI / Claude Code support.
+- Idle-store and session-lifecycle extras beyond the current persistent-store + watcher runtime model.
 
 ## Shared Capability Full-Parity Follow-On
 
@@ -115,6 +118,8 @@ Deferred or optional future slices:
 - Productization beyond the current contract:
   - broader installer/self-update behavior
   - broader agent integration coverage and installer diagnostics
+- Runtime follow-ons beyond the current contract:
+  - idle-store eviction and other broader session-lifecycle extras from the original runtime
 
 ### Recommended Sequencing
 

@@ -24,6 +24,7 @@ const adr = @import("adr.zig");
 const discover = @import("discover.zig");
 const store = @import("store.zig");
 const pipeline = @import("pipeline.zig");
+const runtime_lifecycle = @import("runtime_lifecycle.zig");
 const cypher = @import("cypher.zig");
 const watcher = @import("watcher.zig");
 
@@ -89,6 +90,7 @@ pub const McpServer = struct {
     db: *Store,
     watcher_ref: ?*watcher.Watcher = null,
     index_guard: ?*std.atomic.Value(bool) = null,
+    lifecycle_ref: ?*runtime_lifecycle.RuntimeLifecycle = null,
 
     pub fn init(allocator: std.mem.Allocator, db: *Store) McpServer {
         return .{ .allocator = allocator, .db = db };
@@ -104,6 +106,10 @@ pub const McpServer = struct {
 
     pub fn setIndexGuard(self: *McpServer, index_guard: *std.atomic.Value(bool)) void {
         self.index_guard = index_guard;
+    }
+
+    pub fn setRuntimeLifecycle(self: *McpServer, lifecycle_ref: *runtime_lifecycle.RuntimeLifecycle) void {
+        self.lifecycle_ref = lifecycle_ref;
     }
 
     pub fn handleRequest(self: *McpServer, request: []const u8) !?[]const u8 {
@@ -181,6 +187,7 @@ pub const McpServer = struct {
         }
 
         if (std.mem.eql(u8, request.value.method, "initialize")) {
+            if (self.lifecycle_ref) |lifecycle| lifecycle.startUpdateCheck();
             return self.successResponse(
                 request.value.id,
                 "{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"codebase-memory-zig\",\"version\":\"0.0.0\"}}",
@@ -204,14 +211,30 @@ pub const McpServer = struct {
                 \\{"name":"manage_adr","description":"Create or update Architecture Decision Records","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"mode":{"type":"string","enum":["get","update","sections"]},"content":{"type":"string"},"sections":{"type":"array","items":{"type":"string"}}},"required":["project"]}}
                 \\]}
             ;
-            return self.successResponse(request.value.id, payload);
+            const response = try self.successResponse(request.value.id, payload);
+            if (response) |owned_response| {
+                if (self.lifecycle_ref) |lifecycle| {
+                    const updated_response = try lifecycle.injectUpdateNotice(owned_response);
+                    return updated_response;
+                }
+                return owned_response;
+            }
+            return null;
         }
         if (std.mem.eql(u8, request.value.method, "tools/call")) {
             if (request.value.params == null) {
                 return self.errorResponse(request.value.id, -32602, "Missing params");
             }
             const call_request = try extractToolCall(self.allocator, request.value.params.?);
-            return self.dispatchToolCall(request.value.id, call_request);
+            const response = try self.dispatchToolCall(request.value.id, call_request);
+            if (response) |owned_response| {
+                if (self.lifecycle_ref) |lifecycle| {
+                    const updated_response = try lifecycle.injectUpdateNotice(owned_response);
+                    return updated_response;
+                }
+                return owned_response;
+            }
+            return null;
         }
 
         return self.errorResponse(request.value.id, -32601, "Method not found");
