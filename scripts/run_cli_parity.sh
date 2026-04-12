@@ -5,9 +5,49 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-C_BIN_DEFAULT="$ROOT_DIR/../codebase-memory-mcp/build/c/codebase-memory-mcp"
-C_BIN="${CODEBASE_MEMORY_C_BIN:-$C_BIN_DEFAULT}"
-REPORT_DIR="${1:-$ROOT_DIR/.interop_reports}"
+# Parse flags before positional args
+MODE="compare"
+POSITIONAL_ARGS=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --zig-only)
+      if [ "$MODE" = "update-golden" ]; then
+        echo "ERROR: --zig-only and --update-golden are mutually exclusive" >&2
+        exit 1
+      fi
+      MODE="zig-only"
+      shift
+      ;;
+    --update-golden)
+      if [ "$MODE" = "zig-only" ]; then
+        echo "ERROR: --zig-only and --update-golden are mutually exclusive" >&2
+        exit 1
+      fi
+      MODE="update-golden"
+      shift
+      ;;
+    *)
+      POSITIONAL_ARGS+=("$1")
+      shift
+      ;;
+  esac
+done
+
+REPORT_DIR="${POSITIONAL_ARGS[0]:-$ROOT_DIR/.interop_reports}"
+GOLDEN_DIR="$ROOT_DIR/testdata/interop/golden"
+
+# C binary is only needed in compare mode
+C_BIN=""
+if [ "$MODE" = "compare" ]; then
+  C_BIN_DEFAULT="$ROOT_DIR/../codebase-memory-mcp/build/c/codebase-memory-mcp"
+  if [ ! -x "$C_BIN_DEFAULT" ]; then
+    ALT_C_BIN_DEFAULT="$ROOT_DIR/../../codebase-memory-mcp/build/c/codebase-memory-mcp"
+    if [ -x "$ALT_C_BIN_DEFAULT" ]; then
+      C_BIN_DEFAULT="$ALT_C_BIN_DEFAULT"
+    fi
+  fi
+  C_BIN="${CODEBASE_MEMORY_C_BIN:-$C_BIN_DEFAULT}"
+fi
 
 if [ -n "${CODEBASE_MEMORY_ZIG_BIN:-}" ]; then
   ZIG_BIN="$CODEBASE_MEMORY_ZIG_BIN"
@@ -18,7 +58,7 @@ fi
 
 mkdir -p "$REPORT_DIR"
 
-python3 - "$ZIG_BIN" "$C_BIN" "$REPORT_DIR" <<'PY'
+python3 - "$ZIG_BIN" "$C_BIN" "$REPORT_DIR" "$MODE" "$GOLDEN_DIR" <<'PY'
 import hashlib
 import json
 import os
@@ -26,10 +66,13 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 zig_bin = Path(sys.argv[1])
-c_bin = Path(sys.argv[2])
+c_bin_arg = sys.argv[2]
 report_dir = Path(sys.argv[3])
+mode = sys.argv[4] if len(sys.argv) > 4 else "compare"
+golden_dir = Path(sys.argv[5]) if len(sys.argv) > 5 else None
 
 
 def contains_ci(text: str, needle: str) -> bool:
@@ -47,7 +90,7 @@ def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def run_cmd(argv: list[str], home: Path) -> subprocess.CompletedProcess[str]:
+def run_cmd(argv: List[str], home: Path) -> subprocess.CompletedProcess:
     env = os.environ.copy()
     env["HOME"] = str(home)
     env["CBM_CACHE_DIR"] = str(home / ".cache" / "codebase-memory-zig")
@@ -149,54 +192,153 @@ def inspect_impl(label: str, binary: Path) -> dict:
         }
 
 
-report = {
-    "zig_bin": str(zig_bin),
-    "c_bin": str(c_bin),
-    "zig": inspect_impl("zig", zig_bin),
-    "c": inspect_impl("c", c_bin),
-}
+GOLDEN_FILE = "cli-parity.json"
 
-compare_keys = sorted(report["zig"]["shared_contract"].keys())
-report["comparison"] = {
-    "keys": compare_keys,
-    "zig_passed": [key for key in compare_keys if report["zig"]["shared_contract"][key]],
-    "c_passed": [key for key in compare_keys if report["c"]["shared_contract"][key]],
-    "mismatches": [
-        {
-            "key": key,
-            "zig": report["zig"]["shared_contract"][key],
-            "c": report["c"]["shared_contract"][key],
-        }
-        for key in compare_keys
-        if report["zig"]["shared_contract"][key] != report["c"]["shared_contract"][key]
-    ],
-}
 
-json_path = report_dir / "cli_parity_report.json"
-md_path = report_dir / "cli_parity_report.md"
-json_path.write_text(json.dumps(report, indent=2) + "\n")
+def run_update_golden(zig_result: Dict[str, Any]) -> None:
+    """Write shared_contract to golden snapshot file."""
+    assert golden_dir is not None, "golden_dir required for update-golden mode"
+    golden_dir.mkdir(parents=True, exist_ok=True)
+    golden_path = golden_dir / GOLDEN_FILE
+    snapshot = {"shared_contract": zig_result["shared_contract"]}
+    golden_path.write_text(json.dumps(snapshot, indent=2, sort_keys=True) + "\n")
+    print("updated: %s" % golden_path)
+    print(json.dumps(snapshot, indent=2, sort_keys=True))
 
-lines = [
-    "# CLI Parity Report",
-    "",
-    f"- Zig binary: `{zig_bin}`",
-    f"- C binary: `{c_bin}`",
-    f"- Compared checks: {len(compare_keys)}",
-    f"- Mismatches: {len(report['comparison']['mismatches'])}",
-    "",
-    "## Summary",
-]
-for key in compare_keys:
-    zig_ok = report["zig"]["shared_contract"][key]
-    c_ok = report["c"]["shared_contract"][key]
-    status = "match" if zig_ok == c_ok else "mismatch"
-    lines.append(f"- `{key}`: {status} (zig={zig_ok}, c={c_ok})")
-md_path.write_text("\n".join(lines) + "\n")
 
-print(f"wrote report: {json_path}")
-print(f"wrote report: {md_path}")
-print(json.dumps(report["comparison"], indent=2))
+def run_zig_only(zig_result: Dict[str, Any]) -> None:
+    """Compare Zig shared_contract against golden snapshot."""
+    assert golden_dir is not None, "golden_dir required for zig-only mode"
+    golden_path = golden_dir / GOLDEN_FILE
+    if not golden_path.exists():
+        print("FAIL: golden snapshot missing: %s" % golden_path)
+        print("Run with --update-golden to create it.")
+        raise SystemExit(1)
 
-if report["comparison"]["mismatches"]:
+    golden = json.loads(golden_path.read_text())
+    golden_contract = golden.get("shared_contract", {})
+    current_contract = zig_result["shared_contract"]
+
+    compare_keys = sorted(set(list(golden_contract.keys()) + list(current_contract.keys())))
+    mismatches = []  # type: List[Dict[str, Any]]
+    for key in compare_keys:
+        golden_val = golden_contract.get(key)
+        current_val = current_contract.get(key)
+        if golden_val != current_val:
+            mismatches.append({
+                "key": key,
+                "golden": golden_val,
+                "current": current_val,
+            })
+
+    # Write report
+    report = {
+        "mode": "zig-only",
+        "zig_bin": str(zig_bin),
+        "golden_path": str(golden_path),
+        "keys": compare_keys,
+        "mismatches": mismatches,
+    }  # type: Dict[str, Any]
+    json_path = report_dir / "cli_parity_report.json"
+    json_path.write_text(json.dumps(report, indent=2) + "\n")
+
+    md_lines = [
+        "# CLI Parity Report (zig-only)",
+        "",
+        "- Zig binary: `%s`" % zig_bin,
+        "- Golden: `%s`" % golden_path,
+        "- Compared checks: %d" % len(compare_keys),
+        "- Mismatches: %d" % len(mismatches),
+        "",
+        "## Summary",
+    ]
+    for key in compare_keys:
+        golden_val = golden_contract.get(key)
+        current_val = current_contract.get(key)
+        status = "match" if golden_val == current_val else "MISMATCH"
+        md_lines.append("- `%s`: %s (current=%s, golden=%s)" % (key, status, current_val, golden_val))
+    md_path = report_dir / "cli_parity_report.md"
+    md_path.write_text("\n".join(md_lines) + "\n")
+
+    print("wrote report: %s" % json_path)
+    print("wrote report: %s" % md_path)
+
+    if mismatches:
+        print("\nFAIL: %d mismatches" % len(mismatches))
+        for m in mismatches:
+            print("  - %s: current=%s golden=%s" % (m["key"], m["current"], m["golden"]))
+        raise SystemExit(1)
+    else:
+        print("\nPASS: %d checks match golden snapshot" % len(compare_keys))
+
+
+def run_compare(zig_result: Dict[str, Any], c_result: Dict[str, Any]) -> None:
+    """Original compare mode: Zig vs C."""
+    report = {
+        "zig_bin": str(zig_bin),
+        "c_bin": c_bin_arg,
+        "zig": zig_result,
+        "c": c_result,
+    }  # type: Dict[str, Any]
+
+    compare_keys = sorted(report["zig"]["shared_contract"].keys())
+    report["comparison"] = {
+        "keys": compare_keys,
+        "zig_passed": [key for key in compare_keys if report["zig"]["shared_contract"][key]],
+        "c_passed": [key for key in compare_keys if report["c"]["shared_contract"][key]],
+        "mismatches": [
+            {
+                "key": key,
+                "zig": report["zig"]["shared_contract"][key],
+                "c": report["c"]["shared_contract"][key],
+            }
+            for key in compare_keys
+            if report["zig"]["shared_contract"][key] != report["c"]["shared_contract"][key]
+        ],
+    }
+
+    json_path = report_dir / "cli_parity_report.json"
+    md_path = report_dir / "cli_parity_report.md"
+    json_path.write_text(json.dumps(report, indent=2) + "\n")
+
+    lines = [
+        "# CLI Parity Report",
+        "",
+        "- Zig binary: `%s`" % zig_bin,
+        "- C binary: `%s`" % c_bin_arg,
+        "- Compared checks: %d" % len(compare_keys),
+        "- Mismatches: %d" % len(report["comparison"]["mismatches"]),
+        "",
+        "## Summary",
+    ]
+    for key in compare_keys:
+        zig_ok = report["zig"]["shared_contract"][key]
+        c_ok = report["c"]["shared_contract"][key]
+        status = "match" if zig_ok == c_ok else "mismatch"
+        lines.append("- `%s`: %s (zig=%s, c=%s)" % (key, status, zig_ok, c_ok))
+    md_path.write_text("\n".join(lines) + "\n")
+
+    print("wrote report: %s" % json_path)
+    print("wrote report: %s" % md_path)
+    print(json.dumps(report["comparison"], indent=2))
+
+    if report["comparison"]["mismatches"]:
+        raise SystemExit(1)
+
+
+# Main dispatch
+if mode in ("zig-only", "update-golden"):
+    zig_result = inspect_impl("zig", zig_bin)
+    if mode == "update-golden":
+        run_update_golden(zig_result)
+    else:
+        run_zig_only(zig_result)
+elif mode == "compare":
+    c_bin = Path(c_bin_arg)
+    zig_result = inspect_impl("zig", zig_bin)
+    c_result = inspect_impl("c", c_bin)
+    run_compare(zig_result, c_result)
+else:
+    print("ERROR: unknown mode: %s" % mode)
     raise SystemExit(1)
 PY

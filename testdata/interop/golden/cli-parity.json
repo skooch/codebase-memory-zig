@@ -1,0 +1,22 @@
+{
+  "shared_contract": {
+    "install_mentions_claude": true,
+    "install_mentions_claude_legacy_path": true,
+    "install_mentions_claude_nested_path": true,
+    "install_mentions_codex": true,
+    "install_mentions_codex_path": true,
+    "install_wrote_claude_legacy_binary": true,
+    "install_wrote_claude_nested_binary": true,
+    "install_wrote_codex_binary": true,
+    "uninstall_dry_run_kept_files": true,
+    "uninstall_dry_run_mentions": true,
+    "uninstall_dry_run_success": true,
+    "uninstall_removed_claude_legacy_binary": true,
+    "uninstall_removed_claude_nested_binary": true,
+    "uninstall_removed_codex_binary": true,
+    "uninstall_success": true,
+    "update_dry_run_kept_files": true,
+    "update_dry_run_mentions": true,
+    "update_dry_run_success": true
+  }
+}

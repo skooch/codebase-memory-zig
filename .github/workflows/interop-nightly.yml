@@ -53,6 +53,13 @@ jobs:
           CODEBASE_MEMORY_C_BIN="${{ github.workspace }}/codebase-memory-mcp/build/c/codebase-memory-mcp" \
             bash scripts/run_interop_alignment.sh
 
+      - name: Run full CLI parity comparison
+        continue-on-error: true
+        run: |
+          CODEBASE_MEMORY_ZIG_BIN="${{ github.workspace }}/zig-out/bin/cbm" \
+          CODEBASE_MEMORY_C_BIN="${{ github.workspace }}/codebase-memory-mcp/build/c/codebase-memory-mcp" \
+            bash scripts/run_cli_parity.sh
+
       - name: Upload interop report
         uses: actions/upload-artifact@v4
         if: always()
