@@ -130,6 +130,14 @@ pub fn execute(
     };
 }
 
+fn canPushdownLimit(parsed: ParsedQuery) bool {
+    if (parsed.conditions.len > 0) return false;
+    if (parsed.order_by.len > 0) return false;
+    if (parsed.returns.len == 1 and parsed.returns[0].kind == .count) return false;
+    if (parsed.returns.len > 0 and parsed.returns[0].kind == .distinct_field) return false;
+    return true;
+}
+
 fn executeNodeQuery(
     allocator: std.mem.Allocator,
     db: *Store,
@@ -138,10 +146,11 @@ fn executeNodeQuery(
     effective_limit: usize,
 ) !CypherResult {
     const pattern = parsed.node_pattern orelse return error.InvalidQuery;
+    const fetch_limit: usize = if (canPushdownLimit(parsed)) effective_limit else 100_000;
     const nodes = try db.searchNodes(.{
         .project = project,
         .label_pattern = pattern.label,
-        .limit = 100_000,
+        .limit = fetch_limit,
     });
     defer db.freeNodes(nodes);
 
@@ -174,10 +183,11 @@ fn executeEdgeQuery(
     effective_limit: usize,
 ) !CypherResult {
     const pattern = parsed.edge_pattern orelse return error.InvalidQuery;
+    const source_fetch_limit: usize = if (canPushdownLimit(parsed)) effective_limit else 100_000;
     const sources = try db.searchNodes(.{
         .project = project,
         .label_pattern = pattern.source.label,
-        .limit = 100_000,
+        .limit = source_fetch_limit,
     });
     defer db.freeNodes(sources);
 
