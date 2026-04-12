@@ -3,6 +3,7 @@ const discover = @import("discover.zig");
 const scip = @import("scip.zig");
 const search_index = @import("search_index.zig");
 const store = @import("store.zig");
+const text_match = @import("text_match.zig");
 
 const Store = store.Store;
 
@@ -855,7 +856,7 @@ fn appendSearchCodeHitsForPath(
         if (std.mem.indexOf(u8, rel_path, filter) == null) return false;
     }
     if (file_pattern) |pattern_filter| {
-        if (!globMatch(rel_path, pattern_filter)) return false;
+        if (!text_match.globMatch(rel_path, pattern_filter)) return false;
     }
 
     const bytes = std.fs.cwd().readFileAlloc(allocator, abs_path, 8 * 1024 * 1024) catch return false;
@@ -866,7 +867,7 @@ fn appendSearchCodeHitsForPath(
     var line_iter = std.mem.splitAny(u8, bytes, "\n");
     var line_no: u32 = 1;
     while (line_iter.next()) |line| : (line_no += 1) {
-        if (!searchPatternMatches(line, pattern, regex)) continue;
+        if (!searchPatternMatches(allocator, line, pattern, regex)) continue;
 
         if (mode == .files) {
             const key = try allocator.dupe(u8, rel_path);
@@ -1341,51 +1342,15 @@ fn bestSearchCodeNode(nodes: []const store.Node, line_no: u32) ?store.Node {
     return best orelse module_fallback;
 }
 
-fn searchPatternMatches(line: []const u8, pattern: []const u8, regex: bool) bool {
+fn searchPatternMatches(allocator: std.mem.Allocator, line: []const u8, pattern: []const u8, regex: bool) bool {
     if (!regex) return std.mem.indexOf(u8, line, pattern) != null;
     var iter = std.mem.splitSequence(u8, pattern, "|");
     while (iter.next()) |branch| {
         const trimmed = std.mem.trim(u8, branch, " \t");
         if (trimmed.len == 0) continue;
-        if (matchRegexishText(line, trimmed)) return true;
+        if (text_match.matchRegexish(allocator, line, trimmed)) return true;
     }
     return false;
-}
-
-fn matchRegexishText(line: []const u8, pattern: []const u8) bool {
-    if (pattern.len >= 2 and pattern[0] == '^' and pattern[pattern.len - 1] == '$') {
-        const inner = pattern[1 .. pattern.len - 1];
-        if (std.mem.startsWith(u8, inner, ".*") and std.mem.endsWith(u8, inner, ".*") and inner.len >= 4) {
-            return std.mem.indexOf(u8, line, inner[2 .. inner.len - 2]) != null;
-        }
-        return std.mem.eql(u8, line, inner);
-    }
-    if (std.mem.indexOf(u8, pattern, ".*")) |_| {
-        var tmp = std.ArrayList(u8).empty;
-        defer tmp.deinit(std.heap.page_allocator);
-        var i: usize = 0;
-        while (i < pattern.len) : (i += 1) {
-            if (pattern[i] == '.' and i + 1 < pattern.len and pattern[i + 1] == '*') {
-                i += 1;
-                continue;
-            }
-            tmp.append(std.heap.page_allocator, pattern[i]) catch return false;
-        }
-        return std.mem.indexOf(u8, line, tmp.items) != null;
-    }
-    return std.mem.indexOf(u8, line, pattern) != null;
-}
-
-fn globMatch(text: []const u8, pattern: []const u8) bool {
-    if (std.mem.eql(u8, pattern, "*")) return true;
-    if (std.mem.indexOfScalar(u8, pattern, '*') == null) return std.mem.eql(u8, text, pattern);
-    if (std.mem.startsWith(u8, pattern, "*") and std.mem.endsWith(u8, pattern, "*") and pattern.len >= 2) {
-        return std.mem.indexOf(u8, text, pattern[1 .. pattern.len - 1]) != null;
-    }
-    if (std.mem.startsWith(u8, pattern, "*")) return std.mem.endsWith(u8, text, pattern[1..]);
-    if (std.mem.endsWith(u8, pattern, "*")) return std.mem.startsWith(u8, text, pattern[0 .. pattern.len - 1]);
-    const star = std.mem.indexOfScalar(u8, pattern, '*') orelse return false;
-    return std.mem.startsWith(u8, text, pattern[0..star]) and std.mem.endsWith(u8, text, pattern[star + 1 ..]);
 }
 
 fn searchCodeModeText(mode: SearchCodeMode) []const u8 {

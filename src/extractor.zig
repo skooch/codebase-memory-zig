@@ -225,7 +225,7 @@ pub fn extractFile(
                     return err;
                 },
             };
-            if (treeSitterMethodOwner(project_name, qn_base, file.language, def, gb)) |owner| {
+            if (treeSitterMethodOwner(allocator, project_name, qn_base, file.language, def, gb)) |owner| {
                 _ = gb.insertEdge(owner.id, symbol_id, "DEFINES_METHOD") catch |err| switch (err) {
                     graph_buffer.GraphBufferError.DuplicateEdge => {},
                     else => {
@@ -1836,6 +1836,7 @@ fn treeSitterQualifiedName(
 }
 
 fn treeSitterMethodOwner(
+    allocator: std.mem.Allocator,
     project_name: []const u8,
     qn_base: []const u8,
     language: discover.Language,
@@ -1844,11 +1845,11 @@ fn treeSitterMethodOwner(
 ) ?*const graph_buffer.BufferNode {
     if (std.mem.eql(u8, def.label, "Method") and def.container_name.len > 0) {
         const owner_qn = std.fmt.allocPrint(
-            std.heap.page_allocator,
+            allocator,
             "{s}:{s}:{s}:symbol:{s}:{s}",
             .{ project_name, qn_base, @tagName(language), @tagName(language), def.container_name },
         ) catch return null;
-        defer std.heap.page_allocator.free(owner_qn);
+        defer allocator.free(owner_qn);
         return gb.findNodeByQualifiedName(owner_qn);
     }
     return null;

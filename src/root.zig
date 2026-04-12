@@ -17,6 +17,7 @@ pub const discover = @import("discover.zig");
 pub const watcher = @import("watcher.zig");
 pub const registry = @import("registry.zig");
 pub const minhash = @import("minhash.zig");
+pub const text_match = @import("text_match.zig");
 
 // Re-export core types at top level for convenience.
 pub const Store = store.Store;
@@ -44,5 +45,6 @@ test {
     _ = watcher;
     _ = registry;
     _ = minhash;
+    _ = text_match;
     _ = @import("store_test.zig");
 }

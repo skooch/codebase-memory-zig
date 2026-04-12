@@ -410,8 +410,9 @@ fn advancePastLine(text: []const u8, idx: usize) usize {
 }
 
 fn pathExists(root: []const u8, relative: []const u8) bool {
-    const path = std.fs.path.join(std.heap.page_allocator, &.{ root, relative }) catch return false;
-    defer std.heap.page_allocator.free(path);
+    var buf: [std.fs.max_path_bytes]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buf);
+    const path = std.fs.path.join(fba.allocator(), &.{ root, relative }) catch return false;
     std.fs.cwd().access(path, .{}) catch return false;
     return true;
 }

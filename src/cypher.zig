@@ -8,6 +8,7 @@
 
 const std = @import("std");
 const store = @import("store.zig");
+const text_match = @import("text_match.zig");
 
 const Store = store.Store;
 
@@ -397,7 +398,7 @@ fn evaluateFieldCondition(
         .neq => !std.mem.eql(u8, field_value.value, expected),
         .contains => std.mem.indexOf(u8, field_value.value, expected) != null,
         .like => matchLike(field_value.value, expected),
-        .regex => matchRegexish(field_value.value, expected),
+        .regex => text_match.matchRegexish(allocator, field_value.value, expected),
         .gt => compareNumeric(field_value.value, expected, .gt),
         .gte => compareNumeric(field_value.value, expected, .gte),
         .lt => compareNumeric(field_value.value, expected, .lt),
@@ -577,7 +578,7 @@ fn readEdgeField(allocator: std.mem.Allocator, edge: store.Edge, field: []const 
 }
 
 fn jsonProperty(allocator: std.mem.Allocator, json_text: []const u8, key: []const u8) ?[]u8 {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
     const arena_allocator = arena.allocator();
     const parsed = std.json.parseFromSlice(std.json.Value, arena_allocator, json_text, .{}) catch return null;
@@ -669,20 +670,6 @@ fn matchLike(actual: []const u8, pattern: []const u8) bool {
     return std.mem.eql(u8, actual, trimmed);
 }
 
-fn matchRegexish(actual: []const u8, pattern: []const u8) bool {
-    if (pattern.len >= 2 and pattern[0] == '^' and pattern[pattern.len - 1] == '$') {
-        const inner = pattern[1 .. pattern.len - 1];
-        if (std.mem.eql(u8, inner, ".*")) return true;
-        if (std.mem.startsWith(u8, inner, ".*") and std.mem.endsWith(u8, inner, ".*") and inner.len >= 4) {
-            return std.mem.indexOf(u8, actual, inner[2 .. inner.len - 2]) != null;
-        }
-        return std.mem.eql(u8, actual, inner);
-    }
-    const simplified = std.mem.replaceOwned(u8, std.heap.page_allocator, pattern, ".*", "") catch return false;
-    defer std.heap.page_allocator.free(simplified);
-    if (simplified.len == 0) return true;
-    return std.mem.indexOf(u8, actual, simplified) != null;
-}
 
 fn parseQuery(allocator: std.mem.Allocator, query: []const u8) !ParsedQuery {
     if (!startsWithInsensitive(query, "MATCH ")) return error.UnsupportedQuery;
