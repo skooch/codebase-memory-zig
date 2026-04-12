@@ -401,14 +401,21 @@ pub const McpServer = struct {
 
         const direction = stringArg(args, "direction") orelse "out";
         const max_depth = if (intArg(args, "depth")) |d| d else 6;
-        const mode = stringArg(args, "mode") orelse "calls";
+        const explicit_mode = stringArg(args, "mode");
+        const mode = explicit_mode orelse "calls";
         const risk_labels = boolArg(args, "risk_labels") orelse false;
         const include_tests = boolArg(args, "include_tests") orelse true;
 
-        // Resolve edge types: explicit edge_types > mode defaults > CALLS
+        // Resolve edge types: explicit edge_types > mode defaults > null (all edges)
+        // When neither mode nor edge_types is specified, pass null for backward compat
         const explicit_types = stringArrayArg(self.allocator, args, "edge_types");
         defer if (explicit_types) |et| self.allocator.free(et);
-        const edge_types: []const []const u8 = explicit_types orelse resolveTraceEdgeTypes(mode);
+        const edge_types: ?[]const []const u8 = if (explicit_types) |et|
+            et
+        else if (explicit_mode) |m|
+            resolveTraceEdgeTypes(m)
+        else
+            null;
 
         // Look up start node: try qualified name first, then name-based search
         const start = try self.db.findNodeByQualifiedName(project, qn) orelse blk: {
@@ -434,14 +441,54 @@ pub const McpServer = struct {
         // Top-level fields
         try w.print("{{\"function\":\"{s}\",\"direction\":\"{s}\",\"mode\":\"{s}\"", .{ start.name, direction, mode });
 
-        // Run outbound traversal for callees
-        if (traversal_direction == .outbound or traversal_direction == .both) {
-            const edges = try self.db.traverseEdgesBreadthFirst(project, start.id, .outbound, max_depth, edge_types, 100);
-            defer self.db.freeTraversalEdges(edges);
+        // Collect edges from both directions for the flat edges array
+        var all_edges = std.ArrayList(store.TraversalEdge).empty;
+        defer {
+            // Do not free items -- they are owned by the direction-specific slices below
+            all_edges.deinit(self.allocator);
+        }
 
-            try payload.appendSlice(self.allocator, ",\"callees\":[");
+        // Run outbound traversal for callees
+        var outbound_edges: []store.TraversalEdge = &.{};
+        defer self.db.freeTraversalEdges(outbound_edges);
+        if (traversal_direction == .outbound or traversal_direction == .both) {
+            outbound_edges = try self.db.traverseEdgesBreadthFirst(project, start.id, .outbound, max_depth, edge_types, 100);
+            for (outbound_edges) |edge| {
+                try all_edges.append(self.allocator, edge);
+            }
+        }
+
+        // Run inbound traversal for callers
+        var inbound_edges: []store.TraversalEdge = &.{};
+        defer self.db.freeTraversalEdges(inbound_edges);
+        if (traversal_direction == .inbound or traversal_direction == .both) {
+            inbound_edges = try self.db.traverseEdgesBreadthFirst(project, start.id, .inbound, max_depth, edge_types, 100);
+            for (inbound_edges) |edge| {
+                try all_edges.append(self.allocator, edge);
+            }
+        }
+
+        // Emit flat edges array (interop backward compat)
+        try payload.appendSlice(self.allocator, ",\"edges\":[");
+        for (all_edges.items, 0..) |edge, idx| {
+            const source = (try self.db.findNodeById(project, edge.source_id)) orelse continue;
+            defer freeOwnedNode(self.allocator, source);
+            const target = (try self.db.findNodeById(project, edge.target_id)) orelse continue;
+            defer freeOwnedNode(self.allocator, target);
+
+            if (idx > 0) try payload.append(self.allocator, ',');
+            try w.print(
+                "{{\"source\":\"{s}\",\"target\":\"{s}\",\"type\":\"{s}\"}}",
+                .{ source.qualified_name, target.qualified_name, edge.edge_type },
+            );
+        }
+        try payload.append(self.allocator, ']');
+
+        // Emit structured callees
+        try payload.appendSlice(self.allocator, ",\"callees\":[");
+        {
             var callee_count: usize = 0;
-            for (edges) |edge| {
+            for (outbound_edges) |edge| {
                 const target = (try self.db.findNodeById(project, edge.target_id)) orelse continue;
                 defer freeOwnedNode(self.allocator, target);
 
@@ -463,19 +510,14 @@ pub const McpServer = struct {
                 try payload.append(self.allocator, '}');
                 callee_count += 1;
             }
-            try payload.append(self.allocator, ']');
-        } else {
-            try payload.appendSlice(self.allocator, ",\"callees\":[]");
         }
+        try payload.append(self.allocator, ']');
 
-        // Run inbound traversal for callers
-        if (traversal_direction == .inbound or traversal_direction == .both) {
-            const edges = try self.db.traverseEdgesBreadthFirst(project, start.id, .inbound, max_depth, edge_types, 100);
-            defer self.db.freeTraversalEdges(edges);
-
-            try payload.appendSlice(self.allocator, ",\"callers\":[");
+        // Emit structured callers
+        try payload.appendSlice(self.allocator, ",\"callers\":[");
+        {
             var caller_count: usize = 0;
-            for (edges) |edge| {
+            for (inbound_edges) |edge| {
                 const source = (try self.db.findNodeById(project, edge.source_id)) orelse continue;
                 defer freeOwnedNode(self.allocator, source);
 
@@ -497,10 +539,8 @@ pub const McpServer = struct {
                 try payload.append(self.allocator, '}');
                 caller_count += 1;
             }
-            try payload.append(self.allocator, ']');
-        } else {
-            try payload.appendSlice(self.allocator, ",\"callers\":[]");
         }
+        try payload.append(self.allocator, ']');
 
         try payload.append(self.allocator, '}');
         const owned_payload = try payload.toOwnedSlice(self.allocator);
@@ -1258,6 +1298,12 @@ test "trace_call_path returns structured callees and callers" {
     try std.testing.expectEqualStrings("start", result.object.get("function").?.string);
     try std.testing.expectEqualStrings("outbound", result.object.get("direction").?.string);
     try std.testing.expectEqualStrings("calls", result.object.get("mode").?.string);
+
+    // Verify flat edges array (backward compat)
+    const edges = result.object.get("edges").?.array;
+    try std.testing.expectEqual(@as(usize, 1), edges.items.len);
+    try std.testing.expectEqualStrings("demo:start", edges.items[0].object.get("source").?.string);
+    try std.testing.expectEqualStrings("demo:finish", edges.items[0].object.get("target").?.string);
 
     // Verify callees
     const callees = result.object.get("callees").?.array;
