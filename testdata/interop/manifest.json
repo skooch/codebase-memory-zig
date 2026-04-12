@@ -1798,6 +1798,51 @@
           }
         }]
       }
+    },
+    {
+      "id": "error-paths",
+      "path": "testdata/interop/error-paths",
+      "project": "error-paths",
+      "language": "python",
+      "scope_tools": ["index_repository", "query_graph", "get_code_snippet", "search_graph"],
+      "assertions": {
+        "index_repository": {
+          "expect": { "nodes_min": 1, "edges_min": 0 }
+        },
+        "query_graph": [
+          {
+            "args": {
+              "query": "THIS IS NOT VALID CYPHER SYNTAX !!!",
+              "project": "error-paths",
+              "max_rows": 20
+            },
+            "expect": {
+              "expect_error": true
+            }
+          }
+        ],
+        "get_code_snippet": [
+          {
+            "args": {
+              "qualified_name": "error-paths:nonexistent.py:python:symbol:python:doesNotExist"
+            },
+            "expect": {
+              "expect_error": true
+            }
+          }
+        ],
+        "search_graph": [
+          {
+            "args": {
+              "project": "nonexistent-project-name",
+              "label": "Function"
+            },
+            "expect": {
+              "expect_error": true
+            }
+          }
+        ]
+      }
     }
   ]
 }

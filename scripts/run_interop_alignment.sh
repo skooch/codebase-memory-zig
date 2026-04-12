@@ -734,14 +734,17 @@ def build_requests(root: Path, fixture: dict[str, Any], impl: str) -> tuple[list
     # appear in results) rather than raw output-level equality.
     for assertion in assertions.get("search_graph", []):
         args = dict(assertion.get("args", {}))
+        is_error_assertion = assertion.get("expect", {}).get("expect_error", False)
         if impl == "zig":
             args = {k: v for k, v in args.items() if k != "label"}
-            args["project"] = project_name
+            if not is_error_assertion:
+                args["project"] = project_name
             if "label" in assertion.get("args", {}):
                 args["label_pattern"] = assertion["args"]["label"]
         else:
             args = {k: v for k, v in args.items() if k != "label_pattern"}
-            args["project"] = c_project_name
+            if not is_error_assertion:
+                args["project"] = c_project_name
             if "label" in assertion.get("args", {}):
                 args["label"] = assertion["args"]["label"]
         requests.append(
@@ -958,10 +961,37 @@ def build_requests(root: Path, fixture: dict[str, Any], impl: str) -> tuple[list
     return requests, tool_ctx
 
 
+def canonical_error(payload):
+    # type: (Any) -> Optional[Dict[str, Any]]
+    """Extract a canonical error dict from a payload, or None if no error."""
+    if not isinstance(payload, dict):
+        return None
+    error = payload.get("__error__")
+    if error is None:
+        return None
+    if isinstance(error, dict):
+        return {
+            "code": int(error.get("code", -1)),
+            "message": str(error.get("message", "")),
+        }
+    return {"code": -1, "message": str(error)}
+
+
 def check_assertions(tool_name: str, tool_payload: Any, assertions: list[dict[str, Any]]) -> list[str]:
     failures = []
     for assertion in assertions:
         expected = assertion.get("expect", {})
+
+        # Handle expect_error assertions: verify the response was an error,
+        # then skip all normal assertion checks for this assertion.
+        if expected.get("expect_error"):
+            err = canonical_error(tool_payload)
+            if err is None:
+                failures.append(
+                    "%s expected error but got success payload" % tool_name
+                )
+            continue
+
         if tool_name == "tools_list":
             required = set(expected.get("required_tools", []))
             available = set(canonical_tools_list(tool_payload or {}))
@@ -1188,6 +1218,25 @@ def build_golden_snapshot(
         snapshot["list_projects"] = [p["name"] for p in projects]
     else:
         snapshot["list_projects"] = []
+
+    # errors - capture canonical error responses for expect_error assertions
+    errors_snapshot = {}  # type: Dict[str, List[Optional[Dict[str, Any]]]]
+    for tool_key in ("query_graph", "get_code_snippet", "search_graph"):
+        tool_assertions = assertions.get(tool_key, [])
+        tool_entries = impl_payloads.get(tool_key, [])
+        error_list = []  # type: List[Optional[Dict[str, Any]]]
+        has_error_assertion = False
+        for i, ta in enumerate(tool_assertions):
+            if ta.get("expect", {}).get("expect_error"):
+                has_error_assertion = True
+                entry_payload = tool_entries[i]["payload"] if i < len(tool_entries) else {}
+                error_list.append(canonical_error(entry_payload))
+            else:
+                error_list.append(None)
+        if has_error_assertion:
+            errors_snapshot[tool_key] = error_list
+    if errors_snapshot:
+        snapshot["errors"] = errors_snapshot
 
     # index_repository - store min thresholds from manifest assertions + actual counts
     index_assert = assertions.get("index_repository", {}).get("expect", {})
@@ -1453,6 +1502,43 @@ def compare_golden_snapshot(
         mismatches.append(
             "list_projects: %s vs golden %s" % (current_lp, golden_lp)
         )
+
+    # errors - compare error responses for expect_error assertions
+    current_errors = current.get("errors", {})
+    golden_errors = golden.get("errors", {})
+    all_error_keys = sorted(set(list(current_errors.keys()) + list(golden_errors.keys())))
+    for tool_key in all_error_keys:
+        cur_err_list = current_errors.get(tool_key, [])
+        gld_err_list = golden_errors.get(tool_key, [])
+        if len(cur_err_list) != len(gld_err_list):
+            mismatches.append(
+                "errors[%s]: count %d vs golden %d" % (tool_key, len(cur_err_list), len(gld_err_list))
+            )
+        else:
+            for i, (cur_err, gld_err) in enumerate(zip(cur_err_list, gld_err_list)):
+                # Both None means this index was not an error assertion - skip
+                if cur_err is None and gld_err is None:
+                    continue
+                # One is None and the other is not
+                if (cur_err is None) != (gld_err is None):
+                    mismatches.append(
+                        "errors[%s][%d]: error=%s vs golden error=%s" % (
+                            tool_key, i,
+                            "present" if cur_err else "absent",
+                            "present" if gld_err else "absent",
+                        )
+                    )
+                    continue
+                # Both present - compare. Only warn on message difference (codes matter more).
+                if cur_err.get("code") != gld_err.get("code"):
+                    mismatches.append(
+                        "errors[%s][%d]: code %s vs golden %s" % (
+                            tool_key, i, cur_err.get("code"), gld_err.get("code"))
+                    )
+                elif cur_err.get("message") != gld_err.get("message"):
+                    warnings.append(
+                        "errors[%s][%d]: message differs (non-fatal)" % (tool_key, i)
+                    )
 
     # index_repository - check zig output meets min thresholds from golden
     golden_idx = golden.get("index_repository", {})
