@@ -1,0 +1,62 @@
+name: Interop Nightly
+
+on:
+  schedule:
+    # Weekly on Mondays at ~4:17 AM UTC
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  interop-full:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - name: Cache vendored grammars
+        uses: actions/cache@v4
+        with:
+          path: |
+            vendored/grammars
+            vendored/tree_sitter
+          key: grammars-${{ hashFiles('scripts/fetch_grammars.sh') }}
+
+      - name: Fetch tree-sitter grammars
+        run: bash scripts/fetch_grammars.sh
+
+      - name: Build Zig binary
+        run: zig build
+
+      - name: Checkout C reference repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.C_REFERENCE_REPO || 'DeusData/codebase-memory-mcp' }}
+          path: codebase-memory-mcp
+
+      - name: Install C build dependencies
+        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev
+
+      - name: Build C reference binary
+        run: make -f Makefile.cbm cbm -j"$(nproc)"
+        working-directory: codebase-memory-mcp
+
+      - name: Run full interop comparison
+        continue-on-error: true
+        run: |
+          CODEBASE_MEMORY_ZIG_BIN="${{ github.workspace }}/zig-out/bin/cbm" \
+          CODEBASE_MEMORY_C_BIN="${{ github.workspace }}/codebase-memory-mcp/build/c/codebase-memory-mcp" \
+            bash scripts/run_interop_alignment.sh
+
+      - name: Upload interop report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: interop-report
+          path: .interop_reports/
+          retention-days: 30
