@@ -1240,10 +1240,22 @@ fn insertResolvedEdge(
 }
 
 test "pipeline run handles simple extraction pipeline" {
-    var s = try store.Store.openMemory(std.testing.allocator);
+    const allocator = std.testing.allocator;
+
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(
+        allocator,
+        "/tmp/cbm-pipeline-simple-{x}",
+        .{project_id},
+    );
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    var s = try store.Store.openMemory(allocator);
     defer s.deinit();
 
-    var p = Pipeline.init(std.testing.allocator, "/tmp", .full);
+    var p = Pipeline.init(allocator, project_dir, .full);
     defer p.deinit();
     try p.run(&s);
 }
