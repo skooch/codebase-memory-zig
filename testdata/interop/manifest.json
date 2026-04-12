@@ -621,7 +621,8 @@
                 "a.name",
                 "b.label",
                 "b.name"
-              ]
+              ],
+              "required_rows_min": 1
             }
           },
           {
@@ -633,7 +634,8 @@
             "expect": {
               "columns": [
                 "n.name"
-              ]
+              ],
+              "required_rows_min": 1
             }
           },
           {
@@ -646,7 +648,8 @@
               "columns": [
                 "a.name",
                 "b.name"
-              ]
+              ],
+              "required_rows_min": 1
             }
           },
           {
@@ -687,7 +690,8 @@
                 "a.name",
                 "b.label",
                 "b.name"
-              ]
+              ],
+              "required_rows_min": 1
             }
           },
           {
@@ -699,7 +703,8 @@
             "expect": {
               "columns": [
                 "b.name"
-              ]
+              ],
+              "required_rows_min": 1
             }
           },
           {
@@ -711,7 +716,8 @@
             "expect": {
               "columns": [
                 "b.name"
-              ]
+              ],
+              "required_rows_min": 1
             }
           },
           {
@@ -723,7 +729,8 @@
             "expect": {
               "columns": [
                 "b.name"
-              ]
+              ],
+              "required_rows_min": 1
             }
           }
         ],
@@ -788,7 +795,7 @@
             "args": {
               "scope": "impact"
             },
-            "expect": {}
+            "expect": { "changed_count": 0 }
           }
         ]
       }
@@ -927,7 +934,8 @@
             "expect": {
               "columns": [
                 "n.name"
-              ]
+              ],
+              "required_rows_min": 1
             }
           },
           {
@@ -939,7 +947,8 @@
             "expect": {
               "columns": [
                 "n.name"
-              ]
+              ],
+              "required_rows_min": 1
             }
           },
           {
@@ -951,7 +960,8 @@
             "expect": {
               "columns": [
                 "n.name"
-              ]
+              ],
+              "required_rows_min": 1
             }
           }
         ],
@@ -1014,7 +1024,7 @@
             "args": {
               "scope": "impact"
             },
-            "expect": {}
+            "expect": { "changed_count": 0 }
           }
         ]
       }
@@ -1178,7 +1188,8 @@
             "expect": {
               "columns": [
                 "n.name"
-              ]
+              ],
+              "required_rows_min": 1
             }
           },
           {
@@ -1190,7 +1201,8 @@
             "expect": {
               "columns": [
                 "n.name"
-              ]
+              ],
+              "required_rows_min": 1
             }
           },
           {
@@ -1202,7 +1214,8 @@
             "expect": {
               "columns": [
                 "n.name"
-              ]
+              ],
+              "required_rows_min": 1
             }
           }
         ],
@@ -1266,7 +1279,7 @@
             "args": {
               "scope": "impact"
             },
-            "expect": {}
+            "expect": { "changed_count": 0 }
           }
         ]
       }
@@ -1422,7 +1435,8 @@
             "expect": {
               "columns": [
                 "n.name"
-              ]
+              ],
+              "required_rows_min": 1
             }
           },
           {
@@ -1434,7 +1448,8 @@
             "expect": {
               "columns": [
                 "n.name"
-              ]
+              ],
+              "required_rows_min": 1
             }
           },
           {
@@ -1459,7 +1474,8 @@
             "expect": {
               "columns": [
                 "n.name"
-              ]
+              ],
+              "required_rows_min": 1
             }
           },
           {
@@ -1472,7 +1488,8 @@
               "columns": [
                 "a.name",
                 "b.name"
-              ]
+              ],
+              "required_rows_min": 1
             }
           },
           {
@@ -1484,7 +1501,8 @@
             "expect": {
               "columns": [
                 "b.name"
-              ]
+              ],
+              "required_rows_min": 1
             }
           },
           {
@@ -1496,7 +1514,8 @@
             "expect": {
               "columns": [
                 "b.name"
-              ]
+              ],
+              "required_rows_min": 1
             }
           },
           {
@@ -1508,7 +1527,8 @@
             "expect": {
               "columns": [
                 "b.name"
-              ]
+              ],
+              "required_rows_min": 1
             }
           }
         ],
@@ -1573,7 +1593,7 @@
             "args": {
               "scope": "impact"
             },
-            "expect": {}
+            "expect": { "changed_count": 0 }
           }
         ]
       }
