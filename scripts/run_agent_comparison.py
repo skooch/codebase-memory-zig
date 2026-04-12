@@ -255,6 +255,8 @@ def write_markdown(report: dict[str, Any], out_path: Path) -> None:
         "",
         "## Summary",
         "",
+        f"- Suite files: `{len(report.get('manifest_sources', []))}`",
+        f"- Repos run: `{len(report['repos'])}`",
         f"- Hybrid wins: `{overall['hybrid_wins']}`",
         f"- Original wins: `{overall['original_wins']}`",
         f"- Ties: `{overall['ties']}`",
@@ -335,6 +337,65 @@ def build_summary(repos: list[dict[str, Any]]) -> dict[str, int]:
     return summary
 
 
+def load_manifest_file(path: Path) -> dict[str, Any]:
+    manifest = json.loads(path.read_text())
+    if not isinstance(manifest, dict):
+        raise ValueError(f"manifest must be an object: {path}")
+    repos = manifest.get("repos", [])
+    if not isinstance(repos, list):
+        raise ValueError(f"manifest repos must be a list: {path}")
+    return manifest
+
+
+def load_manifest_sources(path: Path) -> tuple[dict[str, Any], list[str]]:
+    if path.is_file():
+        manifest = load_manifest_file(path)
+        return manifest, [str(path)]
+
+    if not path.is_dir():
+        raise FileNotFoundError(f"manifest path does not exist: {path}")
+
+    manifests = sorted(path.glob("*.json"))
+    if not manifests:
+        raise ValueError(f"manifest directory has no .json files: {path}")
+
+    merged: dict[str, Any] = {
+        "schema_version": "0.1",
+        "goal": f"Merged agent comparison suites from {path}",
+        "repos": [],
+    }
+    sources: list[str] = []
+    seen_repo_ids: set[str] = set()
+    for manifest_path in manifests:
+        manifest = load_manifest_file(manifest_path)
+        sources.append(str(manifest_path))
+        for repo in manifest.get("repos", []):
+            repo_id = str(repo.get("id", ""))
+            if not repo_id:
+                raise ValueError(f"repo is missing id in {manifest_path}")
+            if repo_id in seen_repo_ids:
+                raise ValueError(f"duplicate repo id {repo_id!r} across manifest sources")
+            seen_repo_ids.add(repo_id)
+            merged["repos"].append(repo)
+    return merged, sources
+
+
+def filter_repos(manifest: dict[str, Any], repo_ids: list[str]) -> dict[str, Any]:
+    if not repo_ids:
+        return manifest
+
+    requested = set(repo_ids)
+    repos = [repo for repo in manifest.get("repos", []) if str(repo.get("id", "")) in requested]
+    found = {str(repo.get("id", "")) for repo in repos}
+    missing = sorted(requested - found)
+    if missing:
+        raise ValueError(f"unknown repo ids requested: {', '.join(missing)}")
+
+    filtered = dict(manifest)
+    filtered["repos"] = repos
+    return filtered
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Compare the original C tool against the hybrid Zig port on the same repo tasks.")
     parser.add_argument("--manifest", required=True)
@@ -342,6 +403,7 @@ def main() -> int:
     parser.add_argument("--zig-bin", required=True)
     parser.add_argument("--c-bin", required=True)
     parser.add_argument("--report-dir", required=True)
+    parser.add_argument("--repo-id", action="append", default=[], help="Limit the run to one or more repo ids from the suite set")
     args = parser.parse_args()
 
     manifest_path = Path(args.manifest).resolve()
@@ -349,7 +411,8 @@ def main() -> int:
     report_dir = Path(args.report_dir).resolve()
     report_dir.mkdir(parents=True, exist_ok=True)
 
-    manifest = json.loads(manifest_path.read_text())
+    manifest, sources = load_manifest_sources(manifest_path)
+    manifest = filter_repos(manifest, list(args.repo_id))
     repos = [
         run_repo(
             repo=repo,
@@ -361,6 +424,7 @@ def main() -> int:
     ]
     report = {
         "manifest": str(manifest_path),
+        "manifest_sources": sources,
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "host": os.uname().nodename,
         "repos": repos,

@@ -56,6 +56,7 @@ src/
 - Keep `scripts/run_interop_alignment.sh` inline Python compatible with the system `python3` here (currently 3.9); avoid `X | Y` type-union syntax in that heredoc or the parity harness will fail before running comparisons.
 - From peer worktrees under `../worktrees/`, the original C repo is not at `../codebase-memory-mcp`; script defaults that compare against the C binary need a `../../codebase-memory-mcp` fallback or explicit override so interop/benchmark runs do not fail on path resolution alone.
 - Fresh worktrees may not include the untracked `vendored/grammars/` and `vendored/tree_sitter/` directories required by `zig build test`; if the build fails with missing `vendored/grammars/*/parser.c`, run `bash scripts/bootstrap_worktree.sh [primary-checkout]` or copy those vendored directories from the primary checkout into the worktree before retrying verification.
+- The agent comparison harness is intentionally `zsh`-only via `scripts/run_agent_comparison.zsh`; keep that entrypoint canonical instead of reintroducing a shell-compat wrapper.
 
 ## Porting from C
 

@@ -1,13 +1,20 @@
 # Agent Comparison Harness
 
-Use `scripts/run_agent_comparison.sh` to compare the original C implementation against the hybrid Zig port on the same repository tasks.
+Use `scripts/run_agent_comparison.zsh` to compare the original C implementation against the hybrid Zig port on the same repository tasks.
 
 The harness is intentionally ordered:
 
 1. Original C tool
 2. Hybrid Zig tool
 
-Each repository in `testdata/agent-comparison/manifest.json` defines:
+The harness now loads either:
+
+- a single manifest file
+- or a directory of suite files
+
+By default it reads every `*.json` file in `testdata/agent-comparison/suites/`.
+
+Each suite file defines one or more repositories with:
 
 - `path`: repository under test
 - `project`: stable Zig-side project id
@@ -17,7 +24,7 @@ Each repository in `testdata/agent-comparison/manifest.json` defines:
 Run it with:
 
 ```sh
-bash scripts/run_agent_comparison.sh
+zsh scripts/run_agent_comparison.zsh
 ```
 
 Optional overrides:
@@ -25,7 +32,17 @@ Optional overrides:
 ```sh
 CODEBASE_MEMORY_C_BIN=/path/to/codebase-memory-mcp \
 CODEBASE_MEMORY_ZIG_BIN=/path/to/cbm \
-bash scripts/run_agent_comparison.sh /path/to/manifest.json /path/to/report-dir
+zsh scripts/run_agent_comparison.zsh /path/to/manifest-or-suite-dir /path/to/report-dir
+```
+
+Run a subset of configured repos without editing the suite files:
+
+```sh
+zsh scripts/run_agent_comparison.zsh \
+  testdata/agent-comparison/suites \
+  .agent_comparison_reports \
+  --repo-id python-basic \
+  --repo-id scip-overlay
 ```
 
 Outputs:
@@ -43,5 +60,11 @@ Winner selection:
 
 - higher task score wins first
 - if scores tie, lower median latency wins
+
+Recommended layout:
+
+- one suite file per reusable fixture or repo class
+- keep prompts and expectations close to that repo
+- compose larger runs by pointing the harness at the suite directory
 
 This keeps the MCP surface stable while letting us validate whether the hybrid internals improve retrieval quality, architecture answers, and latency on the same tasks.
