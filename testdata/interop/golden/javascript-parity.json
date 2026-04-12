@@ -62,11 +62,11 @@
         ],
         [
           "index.js",
-          "decorate"
+          "boot"
         ],
         [
           "index.js",
-          "boot"
+          "decorate"
         ],
         [
           "log",

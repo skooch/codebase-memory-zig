@@ -962,7 +962,7 @@ def build_golden_snapshot(
     qg_list = []  # type: List[Dict[str, Any]]
     for e in qg_entries:
         columns, rows = canonical_query(e["payload"])
-        qg_list.append({"columns": list(columns), "rows": [list(row) for row in rows]})
+        qg_list.append({"columns": list(columns), "rows": sorted([list(row) for row in rows])})
     snapshot["query_graph"] = qg_list
 
     # trace_call_path - store as lists of [source, target, type]
@@ -1047,14 +1047,20 @@ def compare_golden_snapshot(
         )
     else:
         for i, (cur, gld) in enumerate(zip(current_qg, golden_qg)):
-            if cur != gld:
-                cur_rows = set(tuple(r) for r in cur.get("rows", []))
-                gld_rows = set(tuple(r) for r in gld.get("rows", []))
-                added = sorted(cur_rows - gld_rows)
-                removed = sorted(gld_rows - cur_rows)
+            if cur.get("columns") != gld.get("columns"):
                 mismatches.append(
-                    "query_graph[%d]: differs (added=%s removed=%s)" % (i, added, removed)
+                    "query_graph[%d]: columns %s vs golden %s" % (
+                        i, cur.get("columns"), gld.get("columns"))
                 )
+            else:
+                cur_rows = sorted(cur.get("rows", []))
+                gld_rows = sorted(gld.get("rows", []))
+                if cur_rows != gld_rows:
+                    added = sorted(set(tuple(r) for r in cur_rows) - set(tuple(r) for r in gld_rows))
+                    removed = sorted(set(tuple(r) for r in gld_rows) - set(tuple(r) for r in cur_rows))
+                    mismatches.append(
+                        "query_graph[%d]: rows differ (added=%s removed=%s)" % (i, added, removed)
+                    )
 
     # trace_call_path
     current_tc = current["trace_call_path"]
