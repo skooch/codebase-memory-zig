@@ -45,7 +45,7 @@
     - `zig build test` → passed
     - `bash scripts/run_interop_alignment.sh` → passed with `0` mismatches and `query_graph: match` on the `test-tagging` fixture
     - direct MCP session against `./zig-out/bin/cbm` → returned `["test_widget_renders","render_widget"]` for `TESTS` and `["test_widget.py","widget.py"]` for `TESTS_FILE`
-  - Updated `docs/port-comparison.md`, `docs/gap-analysis.md`, and `docs/plans/new/todo.md` so the shared test-tagging slice is now treated as implemented while broader git-history and config-link follow-ons remain deferred.
+  - Updated `docs/port-comparison.md` and `docs/gap-analysis.md` so the shared test-tagging slice is now treated as implemented while broader git-history and config-link follow-ons remain deferred.
 - Supported rules:
   - `TESTS` edges are derived from existing `CALLS` edges only when the caller is in a test-shaped file and the caller name follows the shared test-function naming rules.
   - `TESTS_FILE` edges currently cover the shared Python `test_*.py -> *.py` naming lane verified by the local fixture, with the helper module also preserving the original overlap for `_test.go` and `.test/.spec` JavaScript or TypeScript filenames.
@@ -53,6 +53,5 @@
   - `docs/gap-analysis.md`
   - `docs/plans/implemented/test-tagging-parity-plan.md`
   - `docs/plans/implemented/test-tagging-parity-progress.md`
-  - `docs/plans/new/todo.md`
   - `docs/port-comparison.md`
   - `testdata/interop/manifest.json`

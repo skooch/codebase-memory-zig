@@ -11,7 +11,6 @@ Completed
 - Modify: `docs/plans/implemented/test-tagging-parity-progress.md`
 - Modify: `docs/port-comparison.md`
 - Modify: `docs/gap-analysis.md`
-- Modify: `docs/plans/new/todo.md`
 - Create: `src/test_tagging.zig`
 - Modify: `src/pipeline.zig`
 - Modify: `src/store_test.zig`

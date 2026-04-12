@@ -11,7 +11,6 @@ Completed
 - Modify: `docs/plans/implemented/runtime-lifecycle-parity-progress.md`
 - Modify: `docs/port-comparison.md`
 - Modify: `docs/gap-analysis.md`
-- Modify: `docs/plans/new/todo.md`
 - Modify: `src/main.zig`
 - Modify: `src/mcp.zig`
 - Modify: `src/root.zig`

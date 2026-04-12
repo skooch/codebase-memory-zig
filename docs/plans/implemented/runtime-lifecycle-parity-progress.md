@@ -39,8 +39,7 @@
     - graceful `SIGTERM` shutdown while stdio is still open
     - deterministic one-shot startup update notification using `CBM_UPDATE_CHECK_CURRENT` and `CBM_UPDATE_CHECK_LATEST`
   - Updated `docs/port-comparison.md` so `Signal-driven graceful shutdown` and `Startup update notification` now read `Interoperable? Yes`.
-  - Updated `docs/gap-analysis.md` and `docs/plans/new/todo.md` to reflect that the runtime lifecycle S-sized plan is complete while idle-store/session-lifecycle extras remain deferred.
+  - Updated `docs/gap-analysis.md` to reflect that the runtime lifecycle S-sized plan is complete while idle-store/session-lifecycle extras remain deferred.
 - Files modified:
   - `docs/gap-analysis.md`
-  - `docs/plans/new/todo.md`
   - `docs/port-comparison.md`
