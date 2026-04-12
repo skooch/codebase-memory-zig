@@ -800,19 +800,25 @@ pub fn upsertClaudeHooks(
     allocator: std.mem.Allocator,
     home: []const u8,
     dry_run: bool,
-) !void {
+) !bool {
     const settings_path = try std.fs.path.join(allocator, &.{ home, ".claude", "settings.json" });
     defer allocator.free(settings_path);
 
+    var changed = false;
+
     // PreToolUse hook
-    _ = try upsertHooksJson(allocator, settings_path, "PreToolUse", claude_hook_matcher, claude_hook_command, dry_run);
+    if (try upsertHooksJson(allocator, settings_path, "PreToolUse", claude_hook_matcher, claude_hook_command, dry_run))
+        changed = true;
     try installHookGateScript(allocator, home, dry_run);
 
     // SessionStart hooks
     for (session_matchers) |m| {
-        _ = try upsertHooksJson(allocator, settings_path, "SessionStart", m, session_hook_command, dry_run);
+        if (try upsertHooksJson(allocator, settings_path, "SessionStart", m, session_hook_command, dry_run))
+            changed = true;
     }
     try installSessionReminderScript(allocator, home, dry_run);
+
+    return changed;
 }
 
 /// Remove Claude hooks from settings.json.
@@ -865,8 +871,8 @@ pub fn installAgentConfigs(
         const sr = try installSkills(allocator, skills_dir, options.force, options.dry_run);
         if (sr.installed > 0 or sr.old_removed) report.skills = .updated;
         // Hooks
-        try upsertClaudeHooks(allocator, home, options.dry_run);
-        report.hooks = .updated;
+        if (try upsertClaudeHooks(allocator, home, options.dry_run))
+            report.hooks = .updated;
     }
 
     // Codex: MCP + instructions
@@ -1270,8 +1276,10 @@ const GenericAgentConfig = struct {
     format: McpConfigFormat,
 };
 
-/// The MCP server key name in JSON config files (matches C reference).
-const mcp_server_key = "codebase-memory-mcp";
+/// The MCP server key name in JSON config files.
+/// Uses server_name ("codebase-memory-zig") consistently across all agents,
+/// matching the Codex TOML section and Claude JSON configs.
+const mcp_server_key = server_name;
 
 /// Build the JSON entry value for a given format.
 fn buildMcpEntry(arena: std.mem.Allocator, binary_path: []const u8, format: McpConfigFormat) !std.json.Value {
