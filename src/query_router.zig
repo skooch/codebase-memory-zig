@@ -933,15 +933,21 @@ fn collectChangedFiles(
 ) ![][]u8 {
     const branch_spec = try std.fmt.allocPrint(allocator, "{s}...HEAD", .{base_branch});
     defer allocator.free(branch_spec);
-    const diff_base = try runCommandCapture(
+    const diff_base = runCommandCapture(
         allocator,
         &.{ "git", "-C", root_path, "diff", "--name-only", branch_spec },
-    );
+    ) catch |err| switch (err) {
+        error.CommandFailed => return try allocator.alloc([]u8, 0),
+        else => return err,
+    };
     defer freeCommandResult(allocator, diff_base);
-    const diff_worktree = try runCommandCapture(
+    const diff_worktree = runCommandCapture(
         allocator,
         &.{ "git", "-C", root_path, "diff", "--name-only" },
-    );
+    ) catch |err| switch (err) {
+        error.CommandFailed => return try allocator.alloc([]u8, 0),
+        else => return err,
+    };
     defer freeCommandResult(allocator, diff_worktree);
 
     var out = std.ArrayList([]u8).empty;
@@ -1126,6 +1132,15 @@ fn runCommandCapture(allocator: std.mem.Allocator, argv: []const []const u8) !Co
         .argv = argv,
         .max_output_bytes = 16 * 1024 * 1024,
     });
+    const ok = switch (result.term) {
+        .Exited => |code| code == 0,
+        else => false,
+    };
+    if (!ok) {
+        allocator.free(result.stdout);
+        allocator.free(result.stderr);
+        return error.CommandFailed;
+    }
     return .{
         .stdout = result.stdout,
         .stderr = result.stderr,
@@ -1449,11 +1464,28 @@ fn appendJsonStringArrayField(
 
 fn appendPropertyFields(payload: *std.ArrayList(u8), allocator: std.mem.Allocator, properties_json: []const u8) !void {
     const trimmed = std.mem.trim(u8, properties_json, " \t\r\n");
-    if (trimmed.len < 2 or trimmed[0] != '{' or trimmed[trimmed.len - 1] != '}') return;
-    const inner = std.mem.trim(u8, trimmed[1 .. trimmed.len - 1], " \t\r\n");
-    if (inner.len == 0) return;
-    try payload.append(allocator, ',');
-    try payload.appendSlice(allocator, inner);
+    if (trimmed.len == 0) return;
+
+    const parsed = std.json.parseFromSlice(
+        std.json.Value,
+        allocator,
+        trimmed,
+        .{},
+    ) catch return; // malformed JSON: skip silently
+    defer parsed.deinit();
+
+    const obj = switch (parsed.value) {
+        .object => |o| o,
+        else => return, // not an object: skip
+    };
+
+    var it = obj.iterator();
+    const writer = payload.writer(allocator);
+    while (it.next()) |entry| {
+        try writer.writeByte(',');
+        try writer.print("{f}:", .{std.json.fmt(entry.key_ptr.*, .{})});
+        try writer.print("{f}", .{std.json.fmt(entry.value_ptr.*, .{})});
+    }
 }
 
 fn appendJsonString(payload: *std.ArrayList(u8), allocator: std.mem.Allocator, value: []const u8) !void {
