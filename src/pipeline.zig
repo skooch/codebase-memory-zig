@@ -35,6 +35,7 @@ pub const PipelineContext = struct {
 };
 
 const OwnedExtraction = struct {
+    arena: ?*std.heap.ArenaAllocator,
     allocator: std.mem.Allocator,
     extraction: extractor.FileExtraction,
 };
@@ -116,6 +117,11 @@ pub const Pipeline = struct {
         defer {
             for (extractions.items) |owned| {
                 extractor.freeFileExtraction(owned.allocator, owned.extraction);
+                if (owned.arena) |arena| {
+                    const backing = arena.child_allocator;
+                    arena.deinit();
+                    backing.destroy(arena);
+                }
             }
             extractions.deinit(self.allocator);
         }
@@ -205,6 +211,11 @@ pub const Pipeline = struct {
         defer {
             for (extractions.items) |owned| {
                 extractor.freeFileExtraction(owned.allocator, owned.extraction);
+                if (owned.arena) |arena| {
+                    const backing = arena.child_allocator;
+                    arena.deinit();
+                    backing.destroy(arena);
+                }
             }
             extractions.deinit(self.allocator);
         }
@@ -540,18 +551,30 @@ fn collectExtractionsSequential(
     for (files) |file| {
         if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
 
-        ensureProjectStructure(self.allocator, self.project_name, file, gb) catch |err| switch (err) {
+        const file_arena = self.allocator.create(std.heap.ArenaAllocator) catch
+            return PipelineError.OutOfMemory;
+        file_arena.* = std.heap.ArenaAllocator.init(self.allocator);
+        errdefer {
+            file_arena.deinit();
+            self.allocator.destroy(file_arena);
+        }
+        const arena_alloc = file_arena.allocator();
+
+        ensureProjectStructure(arena_alloc, self.project_name, file, gb) catch |err| switch (err) {
             error.OutOfMemory => return PipelineError.OutOfMemory,
             else => return PipelineError.DiscoveryFailed,
         };
-        const extraction = extractFile(self.allocator, self.project_name, file, gb) catch |err| {
+        const extraction = extractFile(arena_alloc, self.project_name, file, gb) catch |err| {
             std.log.warn("extractor failed for {s}: {}", .{ file.rel_path, err });
+            file_arena.deinit();
+            self.allocator.destroy(file_arena);
             continue;
         };
         try registerExtraction(reg, extraction);
         logExtractionDebug(extraction);
         try out.append(self.allocator, .{
-            .allocator = self.allocator,
+            .arena = file_arena,
+            .allocator = arena_alloc,
             .extraction = extraction,
         });
     }
@@ -629,6 +652,7 @@ fn collectExtractionsParallel(
         try registerExtraction(reg, result.extraction);
         logExtractionDebug(result.extraction);
         try out.append(self.allocator, .{
+            .arena = null,
             .allocator = result.allocator,
             .extraction = result.extraction,
         });
