@@ -417,19 +417,10 @@ pub const McpServer = struct {
         else
             null;
 
-        // Look up start node: try qualified name first, then name-based search
-        const start = try self.db.findNodeByQualifiedName(project, qn) orelse blk: {
-            // Fallback: search by name (for function_name compat)
-            const nodes = try self.db.searchNodes(.{
-                .project = project,
-                .name_pattern = qn,
-                .limit = 1,
-            });
-            defer self.db.freeNodes(nodes);
-            if (nodes.len == 0) break :blk null;
-            // Duplicate the node before the deferred free
-            break :blk try self.db.findNodeById(project, nodes[0].id);
-        } orelse return self.errorResponse(request_id, -32602, "Unknown start_node_qn");
+        // Look up start node: try qualified name first, then exact name match
+        const start = try self.db.findNodeByQualifiedName(project, qn) orelse
+            try self.db.findNodeByName(project, qn) orelse
+            return self.errorResponse(request_id, -32602, "Unknown start_node_qn");
         defer freeOwnedNode(self.allocator, start);
 
         const traversal_direction = parseTraversalDirection(direction) orelse
@@ -470,17 +461,21 @@ pub const McpServer = struct {
 
         // Emit flat edges array (interop backward compat)
         try payload.appendSlice(self.allocator, ",\"edges\":[");
-        for (all_edges.items, 0..) |edge, idx| {
-            const source = (try self.db.findNodeById(project, edge.source_id)) orelse continue;
-            defer freeOwnedNode(self.allocator, source);
-            const target = (try self.db.findNodeById(project, edge.target_id)) orelse continue;
-            defer freeOwnedNode(self.allocator, target);
+        {
+            var edge_count: usize = 0;
+            for (all_edges.items) |edge| {
+                const source = (try self.db.findNodeById(project, edge.source_id)) orelse continue;
+                defer freeOwnedNode(self.allocator, source);
+                const target = (try self.db.findNodeById(project, edge.target_id)) orelse continue;
+                defer freeOwnedNode(self.allocator, target);
 
-            if (idx > 0) try payload.append(self.allocator, ',');
-            try w.print(
-                "{{\"source\":\"{s}\",\"target\":\"{s}\",\"type\":\"{s}\"}}",
-                .{ source.qualified_name, target.qualified_name, edge.edge_type },
-            );
+                if (edge_count > 0) try payload.append(self.allocator, ',');
+                try w.print(
+                    "{{\"source\":\"{s}\",\"target\":\"{s}\",\"type\":\"{s}\"}}",
+                    .{ source.qualified_name, target.qualified_name, edge.edge_type },
+                );
+                edge_count += 1;
+            }
         }
         try payload.append(self.allocator, ']');
 
@@ -1068,12 +1063,7 @@ fn stringArrayArg(allocator: std.mem.Allocator, value: std.json.Value, key: []co
         allocator.free(out);
         return null;
     }
-    // Shrink if some items were not strings
-    if (count < items.len) {
-        const shrunk = allocator.realloc(out, count) catch return out[0..count];
-        return shrunk;
-    }
-    return out;
+    return out[0..count];
 }
 
 /// Resolve trace edge types from mode and optional explicit override.

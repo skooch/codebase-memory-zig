@@ -704,6 +704,22 @@ pub const Store = struct {
         return try self.rowToNode(stmt);
     }
 
+    /// Find first node with an exact name match within a project.
+    pub fn findNodeByName(self: *Store, project: []const u8, name: []const u8) !?Node {
+        const stmt = try self.prepare(
+            "SELECT id, project, label, name, qualified_name, file_path, start_line, end_line, properties " ++
+                "FROM nodes WHERE project = ?1 AND name = ?2 LIMIT 1",
+        );
+        defer self.finalize(stmt);
+        try self.bindText(stmt, 1, project);
+        try self.bindText(stmt, 2, name);
+
+        const rc = c.sqlite3_step(stmt);
+        if (rc == c.SQLITE_DONE) return null;
+        if (rc != c.SQLITE_ROW) return StoreError.SqlError;
+        return try self.rowToNode(stmt);
+    }
+
     pub fn findNodeById(self: *Store, project: []const u8, node_id: i64) !?Node {
         const stmt = try self.prepare(
             "SELECT id, project, label, name, qualified_name, file_path, start_line, end_line, properties " ++
