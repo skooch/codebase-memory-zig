@@ -946,20 +946,20 @@ pub const Store = struct {
             binds.deinit(self.allocator);
         }
 
-        const degree_expr =
-            \\(SELECT COUNT(*) FROM edges e WHERE e.project = n.project AND e.target_id = n.id{s})
-        ;
-        const out_degree_expr =
-            \\(SELECT COUNT(*) FROM edges e WHERE e.project = n.project AND e.source_id = n.id{s})
-        ;
-        const rel_suffix = if (filter.relationship != null) " AND e.type = ?" else "";
-
+        // Build CTEs that pre-compute in/out degree counts via GROUP BY,
+        // replacing the previous O(N * |edges|) correlated subqueries.
+        const rel_filter = if (filter.relationship != null) " AND type = ?" else "";
         try sql.writer(self.allocator).print(
-            "SELECT * FROM (" ++
+            "WITH in_deg AS (SELECT target_id AS nid, COUNT(*) AS cnt FROM edges WHERE project = ?{s} GROUP BY target_id), " ++
+                "out_deg AS (SELECT source_id AS nid, COUNT(*) AS cnt FROM edges WHERE project = ?{s} GROUP BY source_id) " ++
+                "SELECT * FROM (" ++
                 "SELECT n.id, n.project, n.label, n.name, n.qualified_name, n.file_path, n.start_line, n.end_line, n.properties, " ++
-                degree_expr ++ " AS in_degree, " ++ out_degree_expr ++ " AS out_degree " ++
-                "FROM nodes n WHERE 1=1",
-            .{ rel_suffix, rel_suffix },
+                "COALESCE(i.cnt, 0) AS in_degree, COALESCE(o.cnt, 0) AS out_degree " ++
+                "FROM nodes n " ++
+                "LEFT JOIN in_deg i ON i.nid = n.id " ++
+                "LEFT JOIN out_deg o ON o.nid = n.id " ++
+                "WHERE 1=1",
+            .{ rel_filter, rel_filter },
         );
 
         if (filter.project.len > 0) {
@@ -1005,7 +1005,7 @@ pub const Store = struct {
 
         const total_sql = try std.fmt.allocPrint(self.allocator, "SELECT COUNT(*) FROM ({s})", .{sql.items});
         defer self.allocator.free(total_sql);
-        const total = try self.executeGraphCount(total_sql, binds.items, filter.relationship);
+        const total = try self.executeGraphCount(total_sql, filter.project, binds.items, filter.relationship);
 
         try sql.appendSlice(self.allocator, " ORDER BY ");
         try sql.appendSlice(self.allocator, graphSortSql(filter.sort_field));
@@ -1015,7 +1015,7 @@ pub const Store = struct {
 
         const stmt = try self.prepare(sql.items);
         defer self.finalize(stmt);
-        try self.bindGraphSearchArgs(stmt, binds.items, filter.relationship, filter.limit, filter.offset);
+        try self.bindGraphSearchArgs(stmt, filter.project, binds.items, filter.relationship, filter.limit, filter.offset);
 
         var out = std.ArrayList(GraphSearchHit).empty;
         errdefer {
@@ -1172,6 +1172,79 @@ pub const Store = struct {
         return out.toOwnedSlice(self.allocator);
     }
 
+    /// Query edges for a batch of source node IDs in a single round-trip.
+    /// Used by BFS traversal to process an entire frontier level at once.
+    fn findEdgesBySourceBatch(
+        self: *Store,
+        project: []const u8,
+        source_ids: []const i64,
+        edge_type: ?[]const u8,
+    ) ![]Edge {
+        return self.findEdgesBatch(project, source_ids, edge_type, "source_id");
+    }
+
+    /// Query edges for a batch of target node IDs in a single round-trip.
+    fn findEdgesByTargetBatch(
+        self: *Store,
+        project: []const u8,
+        target_ids: []const i64,
+        edge_type: ?[]const u8,
+    ) ![]Edge {
+        return self.findEdgesBatch(project, target_ids, edge_type, "target_id");
+    }
+
+    fn findEdgesBatch(
+        self: *Store,
+        project: []const u8,
+        ids: []const i64,
+        edge_type: ?[]const u8,
+        comptime id_column: []const u8,
+    ) ![]Edge {
+        if (ids.len == 0) return self.allocator.alloc(Edge, 0);
+
+        // Build: SELECT ... FROM edges WHERE project = ? AND <col> IN (?, ?, ...) [AND type = ?] ORDER BY id
+        var sql_buf = std.ArrayList(u8).empty;
+        defer sql_buf.deinit(self.allocator);
+
+        try sql_buf.appendSlice(
+            self.allocator,
+            "SELECT id, project, source_id, target_id, type, properties FROM edges WHERE project = ? AND " ++ id_column ++ " IN (",
+        );
+        for (ids, 0..) |_, i| {
+            if (i > 0) try sql_buf.append(self.allocator, ',');
+            try sql_buf.append(self.allocator, '?');
+        }
+        try sql_buf.append(self.allocator, ')');
+        if (edge_type != null) {
+            try sql_buf.appendSlice(self.allocator, " AND type = ?");
+        }
+        try sql_buf.appendSlice(self.allocator, " ORDER BY id");
+
+        const stmt = try self.prepare(sql_buf.items);
+        defer self.finalize(stmt);
+
+        // Bind: project, then each id, then optional edge_type
+        var bind_index: c_int = 1;
+        try self.bindText(stmt, bind_index, project);
+        bind_index += 1;
+        for (ids) |node_id| {
+            try self.bindInt(stmt, bind_index, node_id);
+            bind_index += 1;
+        }
+        if (edge_type) |et| {
+            try self.bindText(stmt, bind_index, et);
+        }
+
+        var out = std.ArrayList(Edge).empty;
+        while (true) {
+            const rc = c.sqlite3_step(stmt);
+            if (rc == c.SQLITE_DONE) break;
+            if (rc != c.SQLITE_ROW) return StoreError.SqlError;
+            try out.append(self.allocator, try self.rowToEdge(stmt));
+        }
+        return out.toOwnedSlice(self.allocator);
+    }
+
     pub fn findEdgeBetween(self: *Store, project: []const u8, source_id: i64, target_id: i64, edge_type: []const u8) !?Edge {
         const stmt = try self.prepare(
             "SELECT id, project, source_id, target_id, type, properties FROM edges " ++
@@ -1254,8 +1327,11 @@ pub const Store = struct {
         max_depth: u32,
         edge_type: ?[]const u8,
     ) ![]TraversalEdge {
-        var frontier = std.ArrayList(struct { id: i64, depth: u32 }).empty;
-        defer frontier.deinit(self.allocator);
+        var current_level = std.ArrayList(i64).empty;
+        defer current_level.deinit(self.allocator);
+
+        var next_level = std.ArrayList(i64).empty;
+        defer next_level.deinit(self.allocator);
 
         var visited = std.AutoHashMap(i64, void).init(self.allocator);
         defer visited.deinit();
@@ -1269,39 +1345,48 @@ pub const Store = struct {
             out.deinit(self.allocator);
         }
 
-        try frontier.append(self.allocator, .{ .id = start_node_id, .depth = 0 });
+        try current_level.append(self.allocator, start_node_id);
         try visited.put(start_node_id, {});
 
-        while (frontier.items.len > 0) {
-            const next = frontier.orderedRemove(0);
-            const next_depth = next.depth + 1;
-            if (next_depth > max_depth) continue;
-
+        var depth: u32 = 1;
+        while (current_level.items.len > 0 and depth <= max_depth) {
             if (direction == .outbound or direction == .both) {
-                const outgoing = try self.findEdgesBySource(project, next.id, edge_type);
-                defer self.freeEdges(outgoing);
-
-                for (outgoing) |edge| {
-                    try self.collectTraversalEdge(&out, &seen_edges, edge, next_depth);
+                const edges = try self.findEdgesBySourceBatch(project, current_level.items, edge_type);
+                defer self.freeEdges(edges);
+                for (edges) |edge| {
+                    try self.collectTraversalEdge(&out, &seen_edges, edge, depth);
                     if (!visited.contains(edge.target_id)) {
                         try visited.put(edge.target_id, {});
-                        try frontier.append(self.allocator, .{ .id = edge.target_id, .depth = next_depth });
+                        try next_level.append(self.allocator, edge.target_id);
                     }
                 }
             }
 
             if (direction == .inbound or direction == .both) {
-                const incoming = try self.findEdgesByTarget(project, next.id, edge_type);
-                defer self.freeEdges(incoming);
-
-                for (incoming) |edge| {
-                    try self.collectTraversalEdge(&out, &seen_edges, edge, next_depth);
+                const edges = try self.findEdgesByTargetBatch(project, current_level.items, edge_type);
+                defer self.freeEdges(edges);
+                for (edges) |edge| {
+                    try self.collectTraversalEdge(&out, &seen_edges, edge, depth);
                     if (!visited.contains(edge.source_id)) {
                         try visited.put(edge.source_id, {});
-                        try frontier.append(self.allocator, .{ .id = edge.source_id, .depth = next_depth });
+                        try next_level.append(self.allocator, edge.source_id);
                     }
                 }
             }
+
+            // Swap levels: move next_level into current_level, clear next_level
+            current_level.clearRetainingCapacity();
+            current_level.appendSlice(self.allocator, next_level.items) catch {
+                // On OOM, swap via pointer reassignment instead
+                const tmp = current_level;
+                current_level = next_level;
+                next_level = tmp;
+                next_level.clearRetainingCapacity();
+                depth += 1;
+                continue;
+            };
+            next_level.clearRetainingCapacity();
+            depth += 1;
         }
 
         return out.toOwnedSlice(self.allocator);
@@ -1390,32 +1475,48 @@ pub const Store = struct {
     fn executeGraphCount(
         self: *Store,
         sql: []const u8,
+        cte_project: []const u8,
         binds: []const []const u8,
         relationship: ?[]const u8,
     ) !usize {
         const stmt = try self.prepare(sql);
         defer self.finalize(stmt);
-        try self.bindGraphSearchArgs(stmt, binds, relationship, null, null);
+        try self.bindGraphSearchArgs(stmt, cte_project, binds, relationship, null, null);
         const rc = c.sqlite3_step(stmt);
         if (rc != c.SQLITE_ROW) return StoreError.SqlError;
         return @intCast(c.sqlite3_column_int64(stmt, 0));
     }
 
+    /// Bind parameters for a CTE-based graph search query. Order:
+    /// 1. CTE project param for in_deg + optional relationship
+    /// 2. CTE project param for out_deg + optional relationship
+    /// 3. Filter binds (project, label, name, qn, file, degree params)
+    /// 4. Limit + offset (if present)
     fn bindGraphSearchArgs(
         self: *Store,
         stmt: *c.sqlite3_stmt,
+        cte_project: []const u8,
         binds: []const []const u8,
         relationship: ?[]const u8,
         limit: ?usize,
         offset: ?usize,
     ) !void {
         var bind_index: c_int = 1;
+        // CTE in_deg: project [+ relationship]
+        try self.bindText(stmt, bind_index, cte_project);
+        bind_index += 1;
         if (relationship) |rel| {
             try self.bindText(stmt, bind_index, rel);
             bind_index += 1;
+        }
+        // CTE out_deg: project [+ relationship]
+        try self.bindText(stmt, bind_index, cte_project);
+        bind_index += 1;
+        if (relationship) |rel| {
             try self.bindText(stmt, bind_index, rel);
             bind_index += 1;
         }
+        // Filter binds
         for (binds) |bind| {
             if (looksLikeInteger(bind)) {
                 try self.bindInt(stmt, bind_index, try std.fmt.parseInt(i64, bind, 10));
