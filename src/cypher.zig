@@ -108,6 +108,7 @@ pub fn execute(
             .rows = try allocator.alloc([][]const u8, 0),
             .err = try allocator.dupe(u8, switch (err) {
                 error.UnsupportedQuery => "unsupported query",
+                error.UnsupportedVarLength => "variable-length paths not supported",
                 error.InvalidQuery => "invalid query",
                 else => "query execution failed",
             }),
@@ -302,28 +303,23 @@ fn evaluateNodeConditions(
     conditions: []const Condition,
     node_var: []const u8,
 ) bool {
-    if (conditions.len == 0) return true;
-    var result = true;
-    for (conditions, 0..) |cond, idx| {
-        const current = switch (cond.subject) {
-            .node => evaluateFieldCondition(
-                allocator,
-                readNodeField(allocator, node, cond.field) catch return false,
-                cond.op,
-                cond.value,
-            ),
-            else => false,
-        };
-        if (idx == 0) {
-            result = current;
-        } else if (cond.join_with_or) {
-            result = result or current;
-        } else {
-            result = result and current;
-        }
-    }
     _ = node_var;
-    return result;
+    return evaluateWithPrecedence(conditions, struct {
+        allocator: std.mem.Allocator,
+        node: store.Node,
+
+        fn eval(ctx: @This(), cond: Condition) bool {
+            return switch (cond.subject) {
+                .node => evaluateFieldCondition(
+                    ctx.allocator,
+                    readNodeField(ctx.allocator, ctx.node, cond.field) catch return false,
+                    cond.op,
+                    cond.value,
+                ),
+                else => false,
+            };
+        }
+    }{ .allocator = allocator, .node = node });
 }
 
 fn evaluateEdgeConditions(
@@ -332,40 +328,61 @@ fn evaluateEdgeConditions(
     conditions: []const Condition,
     pattern: EdgePattern,
 ) bool {
+    _ = pattern;
+    return evaluateWithPrecedence(conditions, struct {
+        allocator: std.mem.Allocator,
+        ctx: EdgeContext,
+
+        fn eval(self: @This(), cond: Condition) bool {
+            return switch (cond.subject) {
+                .source => evaluateFieldCondition(
+                    self.allocator,
+                    readNodeField(self.allocator, self.ctx.source, cond.field) catch return false,
+                    cond.op,
+                    cond.value,
+                ),
+                .target => evaluateFieldCondition(
+                    self.allocator,
+                    readNodeField(self.allocator, self.ctx.target, cond.field) catch return false,
+                    cond.op,
+                    cond.value,
+                ),
+                .edge => evaluateFieldCondition(
+                    self.allocator,
+                    readEdgeField(self.allocator, self.ctx.edge, cond.field) catch return false,
+                    cond.op,
+                    cond.value,
+                ),
+                .node => false,
+            };
+        }
+    }{ .allocator = allocator, .ctx = ctx });
+}
+
+/// Evaluate conditions with proper AND/OR precedence: AND binds tighter than OR.
+/// Conditions are split into OR-separated groups of AND-connected conditions.
+/// Each AND-group must be fully true for its group to be true; any true group
+/// makes the overall result true.
+fn evaluateWithPrecedence(conditions: []const Condition, evaluator: anytype) bool {
     if (conditions.len == 0) return true;
-    var result = true;
-    for (conditions, 0..) |cond, idx| {
-        const current = switch (cond.subject) {
-            .source => evaluateFieldCondition(
-                allocator,
-                readNodeField(allocator, ctx.source, cond.field) catch return false,
-                cond.op,
-                cond.value,
-            ),
-            .target => evaluateFieldCondition(
-                allocator,
-                readNodeField(allocator, ctx.target, cond.field) catch return false,
-                cond.op,
-                cond.value,
-            ),
-            .edge => evaluateFieldCondition(
-                allocator,
-                readEdgeField(allocator, ctx.edge, cond.field) catch return false,
-                cond.op,
-                cond.value,
-            ),
-            .node => false,
-        };
-        if (idx == 0) {
-            result = current;
-        } else if (cond.join_with_or) {
-            result = result or current;
+
+    // Accumulate result of current AND-group, then OR across groups.
+    var group_result = evaluator.eval(conditions[0]);
+    var overall = false;
+
+    for (conditions[1..]) |cond| {
+        if (cond.join_with_or) {
+            // Current AND-group is complete; OR it into the overall result.
+            overall = overall or group_result;
+            // Start a new AND-group with this condition.
+            group_result = evaluator.eval(cond);
         } else {
-            result = result and current;
+            // AND within the current group.
+            group_result = group_result and evaluator.eval(cond);
         }
     }
-    _ = pattern;
-    return result;
+    // Final AND-group.
+    return overall or group_result;
 }
 
 fn evaluateFieldCondition(
@@ -750,7 +767,11 @@ fn parseEdgePattern(section: []const u8) !EdgePattern {
             const left = std.mem.trim(u8, rel_inner[0..colon], " \t");
             const right = std.mem.trim(u8, rel_inner[colon + 1 ..], " \t");
             if (left.len > 0) edge_var = left;
-            if (right.len > 0) edge_type = right;
+            if (right.len > 0) {
+                if (std.mem.indexOfScalar(u8, right, '*') != null)
+                    return error.UnsupportedVarLength;
+                edge_type = right;
+            }
         } else {
             edge_var = rel_inner;
         }
@@ -908,26 +929,29 @@ fn parseOrderBy(allocator: std.mem.Allocator, text: []const u8, parsed: ParsedQu
     var parts = splitTopLevelComma(allocator, text);
     defer parts.deinit(allocator);
 
-    const part = if (parts.items.len > 0) parts.items[0] else text;
-    var expr = std.mem.trim(u8, part, " \t");
-    var descending = false;
-    if (endsWithInsensitive(expr, " DESC")) {
-        descending = true;
-        expr = std.mem.trim(u8, expr[0 .. expr.len - " DESC".len], " \t");
-    } else if (endsWithInsensitive(expr, " ASC")) {
-        expr = std.mem.trim(u8, expr[0 .. expr.len - " ASC".len], " \t");
+    var out = std.ArrayList(OrderBy).empty;
+    errdefer out.deinit(allocator);
+
+    for (parts.items) |part| {
+        var expr = std.mem.trim(u8, part, " \t");
+        if (expr.len == 0) continue;
+        var descending = false;
+        if (endsWithInsensitive(expr, " DESC")) {
+            descending = true;
+            expr = std.mem.trim(u8, expr[0 .. expr.len - " DESC".len], " \t");
+        } else if (endsWithInsensitive(expr, " ASC")) {
+            expr = std.mem.trim(u8, expr[0 .. expr.len - " ASC".len], " \t");
+        }
+
+        if (parsed.kind == .node and parsed.node_pattern != null and std.mem.eql(u8, expr, parsed.node_pattern.?.var_name)) {
+            try out.append(allocator, .{ .subject = .node, .field = "name", .descending = descending });
+        } else {
+            const ref = try parseReference(expr);
+            try out.append(allocator, .{ .subject = ref.subject, .field = ref.field, .descending = descending });
+        }
     }
 
-    const out = try allocator.alloc(OrderBy, 1);
-    errdefer allocator.free(out);
-    if (parsed.kind == .node and parsed.node_pattern != null and std.mem.eql(u8, expr, parsed.node_pattern.?.var_name)) {
-        out[0] = .{ .subject = .node, .field = "name", .descending = descending };
-        return out;
-    }
-
-    const ref = try parseReference(expr);
-    out[0] = .{ .subject = ref.subject, .field = ref.field, .descending = descending };
-    return out;
+    return out.toOwnedSlice(allocator);
 }
 
 fn parseReference(text: []const u8) !struct { subject: ValueSubject, field: []const u8 } {
