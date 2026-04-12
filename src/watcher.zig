@@ -42,6 +42,7 @@ pub const Watcher = struct {
     index_ctx: ?*anyopaque = null,
     index_fn: ?IndexFn = null,
     should_stop: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
+    mu: std.Thread.Mutex = .{},
 
     pub fn init(allocator: std.mem.Allocator, index_ctx: ?*anyopaque, index_fn: ?IndexFn) Watcher {
         return .{
@@ -60,7 +61,9 @@ pub const Watcher = struct {
     }
 
     pub fn watch(self: *Watcher, project_name: []const u8, root_path: []const u8) !void {
-        self.unwatch(project_name);
+        self.mu.lock();
+        defer self.mu.unlock();
+        self.unwatchLocked(project_name);
         try self.entries.append(self.allocator, .{
             .project_name = try self.allocator.dupe(u8, project_name),
             .root_path = try self.allocator.dupe(u8, root_path),
@@ -69,6 +72,12 @@ pub const Watcher = struct {
     }
 
     pub fn unwatch(self: *Watcher, project_name: []const u8) void {
+        self.mu.lock();
+        defer self.mu.unlock();
+        self.unwatchLocked(project_name);
+    }
+
+    fn unwatchLocked(self: *Watcher, project_name: []const u8) void {
         var idx: usize = 0;
         while (idx < self.entries.items.len) {
             if (std.mem.eql(u8, self.entries.items[idx].project_name, project_name)) {
@@ -81,6 +90,8 @@ pub const Watcher = struct {
     }
 
     pub fn touch(self: *Watcher, project_name: []const u8) void {
+        self.mu.lock();
+        defer self.mu.unlock();
         for (self.entries.items) |*entry| {
             if (std.mem.eql(u8, entry.project_name, project_name)) {
                 entry.next_poll_ns = 0;
@@ -89,7 +100,9 @@ pub const Watcher = struct {
         }
     }
 
-    pub fn watchCount(self: *const Watcher) usize {
+    pub fn watchCount(self: *Watcher) usize {
+        self.mu.lock();
+        defer self.mu.unlock();
         return self.entries.items.len;
     }
 
@@ -98,6 +111,8 @@ pub const Watcher = struct {
     }
 
     pub fn pollOnce(self: *Watcher) !u32 {
+        self.mu.lock();
+        defer self.mu.unlock();
         var reindexed: u32 = 0;
         const now = nowNs();
 
