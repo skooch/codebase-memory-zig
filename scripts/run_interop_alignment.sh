@@ -1189,11 +1189,21 @@ def build_golden_snapshot(
     else:
         snapshot["list_projects"] = []
 
-    # index_repository - store min thresholds from manifest assertions
+    # index_repository - store min thresholds from manifest assertions + actual counts
     index_assert = assertions.get("index_repository", {}).get("expect", {})
+    idx_entries = impl_payloads.get("index_repository", [])
+    nodes_actual = 0
+    edges_actual = 0
+    if idx_entries:
+        idx_payload = idx_entries[0]["payload"]
+        if isinstance(idx_payload, dict):
+            nodes_actual = int(idx_payload.get("nodes", 0))
+            edges_actual = int(idx_payload.get("edges", 0))
     snapshot["index_repository"] = {
         "nodes_min": int(index_assert.get("nodes_min", 0)),
         "edges_min": int(index_assert.get("edges_min", 0)),
+        "nodes_actual": nodes_actual,
+        "edges_actual": edges_actual,
     }
 
     return snapshot
@@ -1204,9 +1214,12 @@ def compare_golden_snapshot(
     zig_results: Dict[str, Any],
     golden: Dict[str, Any],
     assertions: Dict[str, Any],
-) -> List[str]:
-    """Compare Zig canonical outputs against a golden snapshot. Returns list of mismatch descriptions."""
+) -> Tuple[List[str], List[str]]:
+    """Compare Zig canonical outputs against a golden snapshot.
+
+    Returns (mismatches, warnings) where mismatches cause failure and warnings are informational."""
     mismatches = []  # type: List[str]
+    warnings = []  # type: List[str]
     current = build_golden_snapshot(fixture_id, zig_results, assertions)
 
     # tools_list
@@ -1265,7 +1278,17 @@ def compare_golden_snapshot(
     else:
         for i, (cur, gld) in enumerate(zip(current_tc, golden_tc)):
             if cur != gld:
-                mismatches.append("trace_call_path[%d]: differs" % i)
+                cur_set = {tuple(e) for e in cur}
+                gld_set = {tuple(e) for e in gld}
+                detail = []  # type: List[str]
+                for added in sorted(cur_set - gld_set):
+                    detail.append("  + %s" % (added,))
+                for removed in sorted(gld_set - cur_set):
+                    detail.append("  - %s" % (removed,))
+                if detail:
+                    mismatches.append("trace_call_path[%d]: edges differ\n%s" % (i, "\n".join(detail)))
+                else:
+                    mismatches.append("trace_call_path[%d]: differs" % i)
 
     # get_architecture
     current_ga = current["get_architecture"]
@@ -1277,7 +1300,18 @@ def compare_golden_snapshot(
     else:
         for i, (cur, gld) in enumerate(zip(current_ga, golden_ga)):
             if cur != gld:
-                mismatches.append("get_architecture[%d]: differs" % i)
+                cur_labels = set(cur.get("node_labels", []))
+                gld_labels = set(gld.get("node_labels", []))
+                cur_types = set(cur.get("edge_types", []))
+                gld_types = set(gld.get("edge_types", []))
+                added_labels = sorted(cur_labels - gld_labels)
+                removed_labels = sorted(gld_labels - cur_labels)
+                added_types = sorted(cur_types - gld_types)
+                removed_types = sorted(gld_types - cur_types)
+                mismatches.append(
+                    "get_architecture[%d]: node_labels(added=%s removed=%s) edge_types(added=%s removed=%s)"
+                    % (i, added_labels, removed_labels, added_types, removed_types)
+                )
 
     # search_code
     current_sc = current["search_code"]
@@ -1289,7 +1323,21 @@ def compare_golden_snapshot(
     else:
         for i, (cur, gld) in enumerate(zip(current_sc, golden_sc)):
             if cur != gld:
-                mismatches.append("search_code[%d]: differs" % i)
+                detail = []  # type: List[str]
+                cur_results = cur.get("results", [])
+                gld_results = gld.get("results", [])
+                cur_set = {(r.get("name", ""), r.get("file_path", ""), r.get("label", "")) for r in cur_results}
+                gld_set = {(r.get("name", ""), r.get("file_path", ""), r.get("label", "")) for r in gld_results}
+                for added in sorted(cur_set - gld_set):
+                    detail.append("  + %s" % (added,))
+                for removed in sorted(gld_set - cur_set):
+                    detail.append("  - %s" % (removed,))
+                if cur.get("total_results") != gld.get("total_results"):
+                    detail.append("  total_results: %s vs golden %s" % (cur.get("total_results"), gld.get("total_results")))
+                if detail:
+                    mismatches.append("search_code[%d]: results differ\n%s" % (i, "\n".join(detail)))
+                else:
+                    mismatches.append("search_code[%d]: differs" % i)
 
     # detect_changes - only compare call count (output is git-state-dependent)
     current_dc_count = current["detect_changes_count"]
@@ -1311,7 +1359,22 @@ def compare_golden_snapshot(
     else:
         for i, (cur, gld) in enumerate(zip(current_ma, golden_ma)):
             if cur != gld:
-                mismatches.append("manage_adr[%d]: differs" % i)
+                detail = []  # type: List[str]
+                if cur.get("status") != gld.get("status"):
+                    detail.append("  status: '%s' vs golden '%s'" % (cur.get("status"), gld.get("status")))
+                cur_sections = set(cur.get("sections", []))
+                gld_sections = set(gld.get("sections", []))
+                for added in sorted(cur_sections - gld_sections):
+                    detail.append("  + section: %s" % added)
+                for removed in sorted(gld_sections - cur_sections):
+                    detail.append("  - section: %s" % removed)
+                if cur.get("content") != gld.get("content"):
+                    detail.append("  content differs (len %d vs golden %d)" % (
+                        len(cur.get("content", "")), len(gld.get("content", ""))))
+                if detail:
+                    mismatches.append("manage_adr[%d]: differs\n%s" % (i, "\n".join(detail)))
+                else:
+                    mismatches.append("manage_adr[%d]: differs" % i)
 
     # get_graph_schema
     current_gs = current.get("get_graph_schema", [])
@@ -1404,8 +1467,21 @@ def compare_golden_snapshot(
             mismatches.append("index_repository: nodes %d < min %d" % (nodes, nodes_min))
         if edges < edges_min:
             mismatches.append("index_repository: edges %d < min %d" % (edges, edges_min))
+        # Warn (non-failing) if actual counts dropped >20% from golden actuals
+        golden_nodes_actual = int(golden_idx.get("nodes_actual", 0))
+        golden_edges_actual = int(golden_idx.get("edges_actual", 0))
+        if golden_nodes_actual > 0 and nodes < golden_nodes_actual * 0.8:
+            warnings.append(
+                "index_repository: WARN nodes %d dropped >20%% from golden actual %d"
+                % (nodes, golden_nodes_actual)
+            )
+        if golden_edges_actual > 0 and edges < golden_edges_actual * 0.8:
+            warnings.append(
+                "index_repository: WARN edges %d dropped >20%% from golden actual %d"
+                % (edges, golden_edges_actual)
+            )
 
-    return mismatches
+    return mismatches, warnings
 
 
 def main() -> None:
@@ -1489,17 +1565,25 @@ def run_golden_mode(
                 continue
 
             golden = json.loads(golden_path.read_text())
-            diffs = compare_golden_snapshot(fixture_id, zig_results, golden, assertions)
+            diffs, warns = compare_golden_snapshot(fixture_id, zig_results, golden, assertions)
             if diffs:
                 print("FAIL: %s" % fixture_id)
                 for diff in diffs:
                     print("  - %s" % diff)
+                for warn in warns:
+                    print("  ~ %s" % warn)
                 all_mismatches.append({
                     "fixture": fixture_id,
                     "mismatches": diffs,
+                    "warnings": warns,
                 })
             else:
-                print("PASS: %s" % fixture_id)
+                if warns:
+                    print("PASS: %s (with warnings)" % fixture_id)
+                    for warn in warns:
+                        print("  ~ %s" % warn)
+                else:
+                    print("PASS: %s" % fixture_id)
 
     # Write summary report
     out_json = report_dir / "interop_golden_report.json"
