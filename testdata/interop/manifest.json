@@ -486,6 +486,10 @@
         "search_graph",
         "query_graph",
         "trace_call_path",
+        "get_graph_schema",
+        "get_code_snippet",
+        "index_status",
+        "delete_project",
         "list_projects"
       ],
       "assertions": {
@@ -796,6 +800,42 @@
               "scope": "impact"
             },
             "expect": { "changed_count": 0 }
+          }
+        ],
+        "get_graph_schema": [
+          {
+            "args": {},
+            "expect": {
+              "required_node_labels": ["Class", "File", "Function", "Module"],
+              "required_edge_types": ["CALLS", "DEFINES", "IMPORTS"]
+            }
+          }
+        ],
+        "get_code_snippet": [
+          {
+            "args": {
+              "qualified_name": "python-parity:main.py:python:symbol:python:bootstrap"
+            },
+            "expect": {
+              "source_contains": ["def bootstrap"],
+              "has_source": true
+            }
+          }
+        ],
+        "index_status": [
+          {
+            "args": {},
+            "expect": {
+              "status": "indexed"
+            }
+          }
+        ],
+        "delete_project": [
+          {
+            "args": {},
+            "expect": {
+              "status": "deleted"
+            }
           }
         ]
       }

@@ -398,6 +398,47 @@ def canonical_manage_adr(payload: Any) -> dict[str, Any]:
     }
 
 
+def canonical_graph_schema(payload: Any) -> dict[str, list[str]]:
+    if not isinstance(payload, dict):
+        return {"node_labels": [], "edge_types": []}
+    node_labels = payload.get("node_labels", [])
+    edge_types = payload.get("edge_types", [])
+    if not isinstance(node_labels, list):
+        node_labels = []
+    if not isinstance(edge_types, list):
+        edge_types = []
+    return {
+        "node_labels": sorted(str(l) for l in node_labels),
+        "edge_types": sorted(str(t) for t in edge_types),
+    }
+
+
+def canonical_code_snippet(payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        return {"qualified_name": "", "source": "", "file_path": ""}
+    return {
+        "qualified_name": str(payload.get("qualified_name", "")),
+        "source": str(payload.get("source", "")),
+        "file_path": normalize_path_for_manifest(str(payload.get("file_path", ""))),
+    }
+
+
+def canonical_index_status(payload: Any) -> dict[str, str]:
+    if not isinstance(payload, dict):
+        return {"status": "unknown"}
+    return {"status": str(payload.get("status", "unknown"))}
+
+
+def canonical_delete_project(payload: Any) -> dict[str, bool]:
+    if not isinstance(payload, dict):
+        return {"deleted": False}
+    deleted = (
+        payload.get("status") == "deleted"
+        or payload.get("success", False)
+    )
+    return {"deleted": bool(deleted)}
+
+
 def send_rpc_request(process: subprocess.Popen[str], request: dict[str, Any]) -> tuple[dict[str, Any], str]:
     assert process.stdin is not None
     assert process.stdout is not None
@@ -646,6 +687,47 @@ def build_requests(root: Path, fixture: dict[str, Any], impl: str) -> tuple[list
 
     tool_id = 4
     assertions = fixture.get("assertions", {})
+
+    for assertion in assertions.get("get_graph_schema", []):
+        args = dict(assertion.get("args", {}))
+        args["project"] = project_name if impl == "zig" else c_project_name
+        requests.append(
+            {
+                "request": {
+                    "jsonrpc": "2.0",
+                    "id": tool_id,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "get_graph_schema",
+                        "arguments": args,
+                    },
+                },
+                "compare_key": "get_graph_schema",
+                "assertion": assertion,
+            }
+        )
+        tool_id += 1
+
+    for assertion in assertions.get("index_status", []):
+        args = dict(assertion.get("args", {}))
+        args["project"] = project_name if impl == "zig" else c_project_name
+        requests.append(
+            {
+                "request": {
+                    "jsonrpc": "2.0",
+                    "id": tool_id,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "index_status",
+                        "arguments": args,
+                    },
+                },
+                "compare_key": "index_status",
+                "assertion": assertion,
+            }
+        )
+        tool_id += 1
+
     # search_graph: the C API uses "label" while the Zig API uses "label_pattern",
     # so we translate the parameter name per-implementation below. Because the APIs
     # differ, search_graph comparison is assertion-level (checking expected nodes
@@ -674,6 +756,28 @@ def build_requests(root: Path, fixture: dict[str, Any], impl: str) -> tuple[list
                     },
                 },
                 "compare_key": "search_graph",
+                "assertion": assertion,
+            }
+        )
+        tool_id += 1
+
+    for assertion in assertions.get("get_code_snippet", []):
+        args = dict(assertion.get("args", {}))
+        if "qualified_name" not in args:
+            continue
+        args.setdefault("project", project_name if impl == "zig" else c_project_name)
+        requests.append(
+            {
+                "request": {
+                    "jsonrpc": "2.0",
+                    "id": tool_id,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "get_code_snippet",
+                        "arguments": args,
+                    },
+                },
+                "compare_key": "get_code_snippet",
                 "assertion": assertion,
             }
         )
@@ -828,6 +932,28 @@ def build_requests(root: Path, fixture: dict[str, Any], impl: str) -> tuple[list
             "compare_key": "list_projects",
         }
     )
+    tool_id += 1
+
+    # delete_project MUST be last: it removes the project from the store.
+    for assertion in assertions.get("delete_project", []):
+        args = dict(assertion.get("args", {}))
+        args["project"] = project_name if impl == "zig" else c_project_name
+        requests.append(
+            {
+                "request": {
+                    "jsonrpc": "2.0",
+                    "id": tool_id,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "delete_project",
+                        "arguments": args,
+                    },
+                },
+                "compare_key": "delete_project",
+                "assertion": assertion,
+            }
+        )
+        tool_id += 1
 
     return requests, tool_ctx
 
@@ -940,6 +1066,45 @@ def check_assertions(tool_name: str, tool_payload: Any, assertions: list[dict[st
                     failures.append(f"manage_adr content missing {fragment}")
             continue
 
+        if tool_name == "get_graph_schema":
+            schema = canonical_graph_schema(tool_payload or {})
+            for key in ("required_node_labels", "required_edge_types"):
+                expected_values = set(expected.get(key, []))
+                actual_key = {
+                    "required_node_labels": "node_labels",
+                    "required_edge_types": "edge_types",
+                }[key]
+                available_values = set(schema.get(actual_key, []))
+                missing = sorted(expected_values.difference(available_values))
+                if missing:
+                    failures.append(f"get_graph_schema missing {actual_key} {missing}")
+            continue
+
+        if tool_name == "get_code_snippet":
+            snippet = canonical_code_snippet(tool_payload or {})
+            if expected.get("has_source") and not snippet["source"]:
+                failures.append("get_code_snippet source is empty")
+            for fragment in expected.get("source_contains", []):
+                if fragment not in snippet["source"]:
+                    failures.append(f"get_code_snippet source missing '{fragment}'")
+            continue
+
+        if tool_name == "index_status":
+            status = canonical_index_status(tool_payload or {})
+            if "status" in expected and status["status"] != expected["status"]:
+                failures.append(f"index_status status '{status['status']}' != '{expected['status']}'")
+            continue
+
+        if tool_name == "delete_project":
+            result = canonical_delete_project(tool_payload or {})
+            if not result["deleted"]:
+                # Also accept no JSON-RPC error as success
+                if isinstance(tool_payload, dict) and "__error__" in tool_payload:
+                    failures.append(f"delete_project returned error: {tool_payload['__error__']}")
+                elif not result["deleted"]:
+                    failures.append("delete_project did not indicate success")
+            continue
+
         if tool_name == "list_projects":
             entries = canonical_list_projects(tool_payload or {})
             if len(entries) == 0:
@@ -999,6 +1164,22 @@ def build_golden_snapshot(
     # manage_adr
     ma_entries = impl_payloads.get("manage_adr", [])
     snapshot["manage_adr"] = [canonical_manage_adr(e["payload"]) for e in ma_entries]
+
+    # get_graph_schema
+    gs_entries = impl_payloads.get("get_graph_schema", [])
+    snapshot["get_graph_schema"] = [canonical_graph_schema(e["payload"]) for e in gs_entries]
+
+    # get_code_snippet
+    cs_entries = impl_payloads.get("get_code_snippet", [])
+    snapshot["get_code_snippet"] = [canonical_code_snippet(e["payload"]) for e in cs_entries]
+
+    # index_status
+    is_entries = impl_payloads.get("index_status", [])
+    snapshot["index_status"] = [canonical_index_status(e["payload"]) for e in is_entries]
+
+    # delete_project
+    dp_entries = impl_payloads.get("delete_project", [])
+    snapshot["delete_project"] = [canonical_delete_project(e["payload"]) for e in dp_entries]
 
     # list_projects - store project name only (root_path varies by machine)
     lp_entries = impl_payloads.get("list_projects", [])
@@ -1131,6 +1312,76 @@ def compare_golden_snapshot(
         for i, (cur, gld) in enumerate(zip(current_ma, golden_ma)):
             if cur != gld:
                 mismatches.append("manage_adr[%d]: differs" % i)
+
+    # get_graph_schema
+    current_gs = current.get("get_graph_schema", [])
+    golden_gs = golden.get("get_graph_schema", [])
+    if len(current_gs) != len(golden_gs):
+        mismatches.append(
+            "get_graph_schema: count %d vs golden %d" % (len(current_gs), len(golden_gs))
+        )
+    else:
+        for i, (cur, gld) in enumerate(zip(current_gs, golden_gs)):
+            if cur != gld:
+                cur_labels = set(cur.get("node_labels", []))
+                gld_labels = set(gld.get("node_labels", []))
+                cur_types = set(cur.get("edge_types", []))
+                gld_types = set(gld.get("edge_types", []))
+                added_labels = sorted(cur_labels - gld_labels)
+                removed_labels = sorted(gld_labels - cur_labels)
+                added_types = sorted(cur_types - gld_types)
+                removed_types = sorted(gld_types - cur_types)
+                mismatches.append(
+                    "get_graph_schema[%d]: node_labels(added=%s removed=%s) edge_types(added=%s removed=%s)"
+                    % (i, added_labels, removed_labels, added_types, removed_types)
+                )
+
+    # get_code_snippet
+    current_cs = current.get("get_code_snippet", [])
+    golden_cs = golden.get("get_code_snippet", [])
+    if len(current_cs) != len(golden_cs):
+        mismatches.append(
+            "get_code_snippet: count %d vs golden %d" % (len(current_cs), len(golden_cs))
+        )
+    else:
+        for i, (cur, gld) in enumerate(zip(current_cs, golden_cs)):
+            if cur != gld:
+                diffs = []
+                if cur.get("qualified_name") != gld.get("qualified_name"):
+                    diffs.append("qualified_name: '%s' vs '%s'" % (cur.get("qualified_name"), gld.get("qualified_name")))
+                if cur.get("file_path") != gld.get("file_path"):
+                    diffs.append("file_path: '%s' vs '%s'" % (cur.get("file_path"), gld.get("file_path")))
+                if cur.get("source") != gld.get("source"):
+                    diffs.append("source differs (len %d vs %d)" % (len(cur.get("source", "")), len(gld.get("source", ""))))
+                mismatches.append("get_code_snippet[%d]: %s" % (i, "; ".join(diffs) if diffs else "differs"))
+
+    # index_status
+    current_is = current.get("index_status", [])
+    golden_is = golden.get("index_status", [])
+    if len(current_is) != len(golden_is):
+        mismatches.append(
+            "index_status: count %d vs golden %d" % (len(current_is), len(golden_is))
+        )
+    else:
+        for i, (cur, gld) in enumerate(zip(current_is, golden_is)):
+            if cur != gld:
+                mismatches.append(
+                    "index_status[%d]: status '%s' vs golden '%s'" % (i, cur.get("status"), gld.get("status"))
+                )
+
+    # delete_project
+    current_dp = current.get("delete_project", [])
+    golden_dp = golden.get("delete_project", [])
+    if len(current_dp) != len(golden_dp):
+        mismatches.append(
+            "delete_project: count %d vs golden %d" % (len(current_dp), len(golden_dp))
+        )
+    else:
+        for i, (cur, gld) in enumerate(zip(current_dp, golden_dp)):
+            if cur != gld:
+                mismatches.append(
+                    "delete_project[%d]: deleted=%s vs golden deleted=%s" % (i, cur.get("deleted"), gld.get("deleted"))
+                )
 
     # list_projects - compare names only
     current_lp = current["list_projects"]
@@ -1338,7 +1589,7 @@ def run_compare_mode(
                     {"tool": "tools_list", "failures": failures}
                 )
 
-            for scope_tool in ("search_graph", "query_graph", "trace_call_path", "get_architecture", "search_code", "detect_changes", "manage_adr"):
+            for scope_tool in ("search_graph", "query_graph", "trace_call_path", "get_architecture", "search_code", "detect_changes", "manage_adr", "get_graph_schema", "get_code_snippet", "index_status", "delete_project"):
                 assertion_key = scope_tool
                 for index, assertion in enumerate(assertions.get(assertion_key, [])):
                     entries = impl_payloads.get(scope_tool) or []
@@ -1380,6 +1631,10 @@ def run_compare_mode(
             "search_code",
             "detect_changes",
             "manage_adr",
+            "get_graph_schema",
+            "get_code_snippet",
+            "index_status",
+            "delete_project",
             "list_projects",
             "index_repository",
         ):
@@ -1624,6 +1879,126 @@ def run_compare_mode(
                     if has_mismatch:
                         report["mismatches"].append(
                             {"fixture": fixture_id, "tool": scope, "category": "adr_payload"}
+                        )
+                        comparisons[scope] = {"status": "mismatch", "cases": cases}
+                    else:
+                        comparisons[scope] = {"status": "match", "count": len(cases)}
+
+            if scope == "get_graph_schema":
+                z_entries = get_entries("zig", scope)
+                c_entries = get_entries("c", scope)
+                if not z_entries and not c_entries:
+                    comparisons[scope] = {"status": "not_requested"}
+                elif not z_entries or not c_entries:
+                    comparisons[scope] = {"status": "missing", "zig": bool(z_entries), "c": bool(c_entries)}
+                else:
+                    cases = []
+                    has_mismatch = False
+                    for index, assertion in enumerate(assertions.get("get_graph_schema", [])):
+                        expected = assertion.get("expect", {})
+                        z_schema = canonical_graph_schema(z_entries[index]["payload"])
+                        c_schema = canonical_graph_schema(c_entries[index]["payload"])
+                        case = {}  # type: Dict[str, Any]
+                        for expected_key, actual_key in (
+                            ("required_node_labels", "node_labels"),
+                            ("required_edge_types", "edge_types"),
+                        ):
+                            required = sorted(set(expected.get(expected_key, [])))
+                            z_missing = sorted(set(required).difference(z_schema.get(actual_key, [])))
+                            c_missing = sorted(set(required).difference(c_schema.get(actual_key, [])))
+                            case[expected_key] = required
+                            case["zig_missing_%s" % actual_key] = z_missing
+                            case["c_missing_%s" % actual_key] = c_missing
+                            if z_missing or c_missing:
+                                has_mismatch = True
+                        cases.append(case)
+                    if has_mismatch:
+                        report["mismatches"].append(
+                            {"fixture": fixture_id, "tool": scope, "category": "graph_schema_contract"}
+                        )
+                        comparisons[scope] = {"status": "mismatch", "cases": cases}
+                    else:
+                        comparisons[scope] = {"status": "match", "count": len(cases)}
+
+            if scope == "get_code_snippet":
+                z_entries = get_entries("zig", scope)
+                c_entries = get_entries("c", scope)
+                if not z_entries and not c_entries:
+                    comparisons[scope] = {"status": "not_requested"}
+                elif not z_entries or not c_entries:
+                    comparisons[scope] = {"status": "missing", "zig": bool(z_entries), "c": bool(c_entries)}
+                else:
+                    cases = []
+                    has_mismatch = False
+                    for index, assertion in enumerate(assertions.get("get_code_snippet", [])):
+                        z_snippet = canonical_code_snippet(z_entries[index]["payload"])
+                        c_snippet = canonical_code_snippet(c_entries[index]["payload"])
+                        case = {
+                            "zig": z_snippet,
+                            "c": c_snippet,
+                        }
+                        if z_snippet != c_snippet:
+                            has_mismatch = True
+                        cases.append(case)
+                    if has_mismatch:
+                        report["mismatches"].append(
+                            {"fixture": fixture_id, "tool": scope, "category": "code_snippet_payload"}
+                        )
+                        comparisons[scope] = {"status": "mismatch", "cases": cases}
+                    else:
+                        comparisons[scope] = {"status": "match", "count": len(cases)}
+
+            if scope == "index_status":
+                z_entries = get_entries("zig", scope)
+                c_entries = get_entries("c", scope)
+                if not z_entries and not c_entries:
+                    comparisons[scope] = {"status": "not_requested"}
+                elif not z_entries or not c_entries:
+                    comparisons[scope] = {"status": "missing", "zig": bool(z_entries), "c": bool(c_entries)}
+                else:
+                    cases = []
+                    has_mismatch = False
+                    for index, assertion in enumerate(assertions.get("index_status", [])):
+                        z_status = canonical_index_status(z_entries[index]["payload"])
+                        c_status = canonical_index_status(c_entries[index]["payload"])
+                        case = {
+                            "zig": z_status,
+                            "c": c_status,
+                        }
+                        if z_status != c_status:
+                            has_mismatch = True
+                        cases.append(case)
+                    if has_mismatch:
+                        report["mismatches"].append(
+                            {"fixture": fixture_id, "tool": scope, "category": "index_status_result"}
+                        )
+                        comparisons[scope] = {"status": "mismatch", "cases": cases}
+                    else:
+                        comparisons[scope] = {"status": "match", "count": len(cases)}
+
+            if scope == "delete_project":
+                z_entries = get_entries("zig", scope)
+                c_entries = get_entries("c", scope)
+                if not z_entries and not c_entries:
+                    comparisons[scope] = {"status": "not_requested"}
+                elif not z_entries or not c_entries:
+                    comparisons[scope] = {"status": "missing", "zig": bool(z_entries), "c": bool(c_entries)}
+                else:
+                    cases = []
+                    has_mismatch = False
+                    for index, assertion in enumerate(assertions.get("delete_project", [])):
+                        z_result = canonical_delete_project(z_entries[index]["payload"])
+                        c_result = canonical_delete_project(c_entries[index]["payload"])
+                        case = {
+                            "zig": z_result,
+                            "c": c_result,
+                        }
+                        if z_result != c_result:
+                            has_mismatch = True
+                        cases.append(case)
+                    if has_mismatch:
+                        report["mismatches"].append(
+                            {"fixture": fixture_id, "tool": scope, "category": "delete_project_result"}
                         )
                         comparisons[scope] = {"status": "mismatch", "cases": cases}
                     else:
