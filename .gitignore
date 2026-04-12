@@ -16,3 +16,5 @@ scripts/__pycache__/
 /tmp_inspect_*.zig
 /scripts/inspect_*.zig
 /testdata/interop/adr-parity/.codebase-memory/
+/vendored/grammars/
+/vendored/tree_sitter/
