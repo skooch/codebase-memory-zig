@@ -38,6 +38,11 @@ jobs:
       - name: Run tests
         run: zig build test
 
+      - name: Interop golden snapshot check
+        run: |
+          CODEBASE_MEMORY_ZIG_BIN="${{ github.workspace }}/zig-out/bin/cbm" \
+            bash scripts/run_interop_alignment.sh --zig-only
+
       - name: Install zlint
         run: |
           curl -fsSL -o zlint https://github.com/DonIsaac/zlint/releases/download/v0.7.9/zlint-linux-x86_64
