@@ -123,12 +123,29 @@ pub const Pipeline = struct {
         try collectExtractions(self, discovered_files, &gb, &reg, &extractions);
 
         try resolveExtractions(&gb, &reg, extractions.items, &self.cancelled);
-        _ = try test_tagging.runPass(self.allocator, &gb);
-        try runConfigLinkPass(self.allocator, &gb);
-        try runSimilarityPass(self.allocator, self.repo_path, &gb);
 
+        if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
+        _ = test_tagging.runPass(self.allocator, &gb) catch |err| {
+            std.log.warn("pipeline test-tagging pass failed: {}", .{err});
+        };
+
+        if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
+        runConfigLinkPass(self.allocator, &gb) catch |err| {
+            std.log.warn("pipeline config-link pass failed: {}", .{err});
+        };
+
+        if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
+        runSimilarityPass(self.allocator, self.repo_path, &gb) catch |err| {
+            std.log.warn("pipeline similarity pass failed: {}", .{err});
+        };
+
+        if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
         try gb.dumpToStore(db);
+
+        if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
         try persistFileHashes(db, self.project_name, discovered_files);
+
+        if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
         try search_index.refreshProject(self.allocator, db, self.project_name, discovered_files);
         const scip_imported = scip.importProjectOverlay(self.allocator, db, self.project_name, self.repo_path) catch |err| imported: {
             std.log.warn("pipeline skipped SCIP overlay import for {s}: {}", .{ self.project_name, err });
@@ -195,14 +212,31 @@ pub const Pipeline = struct {
         try collectExtractions(self, classification.changed_files, &gb, &reg, &extractions);
 
         try resolveExtractions(&gb, &reg, extractions.items, &self.cancelled);
-        _ = try test_tagging.runPass(self.allocator, &gb);
-        try runConfigLinkPass(self.allocator, &gb);
-        try runSimilarityPass(self.allocator, self.repo_path, &gb);
 
+        if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
+        _ = test_tagging.runPass(self.allocator, &gb) catch |err| {
+            std.log.warn("pipeline test-tagging pass failed: {}", .{err});
+        };
+
+        if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
+        runConfigLinkPass(self.allocator, &gb) catch |err| {
+            std.log.warn("pipeline config-link pass failed: {}", .{err});
+        };
+
+        if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
+        runSimilarityPass(self.allocator, self.repo_path, &gb) catch |err| {
+            std.log.warn("pipeline similarity pass failed: {}", .{err});
+        };
+
+        if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
         try db.deleteProject(self.project_name);
         try db.upsertProject(self.project_name, self.repo_path);
         try gb.dumpToStore(db);
+
+        if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
         try persistFileHashes(db, self.project_name, discovered_files);
+
+        if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
         try search_index.refreshProject(self.allocator, db, self.project_name, discovered_files);
         const scip_imported = scip.importProjectOverlay(self.allocator, db, self.project_name, self.repo_path) catch |err| imported: {
             std.log.warn("pipeline skipped SCIP overlay import for {s}: {}", .{ self.project_name, err });
