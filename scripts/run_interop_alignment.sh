@@ -1048,7 +1048,13 @@ def compare_golden_snapshot(
     else:
         for i, (cur, gld) in enumerate(zip(current_qg, golden_qg)):
             if cur != gld:
-                mismatches.append("query_graph[%d]: differs" % i)
+                cur_rows = set(tuple(r) for r in cur.get("rows", []))
+                gld_rows = set(tuple(r) for r in gld.get("rows", []))
+                added = sorted(cur_rows - gld_rows)
+                removed = sorted(gld_rows - cur_rows)
+                mismatches.append(
+                    "query_graph[%d]: differs (added=%s removed=%s)" % (i, added, removed)
+                )
 
     # trace_call_path
     current_tc = current["trace_call_path"]
