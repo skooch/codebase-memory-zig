@@ -15,6 +15,9 @@ const scip = @import("scip.zig");
 const search_index = @import("search_index.zig");
 const store = @import("store.zig");
 const test_tagging = @import("test_tagging.zig");
+const git_history = @import("git_history.zig");
+const route_nodes = @import("route_nodes.zig");
+const service_patterns = @import("service_patterns.zig");
 
 pub const IndexMode = enum {
     full, // read everything, build from scratch
@@ -141,6 +144,16 @@ pub const Pipeline = struct {
         };
 
         if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
+        _ = git_history.runPass(self.allocator, self.repo_path, &gb) catch |err| {
+            std.log.warn("pipeline git-history pass failed: {}", .{err});
+        };
+
+        if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
+        _ = route_nodes.runPass(self.allocator, &gb) catch |err| {
+            std.log.warn("pipeline route-nodes pass failed: {}", .{err});
+        };
+
+        if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
         runSimilarityPass(self.allocator, self.repo_path, &gb) catch |err| {
             std.log.warn("pipeline similarity pass failed: {}", .{err});
         };
@@ -232,6 +245,16 @@ pub const Pipeline = struct {
         if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
         runConfigLinkPass(self.allocator, &gb) catch |err| {
             std.log.warn("pipeline config-link pass failed: {}", .{err});
+        };
+
+        if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
+        _ = git_history.runPass(self.allocator, self.repo_path, &gb) catch |err| {
+            std.log.warn("pipeline git-history pass failed: {}", .{err});
+        };
+
+        if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
+        _ = route_nodes.runPass(self.allocator, &gb) catch |err| {
+            std.log.warn("pipeline route-nodes pass failed: {}", .{err});
         };
 
         if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
@@ -965,6 +988,82 @@ fn runConfigLinkPass(
             };
         }
     }
+
+    runConfigLinkStrategy2(allocator, gb) catch |err| {
+        std.log.warn("pipeline config-link strategy 2 failed: {}", .{err});
+    };
+}
+
+fn isManifestFile(path: []const u8) bool {
+    const base = std.fs.path.basename(path);
+    return std.mem.eql(u8, base, "package.json") or
+        std.mem.eql(u8, base, "Cargo.toml") or
+        std.mem.eql(u8, base, "go.mod") or
+        std.mem.eql(u8, base, "requirements.txt") or
+        std.mem.eql(u8, base, "Gemfile") or
+        std.mem.eql(u8, base, "pom.xml") or
+        std.mem.eql(u8, base, "composer.json") or
+        std.mem.eql(u8, base, "build.gradle") or
+        std.mem.eql(u8, base, "pyproject.toml") or
+        std.mem.eql(u8, base, "setup.py") or
+        std.mem.eql(u8, base, "setup.cfg");
+}
+
+const DepEntry = struct {
+    node_id: i64,
+    name: []const u8,
+};
+
+fn runConfigLinkStrategy2(
+    allocator: std.mem.Allocator,
+    gb: *GraphBuffer,
+) error{OutOfMemory}!void {
+    // Collect dependency Variable nodes from manifest files.
+    var dep_entries = std.ArrayList(DepEntry).empty;
+    defer dep_entries.deinit(allocator);
+
+    for (gb.nodes()) |node| {
+        if (!std.mem.eql(u8, node.label, "Variable")) continue;
+        if (!isManifestFile(node.file_path)) continue;
+        try dep_entries.append(allocator, .{
+            .node_id = node.id,
+            .name = node.name,
+        });
+    }
+    if (dep_entries.items.len == 0) return;
+
+    // Collect all IMPORTS edges and their source/target nodes.
+    for (gb.edgeItems()) |edge| {
+        if (!std.mem.eql(u8, edge.edge_type, "IMPORTS")) continue;
+        const source_node = gb.findNodeById(edge.source_id) orelse continue;
+        const target_node = gb.findNodeById(edge.target_id) orelse continue;
+
+        for (dep_entries.items) |dep| {
+            var confidence: f64 = 0.0;
+
+            // Exact match: dep name equals the import target name.
+            if (std.mem.eql(u8, dep.name, target_node.name)) {
+                confidence = 0.95;
+            }
+            // Substring match: dep name appears in the import target QN.
+            else if (std.mem.indexOf(u8, target_node.qualified_name, dep.name) != null) {
+                confidence = 0.80;
+            }
+
+            if (confidence <= 0.0) continue;
+
+            const props = try std.fmt.allocPrint(
+                allocator,
+                "{{\"strategy\":\"dependency_import\",\"confidence\":{d:.2},\"dep_name\":\"{s}\"}}",
+                .{ confidence, dep.name },
+            );
+            defer allocator.free(props);
+            _ = gb.insertEdgeWithProperties(source_node.id, dep.node_id, "CONFIGURES", props) catch |err| switch (err) {
+                GraphBufferError.DuplicateEdge => 0,
+                else => return error.OutOfMemory,
+            };
+        }
+    }
 }
 
 fn hasConfigExtension(path: []const u8) bool {
@@ -1200,7 +1299,12 @@ fn resolveExtractions(
             if (reg.resolve(call.callee_name, call.caller_id, caller_node.file_path, null)) |res| {
                 if (gb.findNodeByQualifiedName(res.qualified_name)) |target| {
                     if (std.mem.eql(u8, target.label, "Class") or std.mem.eql(u8, target.label, "Interface")) continue;
-                    try insertResolvedEdge(gb, call.caller_id, target.id, "CALLS");
+                    const edge_type: []const u8 = if (service_patterns.classify(res.qualified_name)) |kind| switch (kind) {
+                        .http_client => "HTTP_CALLS",
+                        .async_broker => "ASYNC_CALLS",
+                        .route_registration => "CALLS",
+                    } else "CALLS";
+                    try insertResolvedEdge(gb, call.caller_id, target.id, edge_type);
                 }
             }
         }
