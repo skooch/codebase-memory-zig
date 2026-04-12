@@ -227,7 +227,9 @@ pub const McpServer = struct {
             if (request.value.params == null) {
                 return self.errorResponse(request.value.id, -32602, "Missing params");
             }
-            const call_request = try extractToolCall(self.allocator, request.value.params.?);
+            const call_request = extractToolCall(self.allocator, request.value.params.?) catch {
+                return self.errorResponse(request.value.id, -32602, "Invalid tool call params");
+            };
             const response = try self.dispatchToolCall(request.value.id, call_request);
             if (response) |owned_response| {
                 if (self.lifecycle_ref) |lifecycle| {
@@ -926,7 +928,7 @@ fn signedIntArg(value: std.json.Value, key: []const u8) ?i32 {
     if (value != .object) return null;
     const child = value.object.get(key) orelse return null;
     return switch (child) {
-        .integer => |v| @intCast(v),
+        .integer => |v| std.math.cast(i32, v),
         else => null,
     };
 }
@@ -1954,7 +1956,7 @@ fn intArg(value: std.json.Value, key: []const u8) ?u32 {
     if (value != .object) return null;
     const child = value.object.get(key) orelse return null;
     return switch (child) {
-        .integer => |v| @as(u32, @intCast(v)),
+        .integer => |v| std.math.cast(u32, v),
         else => null,
     };
 }
