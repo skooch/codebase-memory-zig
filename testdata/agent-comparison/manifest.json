@@ -1,0 +1,211 @@
+{
+  "schema_version": "0.1",
+  "goal": "Compare the original C tool against the hybrid Zig port with shared agent-style tasks",
+  "repos": [
+    {
+      "id": "python-basic",
+      "path": "testdata/interop/python-basic",
+      "project": "python-basic",
+      "warmup_runs": 1,
+      "measured_runs": 2,
+      "tasks": [
+        {
+          "id": "find-helper",
+          "prompt": "Find the helper function and return the matching code location.",
+          "tool": "search_code",
+          "args": {
+            "pattern": "helper",
+            "mode": "compact",
+            "limit": 10
+          },
+          "expect": {
+            "required_names": [
+              "helper"
+            ],
+            "required_files": [
+              "main.py"
+            ],
+            "required_keys": [
+              "results",
+              "total"
+            ]
+          }
+        },
+        {
+          "id": "open-helper",
+          "prompt": "Open the helper implementation.",
+          "tool": "get_code_snippet",
+          "args": {
+            "qualified_name": "helper"
+          },
+          "expect": {
+            "required_substrings": [
+              "return value * 2"
+            ],
+            "required_keys": [
+              "source",
+              "file_path"
+            ]
+          }
+        },
+        {
+          "id": "summarize-architecture",
+          "prompt": "Summarize the repository structure with packages and hotspots.",
+          "tool": "get_architecture",
+          "args": {
+            "aspects": [
+              "packages",
+              "hotspots"
+            ]
+          },
+          "expect": {
+            "required_keys": [
+              "project",
+              "packages",
+              "hotspots"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "scip-overlay",
+      "path": "testdata/interop/scip",
+      "project": "scip",
+      "warmup_runs": 1,
+      "measured_runs": 2,
+      "tasks": [
+        {
+          "id": "find-render-message",
+          "prompt": "Find the renderMessage symbol in the repository.",
+          "tool": "search_code",
+          "args": {
+            "pattern": "renderMessage",
+            "mode": "compact",
+            "limit": 10
+          },
+          "expect": {
+            "required_names": [
+              "renderMessage"
+            ],
+            "required_files": [
+              "src/main.ts"
+            ],
+            "required_keys": [
+              "results",
+              "total"
+            ]
+          }
+        },
+        {
+          "id": "open-render-message",
+          "prompt": "Open the renderMessage implementation.",
+          "tool": "get_code_snippet",
+          "args": {
+            "qualified_name": "renderMessage"
+          },
+          "expect": {
+            "required_substrings": [
+              "toUpperCase",
+              "hello ${name}"
+            ],
+            "required_keys": [
+              "source",
+              "file_path"
+            ]
+          }
+        },
+        {
+          "id": "summarize-architecture",
+          "prompt": "Describe the repository layout and graph summary.",
+          "tool": "get_architecture",
+          "args": {
+            "aspects": [
+              "packages",
+              "hotspots"
+            ]
+          },
+          "expect": {
+            "required_keys": [
+              "project",
+              "packages",
+              "hotspots"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "worktree-medium",
+      "path": ".",
+      "project": "cbm-zig-hybrid-serving",
+      "warmup_runs": 1,
+      "measured_runs": 1,
+      "notes": [
+        "Local worktree scenario to validate the hybrid routing path on a larger repository."
+      ],
+      "tasks": [
+        {
+          "id": "find-query-router",
+          "prompt": "Find the QueryRouter implementation entry point.",
+          "tool": "search_code",
+          "args": {
+            "pattern": "QueryRouter",
+            "mode": "compact",
+            "limit": 10
+          },
+          "expect": {
+            "required_names": [
+              "QueryRouter"
+            ],
+            "required_files": [
+              "src/query_router.zig"
+            ],
+            "required_keys": [
+              "results",
+              "total"
+            ]
+          }
+        },
+        {
+          "id": "open-search-code-payload",
+          "prompt": "Open the QueryRouter searchCodePayload implementation.",
+          "tool": "get_code_snippet",
+          "args": {
+            "qualified_name": "searchCodePayload"
+          },
+          "expect": {
+            "required_substrings": [
+              "pub fn searchCodePayload",
+              "collectSearchCodeHits"
+            ],
+            "required_keys": [
+              "source",
+              "file_path"
+            ]
+          }
+        },
+        {
+          "id": "summarize-architecture",
+          "prompt": "Summarize the architecture with packages, hotspots, and entry points.",
+          "tool": "get_architecture",
+          "args": {
+            "aspects": [
+              "packages",
+              "hotspots",
+              "entry_points"
+            ]
+          },
+          "expect": {
+            "required_keys": [
+              "project",
+              "packages",
+              "hotspots",
+              "entry_points"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
