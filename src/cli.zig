@@ -1838,3 +1838,488 @@ test "uninstall dry run keeps supported agent config entries" {
     defer allocator.free(legacy_contents);
     try std.testing.expect(std.mem.indexOf(u8, legacy_contents, server_name) != null);
 }
+
+test "detect agents finds gemini and openclaw directories" {
+    const allocator = std.testing.allocator;
+    const home = try std.fmt.allocPrint(allocator, "/tmp/cbm-home-detect-new-{x}", .{std.crypto.random.int(u64)});
+    defer allocator.free(home);
+    defer std.fs.cwd().deleteTree(home) catch {};
+
+    try std.fs.cwd().makePath(home);
+
+    // Create gemini and openclaw dirs
+    const gemini_dir = try std.fs.path.join(allocator, &.{ home, ".gemini" });
+    defer allocator.free(gemini_dir);
+    try std.fs.cwd().makePath(gemini_dir);
+
+    const openclaw_dir = try std.fs.path.join(allocator, &.{ home, ".openclaw" });
+    defer allocator.free(openclaw_dir);
+    try std.fs.cwd().makePath(openclaw_dir);
+
+    const detected = detectAgents(allocator, home);
+    try std.testing.expect(detected.gemini);
+    try std.testing.expect(detected.openclaw);
+    try std.testing.expect(!detected.codex);
+    try std.testing.expect(!detected.claude);
+    try std.testing.expect(!detected.aider);
+    try std.testing.expect(!detected.opencode);
+}
+
+test "detect agents antigravity implies gemini" {
+    const allocator = std.testing.allocator;
+    const home = try std.fmt.allocPrint(allocator, "/tmp/cbm-home-detect-ag-{x}", .{std.crypto.random.int(u64)});
+    defer allocator.free(home);
+    defer std.fs.cwd().deleteTree(home) catch {};
+
+    // Create antigravity dir (nested under .gemini)
+    const ag_dir = try std.fs.path.join(allocator, &.{ home, ".gemini", "antigravity" });
+    defer allocator.free(ag_dir);
+    try std.fs.cwd().makePath(ag_dir);
+
+    const detected = detectAgents(allocator, home);
+    try std.testing.expect(detected.antigravity);
+    try std.testing.expect(detected.gemini); // implied by antigravity
+}
+
+test "skills install and remove roundtrip" {
+    const allocator = std.testing.allocator;
+    const skills_dir = try std.fmt.allocPrint(allocator, "/tmp/cbm-skills-{x}", .{std.crypto.random.int(u64)});
+    defer allocator.free(skills_dir);
+    defer std.fs.cwd().deleteTree(skills_dir) catch {};
+    try std.fs.cwd().makePath(skills_dir);
+
+    // Install
+    const result = try installSkills(allocator, skills_dir, false, false);
+    try std.testing.expectEqual(@as(u32, 1), result.installed);
+
+    // Check file exists
+    const file_path = try std.fs.path.join(allocator, &.{ skills_dir, skill_name, "SKILL.md" });
+    defer allocator.free(file_path);
+    const contents = try std.fs.cwd().readFileAlloc(allocator, file_path, 1024 * 1024);
+    defer allocator.free(contents);
+    try std.testing.expect(std.mem.indexOf(u8, contents, "Codebase Memory") != null);
+
+    // Install again without force = no change
+    const result2 = try installSkills(allocator, skills_dir, false, false);
+    try std.testing.expectEqual(@as(u32, 0), result2.installed);
+
+    // Install with force = reinstall
+    const result3 = try installSkills(allocator, skills_dir, true, false);
+    try std.testing.expectEqual(@as(u32, 1), result3.installed);
+
+    // Remove
+    const removed = try removeSkills(allocator, skills_dir, false);
+    try std.testing.expectEqual(@as(u32, 1), removed);
+    try std.testing.expectError(error.FileNotFound, std.fs.cwd().access(file_path, .{}));
+}
+
+test "skills install dry run does not write" {
+    const allocator = std.testing.allocator;
+    const skills_dir = try std.fmt.allocPrint(allocator, "/tmp/cbm-skills-dry-{x}", .{std.crypto.random.int(u64)});
+    defer allocator.free(skills_dir);
+    defer std.fs.cwd().deleteTree(skills_dir) catch {};
+    try std.fs.cwd().makePath(skills_dir);
+
+    const result = try installSkills(allocator, skills_dir, false, true);
+    try std.testing.expectEqual(@as(u32, 1), result.installed);
+
+    const file_path = try std.fs.path.join(allocator, &.{ skills_dir, skill_name, "SKILL.md" });
+    defer allocator.free(file_path);
+    try std.testing.expectError(error.FileNotFound, std.fs.cwd().access(file_path, .{}));
+}
+
+test "skills install removes old monolithic skill dirs" {
+    const allocator = std.testing.allocator;
+    const skills_dir = try std.fmt.allocPrint(allocator, "/tmp/cbm-skills-old-{x}", .{std.crypto.random.int(u64)});
+    defer allocator.free(skills_dir);
+    defer std.fs.cwd().deleteTree(skills_dir) catch {};
+    try std.fs.cwd().makePath(skills_dir);
+
+    // Create old skill directories
+    for (old_skill_names) |old_name| {
+        const old_path = try std.fs.path.join(allocator, &.{ skills_dir, old_name });
+        defer allocator.free(old_path);
+        try std.fs.cwd().makePath(old_path);
+    }
+
+    const result = try installSkills(allocator, skills_dir, false, false);
+    try std.testing.expect(result.old_removed);
+
+    // Verify old dirs are gone
+    for (old_skill_names) |old_name| {
+        const old_path = try std.fs.path.join(allocator, &.{ skills_dir, old_name });
+        defer allocator.free(old_path);
+        try std.testing.expectError(error.FileNotFound, std.fs.cwd().access(old_path, .{}));
+    }
+}
+
+test "instructions upsert creates file when missing" {
+    const allocator = std.testing.allocator;
+    const path = try std.fmt.allocPrint(allocator, "/tmp/cbm-instr-create-{x}.md", .{std.crypto.random.int(u64)});
+    defer allocator.free(path);
+    defer std.fs.cwd().deleteFile(path) catch {};
+
+    const changed = try upsertInstructions(allocator, path, "test content\n", false);
+    try std.testing.expect(changed);
+
+    const contents = try std.fs.cwd().readFileAlloc(allocator, path, 1024 * 1024);
+    defer allocator.free(contents);
+    try std.testing.expect(std.mem.indexOf(u8, contents, instr_marker_start) != null);
+    try std.testing.expect(std.mem.indexOf(u8, contents, "test content") != null);
+    try std.testing.expect(std.mem.indexOf(u8, contents, instr_marker_end) != null);
+}
+
+test "instructions upsert is idempotent" {
+    const allocator = std.testing.allocator;
+    const path = try std.fmt.allocPrint(allocator, "/tmp/cbm-instr-idem-{x}.md", .{std.crypto.random.int(u64)});
+    defer allocator.free(path);
+    defer std.fs.cwd().deleteFile(path) catch {};
+
+    _ = try upsertInstructions(allocator, path, "content\n", false);
+    const first = try std.fs.cwd().readFileAlloc(allocator, path, 1024 * 1024);
+    defer allocator.free(first);
+
+    const changed = try upsertInstructions(allocator, path, "content\n", false);
+    try std.testing.expect(!changed);
+
+    const second = try std.fs.cwd().readFileAlloc(allocator, path, 1024 * 1024);
+    defer allocator.free(second);
+    try std.testing.expectEqualStrings(first, second);
+}
+
+test "instructions upsert replaces existing section" {
+    const allocator = std.testing.allocator;
+    const path = try std.fmt.allocPrint(allocator, "/tmp/cbm-instr-replace-{x}.md", .{std.crypto.random.int(u64)});
+    defer allocator.free(path);
+    defer std.fs.cwd().deleteFile(path) catch {};
+
+    _ = try upsertInstructions(allocator, path, "old content\n", false);
+    const changed = try upsertInstructions(allocator, path, "new content\n", false);
+    try std.testing.expect(changed);
+
+    const contents = try std.fs.cwd().readFileAlloc(allocator, path, 1024 * 1024);
+    defer allocator.free(contents);
+    try std.testing.expect(std.mem.indexOf(u8, contents, "new content") != null);
+    try std.testing.expect(std.mem.indexOf(u8, contents, "old content") == null);
+    // Only one pair of markers
+    const start_count = std.mem.count(u8, contents, instr_marker_start);
+    try std.testing.expectEqual(@as(usize, 1), start_count);
+}
+
+test "instructions remove strips managed section" {
+    const allocator = std.testing.allocator;
+    const path = try std.fmt.allocPrint(allocator, "/tmp/cbm-instr-remove-{x}.md", .{std.crypto.random.int(u64)});
+    defer allocator.free(path);
+    defer std.fs.cwd().deleteFile(path) catch {};
+
+    // Write a file with prefix + managed section
+    {
+        var file = try std.fs.cwd().createFile(path, .{ .truncate = true });
+        defer file.close();
+        try file.writeAll("# My File\nSome content\n");
+    }
+    _ = try upsertInstructions(allocator, path, "managed\n", false);
+
+    const removed = try removeInstructions(allocator, path, false);
+    try std.testing.expect(removed);
+
+    const contents = try std.fs.cwd().readFileAlloc(allocator, path, 1024 * 1024);
+    defer allocator.free(contents);
+    try std.testing.expect(std.mem.indexOf(u8, contents, instr_marker_start) == null);
+    try std.testing.expect(std.mem.indexOf(u8, contents, "My File") != null);
+}
+
+test "instructions remove from nonexistent file returns false" {
+    const allocator = std.testing.allocator;
+    const removed = try removeInstructions(allocator, "/tmp/cbm-nonexistent-instr-file.md", false);
+    try std.testing.expect(!removed);
+}
+
+test "hook json upsert creates settings with hook entry" {
+    const allocator = std.testing.allocator;
+    const path = try std.fmt.allocPrint(allocator, "/tmp/cbm-hooks-{x}.json", .{std.crypto.random.int(u64)});
+    defer allocator.free(path);
+    defer std.fs.cwd().deleteFile(path) catch {};
+
+    const changed = try upsertHooksJson(allocator, path, "PreToolUse", "Grep|Glob", "~/.claude/hooks/test", false);
+    try std.testing.expect(changed);
+
+    const contents = try std.fs.cwd().readFileAlloc(allocator, path, 1024 * 1024);
+    defer allocator.free(contents);
+    try std.testing.expect(std.mem.indexOf(u8, contents, "PreToolUse") != null);
+    try std.testing.expect(std.mem.indexOf(u8, contents, "Grep|Glob") != null);
+    try std.testing.expect(std.mem.indexOf(u8, contents, "~/.claude/hooks/test") != null);
+}
+
+test "hook json upsert replaces existing entry with same matcher" {
+    const allocator = std.testing.allocator;
+    const path = try std.fmt.allocPrint(allocator, "/tmp/cbm-hooks-replace-{x}.json", .{std.crypto.random.int(u64)});
+    defer allocator.free(path);
+    defer std.fs.cwd().deleteFile(path) catch {};
+
+    _ = try upsertHooksJson(allocator, path, "PreToolUse", "Grep|Glob", "old-command", false);
+    _ = try upsertHooksJson(allocator, path, "PreToolUse", "Grep|Glob", "new-command", false);
+
+    const contents = try std.fs.cwd().readFileAlloc(allocator, path, 1024 * 1024);
+    defer allocator.free(contents);
+    try std.testing.expect(std.mem.indexOf(u8, contents, "new-command") != null);
+    try std.testing.expect(std.mem.indexOf(u8, contents, "old-command") == null);
+}
+
+test "hook json remove strips entry" {
+    const allocator = std.testing.allocator;
+    const path = try std.fmt.allocPrint(allocator, "/tmp/cbm-hooks-rm-{x}.json", .{std.crypto.random.int(u64)});
+    defer allocator.free(path);
+    defer std.fs.cwd().deleteFile(path) catch {};
+
+    _ = try upsertHooksJson(allocator, path, "PreToolUse", "Grep|Glob", "test-cmd", false);
+    const removed = try removeHooksJson(allocator, path, "PreToolUse", "Grep|Glob", false);
+    try std.testing.expect(removed);
+
+    const contents = try std.fs.cwd().readFileAlloc(allocator, path, 1024 * 1024);
+    defer allocator.free(contents);
+    try std.testing.expect(std.mem.indexOf(u8, contents, "Grep|Glob") == null);
+}
+
+test "hook json remove from nonexistent file returns false" {
+    const allocator = std.testing.allocator;
+    const removed = try removeHooksJson(allocator, "/tmp/cbm-nonexistent-hooks.json", "PreToolUse", "Grep|Glob", false);
+    try std.testing.expect(!removed);
+}
+
+test "gemini install and uninstall roundtrip" {
+    const allocator = std.testing.allocator;
+    const home = try std.fmt.allocPrint(allocator, "/tmp/cbm-home-gemini-{x}", .{std.crypto.random.int(u64)});
+    defer allocator.free(home);
+    defer std.fs.cwd().deleteTree(home) catch {};
+
+    const gemini_dir = try std.fs.path.join(allocator, &.{ home, ".gemini" });
+    defer allocator.free(gemini_dir);
+    try std.fs.cwd().makePath(gemini_dir);
+
+    const report = try installAgentConfigs(allocator, home, .{
+        .binary_path = "/tmp/cbm",
+        .force = true,
+    });
+    try std.testing.expectEqual(InstallReport.Action.updated, report.gemini);
+
+    // Check settings.json has mcpServers entry
+    const settings_path = try std.fs.path.join(allocator, &.{ home, ".gemini", "settings.json" });
+    defer allocator.free(settings_path);
+    const contents = try std.fs.cwd().readFileAlloc(allocator, settings_path, 1024 * 1024);
+    defer allocator.free(contents);
+    try std.testing.expect(std.mem.indexOf(u8, contents, "mcpServers") != null);
+    try std.testing.expect(std.mem.indexOf(u8, contents, mcp_server_key) != null);
+
+    // Check instructions file
+    const instr_path = try std.fs.path.join(allocator, &.{ home, ".gemini", "GEMINI.md" });
+    defer allocator.free(instr_path);
+    const instr = try std.fs.cwd().readFileAlloc(allocator, instr_path, 1024 * 1024);
+    defer allocator.free(instr);
+    try std.testing.expect(std.mem.indexOf(u8, instr, instr_marker_start) != null);
+
+    // Check hooks
+    try std.testing.expect(std.mem.indexOf(u8, contents, "BeforeTool") != null);
+
+    // Uninstall
+    const uninstall = try uninstallAgentConfigs(allocator, home, false);
+    try std.testing.expectEqual(InstallReport.Action.removed, uninstall.gemini);
+}
+
+test "opencode install uses mcp key format" {
+    const allocator = std.testing.allocator;
+    const home = try std.fmt.allocPrint(allocator, "/tmp/cbm-home-opencode-{x}", .{std.crypto.random.int(u64)});
+    defer allocator.free(home);
+    defer std.fs.cwd().deleteTree(home) catch {};
+
+    // OpenCode is PATH-detected, so use force
+    const report = try installAgentConfigs(allocator, home, .{
+        .binary_path = "/tmp/cbm",
+        .force = true,
+    });
+    try std.testing.expectEqual(InstallReport.Action.updated, report.opencode);
+
+    const config_path = try std.fs.path.join(allocator, &.{ home, ".config", "opencode", "opencode.json" });
+    defer allocator.free(config_path);
+    const contents = try std.fs.cwd().readFileAlloc(allocator, config_path, 1024 * 1024);
+    defer allocator.free(contents);
+    // OpenCode uses "mcp" key with "enabled", "type", "command" array
+    try std.testing.expect(std.mem.indexOf(u8, contents, "\"mcp\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, contents, "\"enabled\": true") != null);
+    try std.testing.expect(std.mem.indexOf(u8, contents, "\"local\"") != null);
+}
+
+test "openclaw install uses mcpServers format" {
+    const allocator = std.testing.allocator;
+    const home = try std.fmt.allocPrint(allocator, "/tmp/cbm-home-openclaw-{x}", .{std.crypto.random.int(u64)});
+    defer allocator.free(home);
+    defer std.fs.cwd().deleteTree(home) catch {};
+
+    const openclaw_dir = try std.fs.path.join(allocator, &.{ home, ".openclaw" });
+    defer allocator.free(openclaw_dir);
+    try std.fs.cwd().makePath(openclaw_dir);
+
+    const report = try installAgentConfigs(allocator, home, .{
+        .binary_path = "/tmp/cbm",
+        .force = true,
+    });
+    try std.testing.expectEqual(InstallReport.Action.updated, report.openclaw);
+
+    const config_path = try std.fs.path.join(allocator, &.{ home, ".openclaw", "openclaw.json" });
+    defer allocator.free(config_path);
+    const contents = try std.fs.cwd().readFileAlloc(allocator, config_path, 1024 * 1024);
+    defer allocator.free(contents);
+    try std.testing.expect(std.mem.indexOf(u8, contents, "mcpServers") != null);
+    try std.testing.expect(std.mem.indexOf(u8, contents, mcp_server_key) != null);
+}
+
+test "antigravity install uses mcpServers format" {
+    const allocator = std.testing.allocator;
+    const home = try std.fmt.allocPrint(allocator, "/tmp/cbm-home-antigrav-{x}", .{std.crypto.random.int(u64)});
+    defer allocator.free(home);
+    defer std.fs.cwd().deleteTree(home) catch {};
+
+    const ag_dir = try std.fs.path.join(allocator, &.{ home, ".gemini", "antigravity" });
+    defer allocator.free(ag_dir);
+    try std.fs.cwd().makePath(ag_dir);
+
+    const report = try installAgentConfigs(allocator, home, .{
+        .binary_path = "/tmp/cbm",
+        .force = true,
+    });
+    try std.testing.expectEqual(InstallReport.Action.updated, report.antigravity);
+
+    const config_path = try std.fs.path.join(allocator, &.{ home, ".gemini", "antigravity", "mcp_config.json" });
+    defer allocator.free(config_path);
+    const contents = try std.fs.cwd().readFileAlloc(allocator, config_path, 1024 * 1024);
+    defer allocator.free(contents);
+    try std.testing.expect(std.mem.indexOf(u8, contents, "mcpServers") != null);
+
+    // Check instructions
+    const instr_path = try std.fs.path.join(allocator, &.{ home, ".gemini", "antigravity", "AGENTS.md" });
+    defer allocator.free(instr_path);
+    const instr = try std.fs.cwd().readFileAlloc(allocator, instr_path, 1024 * 1024);
+    defer allocator.free(instr);
+    try std.testing.expect(std.mem.indexOf(u8, instr, instr_marker_start) != null);
+}
+
+test "aider install is instructions only" {
+    const allocator = std.testing.allocator;
+    const home = try std.fmt.allocPrint(allocator, "/tmp/cbm-home-aider-{x}", .{std.crypto.random.int(u64)});
+    defer allocator.free(home);
+    defer std.fs.cwd().deleteTree(home) catch {};
+    try std.fs.cwd().makePath(home);
+
+    // Aider is PATH-detected, so use force
+    const report = try installAgentConfigs(allocator, home, .{
+        .binary_path = "/tmp/cbm",
+        .force = true,
+    });
+    try std.testing.expectEqual(InstallReport.Action.updated, report.aider);
+
+    // Check CONVENTIONS.md exists with instructions
+    const conventions_path = try std.fs.path.join(allocator, &.{ home, "CONVENTIONS.md" });
+    defer allocator.free(conventions_path);
+    const contents = try std.fs.cwd().readFileAlloc(allocator, conventions_path, 1024 * 1024);
+    defer allocator.free(contents);
+    try std.testing.expect(std.mem.indexOf(u8, contents, instr_marker_start) != null);
+    try std.testing.expect(std.mem.indexOf(u8, contents, "Knowledge Graph") != null);
+
+    // Uninstall
+    const uninstall = try uninstallAgentConfigs(allocator, home, false);
+    // Aider is not detected (PATH check, not home dir), so removal is skipped
+    try std.testing.expectEqual(InstallReport.Action.skipped, uninstall.aider);
+}
+
+test "claude install writes skills and hooks" {
+    const allocator = std.testing.allocator;
+    const home = try std.fmt.allocPrint(allocator, "/tmp/cbm-home-claude-full-{x}", .{std.crypto.random.int(u64)});
+    defer allocator.free(home);
+    defer std.fs.cwd().deleteTree(home) catch {};
+    const claude_dir = try std.fs.path.join(allocator, &.{ home, ".claude" });
+    defer allocator.free(claude_dir);
+    try std.fs.cwd().makePath(claude_dir);
+
+    const report = try installAgentConfigs(allocator, home, .{
+        .binary_path = "/tmp/cbm",
+        .force = true,
+    });
+    try std.testing.expectEqual(InstallReport.Action.updated, report.claude);
+    try std.testing.expectEqual(InstallReport.Action.updated, report.skills);
+    try std.testing.expectEqual(InstallReport.Action.updated, report.hooks);
+
+    // Skills file exists
+    const skill_path = try std.fs.path.join(allocator, &.{ home, ".claude", "skills", skill_name, "SKILL.md" });
+    defer allocator.free(skill_path);
+    std.fs.cwd().access(skill_path, .{}) catch |err| {
+        std.debug.print("skill path not found: {s}\n", .{skill_path});
+        return err;
+    };
+
+    // Hook scripts exist
+    const gate_path = try std.fs.path.join(allocator, &.{ home, ".claude", "hooks", "cbm-code-discovery-gate" });
+    defer allocator.free(gate_path);
+    std.fs.cwd().access(gate_path, .{}) catch |err| {
+        std.debug.print("gate script not found: {s}\n", .{gate_path});
+        return err;
+    };
+
+    const reminder_path = try std.fs.path.join(allocator, &.{ home, ".claude", "hooks", "cbm-session-reminder" });
+    defer allocator.free(reminder_path);
+    std.fs.cwd().access(reminder_path, .{}) catch |err| {
+        std.debug.print("reminder script not found: {s}\n", .{reminder_path});
+        return err;
+    };
+
+    // Settings.json has hook entries
+    const settings_path = try std.fs.path.join(allocator, &.{ home, ".claude", "settings.json" });
+    defer allocator.free(settings_path);
+    const settings = try std.fs.cwd().readFileAlloc(allocator, settings_path, 1024 * 1024);
+    defer allocator.free(settings);
+    try std.testing.expect(std.mem.indexOf(u8, settings, "PreToolUse") != null);
+    try std.testing.expect(std.mem.indexOf(u8, settings, "SessionStart") != null);
+}
+
+test "generic mcp json formats produce correct structure" {
+    const allocator = std.testing.allocator;
+
+    // Test VS Code format (servers + type:stdio)
+    {
+        const path = try std.fmt.allocPrint(allocator, "/tmp/cbm-vscode-{x}.json", .{std.crypto.random.int(u64)});
+        defer allocator.free(path);
+        defer std.fs.cwd().deleteFile(path) catch {};
+
+        const updated = try updateGenericMcpJson(allocator, path, "/usr/bin/cbm", .vscode_servers, true);
+        defer allocator.free(updated);
+        try std.testing.expect(updated.len > 0);
+        try std.testing.expect(std.mem.indexOf(u8, updated, "\"servers\"") != null);
+        try std.testing.expect(std.mem.indexOf(u8, updated, "\"stdio\"") != null);
+    }
+
+    // Test context_servers format (Zed)
+    {
+        const path = try std.fmt.allocPrint(allocator, "/tmp/cbm-zed-{x}.json", .{std.crypto.random.int(u64)});
+        defer allocator.free(path);
+        defer std.fs.cwd().deleteFile(path) catch {};
+
+        const updated = try updateGenericMcpJson(allocator, path, "/usr/bin/cbm", .context_servers, true);
+        defer allocator.free(updated);
+        try std.testing.expect(updated.len > 0);
+        try std.testing.expect(std.mem.indexOf(u8, updated, "\"context_servers\"") != null);
+        try std.testing.expect(std.mem.indexOf(u8, updated, "\"args\"") != null);
+    }
+
+    // Test OpenCode format (mcp + enabled + local + command array)
+    {
+        const path = try std.fmt.allocPrint(allocator, "/tmp/cbm-opencode-{x}.json", .{std.crypto.random.int(u64)});
+        defer allocator.free(path);
+        defer std.fs.cwd().deleteFile(path) catch {};
+
+        const updated = try updateGenericMcpJson(allocator, path, "/usr/bin/cbm", .opencode, true);
+        defer allocator.free(updated);
+        try std.testing.expect(updated.len > 0);
+        try std.testing.expect(std.mem.indexOf(u8, updated, "\"mcp\"") != null);
+        try std.testing.expect(std.mem.indexOf(u8, updated, "\"enabled\": true") != null);
+        try std.testing.expect(std.mem.indexOf(u8, updated, "\"local\"") != null);
+    }
+}
