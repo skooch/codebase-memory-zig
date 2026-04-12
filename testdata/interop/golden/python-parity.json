@@ -31,7 +31,7 @@
   ],
   "get_code_snippet": [
     {
-      "file_path": "/Users/skooch/projects/worktrees/interop-testing-gaps/testdata/interop/python-parity/main.py",
+      "file_path": "main.py",
       "qualified_name": "python-parity:main.py:python:symbol:python:bootstrap",
       "source": "def bootstrap() -> ActiveWorker:\n    worker = ActiveWorker(\"primary\")\n    worker.configure(\"mode\", \"batch\")\n    worker.run()\n    return worker"
     }

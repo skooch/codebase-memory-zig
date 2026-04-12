@@ -81,6 +81,27 @@
     "trace_call_path"
   ],
   "trace_call_path": [
-    []
+    [
+      [
+        "boot",
+        "createConfig",
+        "CALLS"
+      ],
+      [
+        "boot",
+        "isVerbose",
+        "CALLS"
+      ],
+      [
+        "createConfig",
+        "Config",
+        "USAGE"
+      ],
+      [
+        "isVerbose",
+        "Config",
+        "USAGE"
+      ]
+    ]
   ]
 }
