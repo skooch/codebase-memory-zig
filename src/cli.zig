@@ -395,6 +395,144 @@ pub fn removeSkills(
     return 1;
 }
 
+// ── Instructions file upsert ─────────────────────────────────────
+
+const instr_marker_start = "<!-- codebase-memory-mcp:start -->";
+const instr_marker_end = "<!-- codebase-memory-mcp:end -->";
+
+const agent_instructions_content =
+    \\# Codebase Knowledge Graph (codebase-memory-mcp)
+    \\
+    \\This project uses codebase-memory-mcp to maintain a knowledge graph of the codebase.
+    \\ALWAYS prefer MCP graph tools over grep/glob/file-search for code discovery.
+    \\
+    \\## Priority Order
+    \\1. `search_graph` — find functions, classes, routes, variables by pattern
+    \\2. `trace_path` — trace who calls a function or what it calls
+    \\3. `get_code_snippet` — read specific function/class source code
+    \\4. `query_graph` — run Cypher queries for complex patterns
+    \\5. `get_architecture` — high-level project summary
+    \\
+    \\## When to fall back to grep/glob
+    \\- Searching for string literals, error messages, config values
+    \\- Searching non-code files (Dockerfiles, shell scripts, configs)
+    \\- When MCP tools return insufficient results
+    \\
+    \\## Examples
+    \\- Find a handler: `search_graph(name_pattern=".*OrderHandler.*")`
+    \\- Who calls it: `trace_path(function_name="OrderHandler", direction="inbound")`
+    \\- Read source: `get_code_snippet(qualified_name="pkg/orders.OrderHandler")`
+    \\
+;
+
+/// Upsert a managed section into a markdown instructions file.
+/// If markers exist, replace between them. Otherwise append.
+/// Creates the file if it does not exist.
+/// Returns true if the file was changed.
+pub fn upsertInstructions(
+    allocator: std.mem.Allocator,
+    path: []const u8,
+    content: []const u8,
+    dry_run: bool,
+) !bool {
+    // Build marker-wrapped section
+    const section = try std.mem.concat(allocator, u8, &.{
+        instr_marker_start, "\n", content, instr_marker_end, "\n",
+    });
+    defer allocator.free(section);
+
+    const existing = std.fs.cwd().readFileAlloc(allocator, path, 10 * 1024 * 1024) catch |err| switch (err) {
+        error.FileNotFound => null,
+        else => return err,
+    };
+    defer if (existing) |contents| allocator.free(contents);
+
+    const updated = try buildInstructionsUpsert(allocator, existing, section);
+    defer allocator.free(updated);
+
+    if (existing) |contents| {
+        if (std.mem.eql(u8, contents, updated)) return false;
+    }
+    if (dry_run) return true;
+
+    // Ensure parent directory exists
+    if (std.fs.path.dirname(path)) |dir| {
+        try std.fs.cwd().makePath(dir);
+    }
+    var file = try std.fs.cwd().createFile(path, .{ .truncate = true });
+    defer file.close();
+    try file.writeAll(updated);
+    return true;
+}
+
+/// Remove the managed section from a markdown instructions file.
+/// Returns true if the section was found and removed.
+pub fn removeInstructions(
+    allocator: std.mem.Allocator,
+    path: []const u8,
+    dry_run: bool,
+) !bool {
+    const existing = std.fs.cwd().readFileAlloc(allocator, path, 10 * 1024 * 1024) catch |err| switch (err) {
+        error.FileNotFound => return false,
+        else => return err,
+    };
+    defer allocator.free(existing);
+
+    const start_idx = std.mem.indexOf(u8, existing, instr_marker_start) orelse return false;
+    const end_idx = std.mem.indexOf(u8, existing[start_idx..], instr_marker_end) orelse return false;
+    const abs_end = start_idx + end_idx + instr_marker_end.len;
+
+    // Skip trailing newline after end marker
+    var after_end = abs_end;
+    if (after_end < existing.len and existing[after_end] == '\n') after_end += 1;
+
+    // Also remove leading newline before start marker if present
+    var before_start = start_idx;
+    if (before_start > 0 and existing[before_start - 1] == '\n') before_start -= 1;
+
+    if (dry_run) return true;
+
+    const result = try std.mem.concat(allocator, u8, &.{
+        existing[0..before_start],
+        existing[after_end..],
+    });
+    defer allocator.free(result);
+
+    var file = try std.fs.cwd().createFile(path, .{ .truncate = true });
+    defer file.close();
+    try file.writeAll(result);
+    return true;
+}
+
+fn buildInstructionsUpsert(
+    allocator: std.mem.Allocator,
+    existing: ?[]const u8,
+    section: []const u8,
+) ![]u8 {
+    if (existing) |contents| {
+        const start_idx = std.mem.indexOf(u8, contents, instr_marker_start);
+        if (start_idx) |si| {
+            const rest = contents[si..];
+            const end_rel = std.mem.indexOf(u8, rest, instr_marker_end);
+            if (end_rel) |ei| {
+                var abs_end = si + ei + instr_marker_end.len;
+                // Skip trailing newline
+                if (abs_end < contents.len and contents[abs_end] == '\n') abs_end += 1;
+                return std.mem.concat(allocator, u8, &.{
+                    contents[0..si], section, contents[abs_end..],
+                });
+            }
+        }
+        // No markers found — append
+        if (contents.len == 0) return allocator.dupe(u8, section);
+        if (contents[contents.len - 1] == '\n') {
+            return std.mem.concat(allocator, u8, &.{ contents, section });
+        }
+        return std.mem.concat(allocator, u8, &.{ contents, "\n", section });
+    }
+    return allocator.dupe(u8, section);
+}
+
 pub fn installAgentConfigs(
     allocator: std.mem.Allocator,
     home: []const u8,
