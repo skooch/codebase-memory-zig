@@ -1101,7 +1101,9 @@ fn isTestFile(file_path: []const u8) bool {
 }
 
 fn jsonValueToString(allocator: std.mem.Allocator, value: std.json.Value) ![]u8 {
-    if (value == .string) return try std.fmt.allocPrint(allocator, "\"{s}\"", .{value.string});
+    // Note: .string intentionally falls through to the generic std.json.fmt
+    // branch below so that double-quotes, backslashes, and control characters
+    // in the string are properly JSON-escaped.
     if (value == .null) return try allocator.dupe(u8, "null");
     if (value == .integer) return try std.fmt.allocPrint(allocator, "{d}", .{value.integer});
     if (value == .bool) return try allocator.dupe(u8, if (value.bool) "true" else "false");
