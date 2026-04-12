@@ -21,6 +21,14 @@ pub const AppConfig = struct {
 pub const AgentSet = struct {
     codex: bool = false,
     claude: bool = false,
+    gemini: bool = false,
+    zed: bool = false,
+    opencode: bool = false,
+    antigravity: bool = false,
+    aider: bool = false,
+    kilocode: bool = false,
+    vscode: bool = false,
+    openclaw: bool = false,
 };
 
 pub const InstallOptions = struct {
@@ -33,6 +41,16 @@ pub const InstallReport = struct {
     detected: AgentSet = .{},
     codex: Action = .skipped,
     claude: Action = .skipped,
+    gemini: Action = .skipped,
+    zed: Action = .skipped,
+    opencode: Action = .skipped,
+    antigravity: Action = .skipped,
+    aider: Action = .skipped,
+    kilocode: Action = .skipped,
+    vscode: Action = .skipped,
+    openclaw: Action = .skipped,
+    skills: Action = .skipped,
+    hooks: Action = .skipped,
 
     pub const Action = enum {
         updated,
@@ -132,10 +150,90 @@ pub fn saveConfigAtPath(allocator: std.mem.Allocator, path: []const u8, config: 
     try file.writeAll(payload.items);
 }
 
-pub fn detectAgents(home: []const u8) AgentSet {
+/// Check if a named executable exists on PATH.
+fn executableOnPath(allocator: std.mem.Allocator, name: []const u8) bool {
+    const path_env = std.process.getEnvVarOwned(allocator, "PATH") catch return false;
+    defer allocator.free(path_env);
+
+    var it = std.mem.splitScalar(u8, path_env, ':');
+    while (it.next()) |dir| {
+        if (dir.len == 0) continue;
+        const full = std.fs.path.join(allocator, &.{ dir, name }) catch continue;
+        defer allocator.free(full);
+        std.fs.cwd().access(full, .{}) catch continue;
+        return true;
+    }
+    return false;
+}
+
+/// Return the platform-specific application config directory prefix.
+/// macOS: home/Library/Application Support, Linux: home/.config
+fn appConfigPrefix(allocator: std.mem.Allocator, home: []const u8) ?[]u8 {
+    const builtin = @import("builtin");
+    return switch (builtin.os.tag) {
+        .macos => std.fs.path.join(allocator, &.{ home, "Library", "Application Support" }) catch null,
+        else => std.fs.path.join(allocator, &.{ home, ".config" }) catch null,
+    };
+}
+
+pub fn detectAgents(allocator: std.mem.Allocator, home: []const u8) AgentSet {
+    var agents = AgentSet{};
+
+    agents.claude = pathExists(home, ".claude");
+    agents.codex = pathExists(home, ".codex");
+    agents.gemini = pathExists(home, ".gemini");
+    agents.openclaw = pathExists(home, ".openclaw");
+
+    // Antigravity: ~/.gemini/antigravity/ — also implies gemini
+    if (std.fs.path.join(allocator, &.{ home, ".gemini", "antigravity" })) |ag_path| {
+        defer allocator.free(ag_path);
+        if (dirExists(ag_path)) {
+            agents.antigravity = true;
+            agents.gemini = true;
+        }
+    } else |_| {}
+
+    // Platform-specific agent dirs
+    if (appConfigPrefix(allocator, home)) |prefix| {
+        defer allocator.free(prefix);
+
+        // Zed: macOS ~/Library/Application Support/Zed, Linux ~/.config/zed
+        const builtin = @import("builtin");
+        const zed_sub = if (builtin.os.tag == .macos) "Zed" else "zed";
+        if (std.fs.path.join(allocator, &.{ prefix, zed_sub })) |zed_path| {
+            defer allocator.free(zed_path);
+            agents.zed = dirExists(zed_path);
+        } else |_| {}
+
+        // VS Code: macOS ~/Library/Application Support/Code/User, Linux ~/.config/Code/User
+        if (std.fs.path.join(allocator, &.{ prefix, "Code", "User" })) |vscode_path| {
+            defer allocator.free(vscode_path);
+            agents.vscode = dirExists(vscode_path);
+        } else |_| {}
+
+        // KiloCode: macOS ~/Library/Application Support/Code/User/globalStorage/kilocode.kilo-code
+        //           Linux ~/.config/Code/User/globalStorage/kilocode.kilo-code
+        if (std.fs.path.join(allocator, &.{ prefix, "Code", "User", "globalStorage", "kilocode.kilo-code" })) |kc_path| {
+            defer allocator.free(kc_path);
+            agents.kilocode = dirExists(kc_path);
+        } else |_| {}
+    }
+
+    // PATH-based detection
+    agents.opencode = executableOnPath(allocator, "opencode");
+    agents.aider = executableOnPath(allocator, "aider");
+
+    return agents;
+}
+
+/// Detect agents using only home-directory checks (no allocator needed).
+/// Used by tests that do not need PATH or platform-specific detection.
+pub fn detectAgentsSimple(home: []const u8) AgentSet {
     return .{
         .codex = pathExists(home, ".codex"),
         .claude = pathExists(home, ".claude"),
+        .gemini = pathExists(home, ".gemini"),
+        .openclaw = pathExists(home, ".openclaw"),
     };
 }
 
@@ -156,7 +254,7 @@ pub fn installAgentConfigs(
     home: []const u8,
     options: InstallOptions,
 ) !InstallReport {
-    const detected = detectAgents(home);
+    const detected = detectAgents(allocator, home);
     var report = InstallReport{ .detected = detected };
 
     if (detected.codex or options.force) {
@@ -173,7 +271,7 @@ pub fn uninstallAgentConfigs(
     home: []const u8,
     dry_run: bool,
 ) !InstallReport {
-    var report = InstallReport{ .detected = detectAgents(home) };
+    var report = InstallReport{ .detected = detectAgents(allocator, home) };
     report.codex = try uninstallCodexConfig(allocator, home, dry_run);
     report.claude = try uninstallClaudeConfig(allocator, home, dry_run);
     return report;
@@ -417,6 +515,11 @@ fn pathExists(root: []const u8, relative: []const u8) bool {
     return true;
 }
 
+fn dirExists(path: []const u8) bool {
+    const stat = std.fs.cwd().statFile(path) catch return false;
+    return stat.kind == .directory;
+}
+
 test "config roundtrip preserves values" {
     const allocator = std.testing.allocator;
     const path = try std.fmt.allocPrint(allocator, "/tmp/cbm-config-{x}.json", .{std.crypto.random.int(u64)});
@@ -511,7 +614,7 @@ test "detect agents matches supported directories" {
     defer std.fs.cwd().deleteTree(home) catch {};
 
     try std.fs.cwd().makePath(home);
-    var detected = detectAgents(home);
+    var detected = detectAgents(allocator, home);
     try std.testing.expect(!detected.codex);
     try std.testing.expect(!detected.claude);
 
@@ -522,7 +625,7 @@ test "detect agents matches supported directories" {
     try std.fs.cwd().makePath(codex_dir);
     try std.fs.cwd().makePath(claude_dir);
 
-    detected = detectAgents(home);
+    detected = detectAgents(allocator, home);
     try std.testing.expect(detected.codex);
     try std.testing.expect(detected.claude);
 }
