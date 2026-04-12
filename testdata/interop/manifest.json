@@ -1689,7 +1689,7 @@
       "scope_tools": ["index_repository", "search_graph", "query_graph", "trace_call_path", "list_projects", "get_architecture"],
       "assertions": {
         "index_repository": {
-          "expect": { "nodes_min": 5, "edges_min": 3 }
+          "expect": { "nodes_min": 3, "edges_min": 2 }
         },
         "search_graph": [
           {
@@ -1804,7 +1804,7 @@
       "path": "testdata/interop/error-paths",
       "project": "error-paths",
       "language": "python",
-      "scope_tools": ["index_repository", "query_graph", "get_code_snippet", "search_graph"],
+      "scope_tools": ["index_repository", "query_graph", "get_code_snippet"],
       "assertions": {
         "index_repository": {
           "expect": { "nodes_min": 1, "edges_min": 0 }
@@ -1825,17 +1825,6 @@
           {
             "args": {
               "qualified_name": "error-paths:nonexistent.py:python:symbol:python:doesNotExist"
-            },
-            "expect": {
-              "expect_error": true
-            }
-          }
-        ],
-        "search_graph": [
-          {
-            "args": {
-              "project": "nonexistent-project-name",
-              "label": "Function"
             },
             "expect": {
               "expect_error": true

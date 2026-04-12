@@ -1,11 +1,17 @@
 {
+  "delete_project": [],
   "detect_changes_count": 0,
   "fixture_id": "rust-basic",
   "get_architecture": [],
+  "get_code_snippet": [],
+  "get_graph_schema": [],
   "index_repository": {
+    "edges_actual": 24,
     "edges_min": 4,
+    "nodes_actual": 14,
     "nodes_min": 8
   },
+  "index_status": [],
   "list_projects": [
     "rust-basic"
   ],

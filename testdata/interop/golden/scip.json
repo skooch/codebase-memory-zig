@@ -1,49 +1,53 @@
 {
   "delete_project": [],
   "detect_changes_count": 0,
-  "fixture_id": "test-tagging",
+  "fixture_id": "scip",
   "get_architecture": [],
   "get_code_snippet": [],
   "get_graph_schema": [],
   "index_repository": {
-    "edges_actual": 10,
-    "edges_min": 6,
-    "nodes_actual": 8,
-    "nodes_min": 6
+    "edges_actual": 9,
+    "edges_min": 1,
+    "nodes_actual": 9,
+    "nodes_min": 3
   },
   "index_status": [],
   "list_projects": [
-    "test-tagging"
+    "scip"
   ],
   "manage_adr": [],
   "query_graph": [
     {
       "columns": [
-        "a.name",
-        "b.name"
+        "n.name"
       ],
       "rows": [
         [
-          "test_widget_renders",
-          "render_widget"
-        ]
-      ]
-    },
-    {
-      "columns": [
-        "a.name",
-        "b.name"
-      ],
-      "rows": [
+          "renderMessage"
+        ],
         [
-          "test_widget.py",
-          "widget.py"
+          "run"
         ]
       ]
     }
   ],
   "search_code": [],
-  "search_graph": [],
+  "search_graph": [
+    [
+      {
+        "file_path": "src/main.ts",
+        "label": "Function",
+        "name": "renderMessage",
+        "qualified_name": "scip:src/main.ts:typescript:symbol:typescript:renderMessage"
+      },
+      {
+        "file_path": "src/main.ts",
+        "label": "Function",
+        "name": "run",
+        "qualified_name": "scip:src/main.ts:typescript:symbol:typescript:run"
+      }
+    ]
+  ],
   "tools_list": [
     "delete_project",
     "detect_changes",

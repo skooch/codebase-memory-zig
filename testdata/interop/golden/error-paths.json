@@ -1,0 +1,63 @@
+{
+  "delete_project": [],
+  "detect_changes_count": 0,
+  "errors": {
+    "get_code_snippet": [
+      {
+        "code": -32602,
+        "message": "symbol not found. Use search_graph(name_pattern=\"...\") first to discover the exact qualified_name, then pass it to get_code_snippet."
+      }
+    ],
+    "query_graph": [
+      {
+        "code": -32602,
+        "message": "unsupported query"
+      }
+    ]
+  },
+  "fixture_id": "error-paths",
+  "get_architecture": [],
+  "get_code_snippet": [
+    {
+      "file_path": ".",
+      "qualified_name": "",
+      "source": ""
+    }
+  ],
+  "get_graph_schema": [],
+  "index_repository": {
+    "edges_actual": 3,
+    "edges_min": 0,
+    "nodes_actual": 4,
+    "nodes_min": 1
+  },
+  "index_status": [],
+  "list_projects": [
+    "error-paths"
+  ],
+  "manage_adr": [],
+  "query_graph": [
+    {
+      "columns": [],
+      "rows": []
+    }
+  ],
+  "search_code": [],
+  "search_graph": [],
+  "tools_list": [
+    "delete_project",
+    "detect_changes",
+    "get_architecture",
+    "get_code_snippet",
+    "get_graph_schema",
+    "index_repository",
+    "index_status",
+    "list_projects",
+    "manage_adr",
+    "query_graph",
+    "search_code",
+    "search_graph",
+    "trace_call_path"
+  ],
+  "trace_call_path": []
+}

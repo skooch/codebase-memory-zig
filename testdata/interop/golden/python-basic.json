@@ -1,11 +1,17 @@
 {
+  "delete_project": [],
   "detect_changes_count": 0,
   "fixture_id": "python-basic",
   "get_architecture": [],
+  "get_code_snippet": [],
+  "get_graph_schema": [],
   "index_repository": {
+    "edges_actual": 9,
     "edges_min": 2,
+    "nodes_actual": 7,
     "nodes_min": 4
   },
+  "index_status": [],
   "list_projects": [
     "python-basic"
   ],

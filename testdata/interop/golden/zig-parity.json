@@ -1,29 +1,42 @@
 {
   "delete_project": [],
   "detect_changes_count": 0,
-  "fixture_id": "zig-basic",
+  "fixture_id": "zig-parity",
   "get_architecture": [],
   "get_code_snippet": [],
   "get_graph_schema": [],
   "index_repository": {
-    "edges_actual": 15,
-    "edges_min": 1,
+    "edges_actual": 16,
+    "edges_min": 2,
     "nodes_actual": 11,
     "nodes_min": 5
   },
   "index_status": [],
   "list_projects": [
-    "zig-basic"
+    "zig-parity"
   ],
   "manage_adr": [],
   "query_graph": [
     {
       "columns": [
-        "count"
+        "a.name",
+        "b.name"
+      ],
+      "rows": []
+    },
+    {
+      "columns": [
+        "a.name",
+        "b.name"
       ],
       "rows": [
         [
-          "2"
+          "boot",
+          "createConfig"
+        ],
+        [
+          "boot",
+          "isVerbose"
         ]
       ]
     }
@@ -34,16 +47,23 @@
       {
         "file_path": "main.zig",
         "label": "Function",
-        "name": "add",
-        "qualified_name": "zig-basic:main.zig:zig:symbol:zig:add"
+        "name": "boot",
+        "qualified_name": "zig-parity:main.zig:zig:symbol:zig:boot"
       },
       {
         "file_path": "main.zig",
         "label": "Function",
-        "name": "run",
-        "qualified_name": "zig-basic:main.zig:zig:symbol:zig:run"
+        "name": "createConfig",
+        "qualified_name": "zig-parity:main.zig:zig:symbol:zig:createConfig"
+      },
+      {
+        "file_path": "main.zig",
+        "label": "Function",
+        "name": "isVerbose",
+        "qualified_name": "zig-parity:main.zig:zig:symbol:zig:isVerbose"
       }
-    ]
+    ],
+    []
   ],
   "tools_list": [
     "delete_project",
@@ -61,27 +81,6 @@
     "trace_call_path"
   ],
   "trace_call_path": [
-    [
-      [
-        "run",
-        "Settings",
-        "USAGE"
-      ],
-      [
-        "run",
-        "add",
-        "CALLS"
-      ],
-      [
-        "run",
-        "doubled",
-        "USAGE"
-      ],
-      [
-        "run",
-        "retry_limit",
-        "USAGE"
-      ]
-    ]
+    []
   ]
 }

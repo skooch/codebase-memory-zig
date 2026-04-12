@@ -1,11 +1,17 @@
 {
+  "delete_project": [],
   "detect_changes_count": 0,
   "fixture_id": "javascript-basic",
   "get_architecture": [],
+  "get_code_snippet": [],
+  "get_graph_schema": [],
   "index_repository": {
+    "edges_actual": 14,
     "edges_min": 2,
+    "nodes_actual": 9,
     "nodes_min": 5
   },
+  "index_status": [],
   "list_projects": [
     "javascript-basic"
   ],

@@ -1,4 +1,5 @@
 {
+  "delete_project": [],
   "detect_changes_count": 1,
   "fixture_id": "typescript-parity",
   "get_architecture": [
@@ -20,10 +21,15 @@
       ]
     }
   ],
+  "get_code_snippet": [],
+  "get_graph_schema": [],
   "index_repository": {
+    "edges_actual": 11,
     "edges_min": 5,
+    "nodes_actual": 9,
     "nodes_min": 8
   },
+  "index_status": [],
   "list_projects": [
     "typescript-parity"
   ],

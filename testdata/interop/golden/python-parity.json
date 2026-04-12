@@ -1,4 +1,9 @@
 {
+  "delete_project": [
+    {
+      "deleted": true
+    }
+  ],
   "detect_changes_count": 1,
   "fixture_id": "python-parity",
   "get_architecture": [
@@ -24,10 +29,47 @@
       ]
     }
   ],
+  "get_code_snippet": [
+    {
+      "file_path": "/Users/skooch/projects/worktrees/interop-testing-gaps/testdata/interop/python-parity/main.py",
+      "qualified_name": "python-parity:main.py:python:symbol:python:bootstrap",
+      "source": "def bootstrap() -> ActiveWorker:\n    worker = ActiveWorker(\"primary\")\n    worker.configure(\"mode\", \"batch\")\n    worker.run()\n    return worker"
+    }
+  ],
+  "get_graph_schema": [
+    {
+      "edge_types": [
+        "{'type': 'CALLS', 'count': 2}",
+        "{'type': 'CONFIGURES', 'count': 1}",
+        "{'type': 'CONTAINS_FILE', 'count': 3}",
+        "{'type': 'DECORATES', 'count': 1}",
+        "{'type': 'DEFINES', 'count': 15}",
+        "{'type': 'DEFINES_METHOD', 'count': 3}",
+        "{'type': 'IMPORTS', 'count': 1}",
+        "{'type': 'USAGE', 'count': 3}"
+      ],
+      "node_labels": [
+        "{'label': 'Class', 'count': 2}",
+        "{'label': 'File', 'count': 3}",
+        "{'label': 'Function', 'count': 3}",
+        "{'label': 'Method', 'count': 3}",
+        "{'label': 'Module', 'count': 3}",
+        "{'label': 'Project', 'count': 1}",
+        "{'label': 'Variable', 'count': 4}"
+      ]
+    }
+  ],
   "index_repository": {
+    "edges_actual": 29,
     "edges_min": 5,
+    "nodes_actual": 19,
     "nodes_min": 7
   },
+  "index_status": [
+    {
+      "status": "ready"
+    }
+  ],
   "list_projects": [
     "python-parity"
   ],

@@ -1,11 +1,17 @@
 {
+  "delete_project": [],
   "detect_changes_count": 0,
   "fixture_id": "adr-parity",
   "get_architecture": [],
+  "get_code_snippet": [],
+  "get_graph_schema": [],
   "index_repository": {
+    "edges_actual": 5,
     "edges_min": 1,
+    "nodes_actual": 6,
     "nodes_min": 2
   },
+  "index_status": [],
   "list_projects": [
     "adr-parity"
   ],
