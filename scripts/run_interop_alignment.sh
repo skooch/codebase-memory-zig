@@ -97,6 +97,10 @@ SHARED_PROGRESS_PHASES = (
     "[2/9] Extracting definitions",
     "[3/9] Building registry",
     "[4/9] Resolving calls & edges",
+    "[5/9] Detecting tests",
+    # [6/9] intentionally does not exist
+    "[7/9] Analyzing git history",
+    "[8/9] Linking config files",
     "[9/9] Writing database",
     "Done",
 )
@@ -557,7 +561,11 @@ def canonical_progress_lines(stderr_lines: list[str]) -> list[str]:
         if line.startswith("Discovering files") or line.startswith("Starting "):
             normalized.append(line)
             continue
-        if line.startswith("[1/9]") or line.startswith("[2/9]") or line.startswith("[3/9]") or line.startswith("[4/9]") or line.startswith("[9/9]"):
+        if (line.startswith("[1/9]") or line.startswith("[2/9]") or line.startswith("[3/9]") or line.startswith("[4/9]")
+                or line.startswith("[5/9]")
+                # [6/9] intentionally absent
+                or line.startswith("[7/9]") or line.startswith("[8/9]")
+                or line.startswith("[9/9]")):
             normalized.append(line)
             continue
         if line.startswith("Done:") or line == "Done.":
@@ -638,6 +646,10 @@ def build_requests(root: Path, fixture: dict[str, Any], impl: str) -> tuple[list
 
     tool_id = 4
     assertions = fixture.get("assertions", {})
+    # search_graph: the C API uses "label" while the Zig API uses "label_pattern",
+    # so we translate the parameter name per-implementation below. Because the APIs
+    # differ, search_graph comparison is assertion-level (checking expected nodes
+    # appear in results) rather than raw output-level equality.
     for assertion in assertions.get("search_graph", []):
         args = dict(assertion.get("args", {}))
         if impl == "zig":
