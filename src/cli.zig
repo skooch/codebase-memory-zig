@@ -533,6 +533,321 @@ fn buildInstructionsUpsert(
     return allocator.dupe(u8, section);
 }
 
+// ── Hook management ─────────────────────────────────────────────
+
+const claude_hook_matcher = "Grep|Glob|Read|Search";
+const claude_hook_command = "~/.claude/hooks/cbm-code-discovery-gate";
+const session_hook_command = "~/.claude/hooks/cbm-session-reminder";
+const session_matchers: []const []const u8 = &.{ "startup", "resume", "clear", "compact" };
+
+const gemini_hook_matcher = "google_search|read_file|grep_search";
+const gemini_hook_command =
+    "echo 'Reminder: prefer codebase-memory-mcp search_graph/trace_path/" ++
+    "get_code_snippet over grep/file search for code discovery.' >&2";
+
+// Old matchers from previous versions (for upgrade compatibility)
+const old_hook_matchers: []const []const u8 = &.{"Grep|Glob|Read"};
+
+const gate_script_content =
+    \\#!/bin/bash
+    \\# Gate hook: nudges Claude toward codebase-memory-mcp for code discovery.
+    \\# First Grep/Glob/Read/Search per session -> block. Subsequent -> allow.
+    \\# PPID = Claude Code process PID, unique per session.
+    \\GATE=/tmp/cbm-code-discovery-gate-$PPID
+    \\find /tmp -name 'cbm-code-discovery-gate-*' -mtime +1 -delete 2>/dev/null
+    \\if [ -f "$GATE" ]; then
+    \\    exit 0
+    \\fi
+    \\touch "$GATE"
+    \\echo 'BLOCKED: For code discovery, use codebase-memory-mcp tools first: search_graph(name_pattern) to find functions/classes, trace_path() for call chains, get_code_snippet(qualified_name) to read source. If the graph is not indexed yet, call index_repository first. Fall back to Grep/Glob/Read only for text content search. If you need Grep, retry.' >&2
+    \\exit 2
+    \\
+;
+
+const session_reminder_content =
+    \\#!/bin/bash
+    \\# SessionStart hook: remind agent to use codebase-memory-mcp tools.
+    \\# Installed by codebase-memory-mcp. Fires on startup/resume/clear/compact.
+    \\cat << 'REMINDER'
+    \\CRITICAL - Code Discovery Protocol:
+    \\1. ALWAYS use codebase-memory-mcp tools FIRST for ANY code exploration:
+    \\   - search_graph(name_pattern/label/qn_pattern) to find functions/classes/routes
+    \\   - trace_path(function_name, mode=calls|data_flow|cross_service) for call chains
+    \\   - get_code_snippet(qualified_name) to read source (NOT Read/cat)
+    \\   - query_graph(query) for complex Cypher patterns
+    \\   - get_architecture(aspects) for project structure
+    \\   - search_code(pattern) for text search (graph-augmented grep)
+    \\2. Fall back to Grep/Glob/Read ONLY for text content, config values, non-code files.
+    \\3. If a project is not indexed yet, run index_repository FIRST.
+    \\REMINDER
+    \\
+;
+
+/// Check if a hook entry in the JSON array matches our hook (current or old matcher).
+fn isCmmHookEntry(
+    arena: std.mem.Allocator,
+    entry: std.json.Value,
+    matcher_str: []const u8,
+) bool {
+    _ = arena;
+    if (entry != .object) return false;
+    const matcher_val = entry.object.get("matcher") orelse return false;
+    if (matcher_val != .string) return false;
+    const val = matcher_val.string;
+    if (std.mem.eql(u8, val, matcher_str)) return true;
+    // Check old matchers for upgrade compatibility
+    for (old_hook_matchers) |old| {
+        if (std.mem.eql(u8, val, old)) return true;
+    }
+    return false;
+}
+
+/// Upsert a hook entry into a settings JSON file.
+/// Structure: { "hooks": { event: [ { "matcher": m, "hooks": [{ "type": "command", "command": c }] } ] } }
+pub fn upsertHooksJson(
+    allocator: std.mem.Allocator,
+    settings_path: []const u8,
+    hook_event: []const u8,
+    matcher: []const u8,
+    command: []const u8,
+    dry_run: bool,
+) !bool {
+    var arena_state = std.heap.ArenaAllocator.init(allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    const existing = std.fs.cwd().readFileAlloc(allocator, settings_path, 10 * 1024 * 1024) catch |err| switch (err) {
+        error.FileNotFound => null,
+        else => return err,
+    };
+    defer if (existing) |contents| allocator.free(contents);
+
+    var parsed = if (existing) |contents|
+        std.json.parseFromSlice(std.json.Value, arena, contents, .{}) catch null
+    else
+        null;
+    defer if (parsed) |*value| value.deinit();
+
+    var root = if (parsed) |value| value.value else std.json.Value{ .object = std.json.ObjectMap.init(arena) };
+    if (root != .object) {
+        root = .{ .object = std.json.ObjectMap.init(arena) };
+    }
+
+    // Get or create hooks object
+    const hooks_ptr = blk: {
+        if (root.object.getPtr("hooks")) |h| {
+            if (h.* != .object) {
+                h.* = .{ .object = std.json.ObjectMap.init(arena) };
+            }
+            break :blk &h.*.object;
+        }
+        try root.object.put(try arena.dupe(u8, "hooks"), .{ .object = std.json.ObjectMap.init(arena) });
+        break :blk &root.object.getPtr("hooks").?.*.object;
+    };
+
+    // Get or create event array
+    const event_arr = blk: {
+        if (hooks_ptr.getPtr(hook_event)) |ea| {
+            if (ea.* != .array) {
+                ea.* = .{ .array = std.json.Array.init(arena) };
+            }
+            break :blk &ea.*.array;
+        }
+        try hooks_ptr.put(try arena.dupe(u8, hook_event), .{ .array = std.json.Array.init(arena) });
+        break :blk &hooks_ptr.getPtr(hook_event).?.*.array;
+    };
+
+    // Remove existing CMM entry if present
+    var i: usize = 0;
+    while (i < event_arr.items.len) {
+        if (isCmmHookEntry(arena, event_arr.items[i], matcher)) {
+            _ = event_arr.orderedRemove(i);
+        } else {
+            i += 1;
+        }
+    }
+
+    // Build our hook entry
+    var hook_obj = std.json.ObjectMap.init(arena);
+    try hook_obj.put(try arena.dupe(u8, "type"), .{ .string = try arena.dupe(u8, "command") });
+    try hook_obj.put(try arena.dupe(u8, "command"), .{ .string = try arena.dupe(u8, command) });
+
+    var hooks_arr = std.json.Array.init(arena);
+    try hooks_arr.append(arena, .{ .object = hook_obj });
+
+    var entry = std.json.ObjectMap.init(arena);
+    try entry.put(try arena.dupe(u8, "matcher"), .{ .string = try arena.dupe(u8, matcher) });
+    try entry.put(try arena.dupe(u8, "hooks"), .{ .array = hooks_arr });
+
+    try event_arr.append(arena, .{ .object = entry });
+
+    // Render
+    var out = std.ArrayList(u8).empty;
+    defer out.deinit(allocator);
+    try out.writer(allocator).print("{f}", .{std.json.fmt(root, .{ .whitespace = .indent_2 })});
+    try out.append(allocator, '\n');
+    const rendered = try out.toOwnedSlice(allocator);
+    defer allocator.free(rendered);
+
+    if (existing) |contents| {
+        if (std.mem.eql(u8, contents, rendered)) return false;
+    }
+    if (dry_run) return true;
+
+    if (std.fs.path.dirname(settings_path)) |dir| {
+        try std.fs.cwd().makePath(dir);
+    }
+    var file = try std.fs.cwd().createFile(settings_path, .{ .truncate = true });
+    defer file.close();
+    try file.writeAll(rendered);
+    return true;
+}
+
+/// Remove a hook entry from a settings JSON file.
+pub fn removeHooksJson(
+    allocator: std.mem.Allocator,
+    settings_path: []const u8,
+    hook_event: []const u8,
+    matcher: []const u8,
+    dry_run: bool,
+) !bool {
+    var arena_state = std.heap.ArenaAllocator.init(allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    const existing = std.fs.cwd().readFileAlloc(allocator, settings_path, 10 * 1024 * 1024) catch |err| switch (err) {
+        error.FileNotFound => return false,
+        else => return err,
+    };
+    defer allocator.free(existing);
+
+    var parsed = std.json.parseFromSlice(std.json.Value, arena, existing, .{}) catch return false;
+    defer parsed.deinit();
+
+    var root = parsed.value;
+    if (root != .object) return false;
+
+    const hooks_obj = root.object.getPtr("hooks") orelse return false;
+    if (hooks_obj.* != .object) return false;
+
+    const event_arr_val = hooks_obj.object.getPtr(hook_event) orelse return false;
+    if (event_arr_val.* != .array) return false;
+
+    var found = false;
+    var i: usize = 0;
+    while (i < event_arr_val.array.items.len) {
+        if (isCmmHookEntry(arena, event_arr_val.array.items[i], matcher)) {
+            _ = event_arr_val.array.orderedRemove(i);
+            found = true;
+        } else {
+            i += 1;
+        }
+    }
+    if (!found) return false;
+    if (dry_run) return true;
+
+    var out = std.ArrayList(u8).empty;
+    defer out.deinit(allocator);
+    try out.writer(allocator).print("{f}", .{std.json.fmt(root, .{ .whitespace = .indent_2 })});
+    try out.append(allocator, '\n');
+
+    var file = try std.fs.cwd().createFile(settings_path, .{ .truncate = true });
+    defer file.close();
+    try file.writeAll(out.items);
+    return true;
+}
+
+/// Install the code discovery gate script to ~/.claude/hooks/.
+pub fn installHookGateScript(
+    allocator: std.mem.Allocator,
+    home: []const u8,
+    dry_run: bool,
+) !void {
+    if (dry_run) return;
+    const hooks_dir = try std.fs.path.join(allocator, &.{ home, ".claude", "hooks" });
+    defer allocator.free(hooks_dir);
+    try std.fs.cwd().makePath(hooks_dir);
+
+    const script_path = try std.fs.path.join(allocator, &.{ hooks_dir, "cbm-code-discovery-gate" });
+    defer allocator.free(script_path);
+
+    var file = try std.fs.cwd().createFile(script_path, .{ .truncate = true, .mode = 0o755 });
+    defer file.close();
+    try file.writeAll(gate_script_content);
+}
+
+/// Install the session reminder script to ~/.claude/hooks/.
+pub fn installSessionReminderScript(
+    allocator: std.mem.Allocator,
+    home: []const u8,
+    dry_run: bool,
+) !void {
+    if (dry_run) return;
+    const hooks_dir = try std.fs.path.join(allocator, &.{ home, ".claude", "hooks" });
+    defer allocator.free(hooks_dir);
+    try std.fs.cwd().makePath(hooks_dir);
+
+    const script_path = try std.fs.path.join(allocator, &.{ hooks_dir, "cbm-session-reminder" });
+    defer allocator.free(script_path);
+
+    var file = try std.fs.cwd().createFile(script_path, .{ .truncate = true, .mode = 0o755 });
+    defer file.close();
+    try file.writeAll(session_reminder_content);
+}
+
+/// Upsert Claude hooks: PreToolUse gate + SessionStart reminders.
+pub fn upsertClaudeHooks(
+    allocator: std.mem.Allocator,
+    home: []const u8,
+    dry_run: bool,
+) !void {
+    const settings_path = try std.fs.path.join(allocator, &.{ home, ".claude", "settings.json" });
+    defer allocator.free(settings_path);
+
+    // PreToolUse hook
+    _ = try upsertHooksJson(allocator, settings_path, "PreToolUse", claude_hook_matcher, claude_hook_command, dry_run);
+    try installHookGateScript(allocator, home, dry_run);
+
+    // SessionStart hooks
+    for (session_matchers) |m| {
+        _ = try upsertHooksJson(allocator, settings_path, "SessionStart", m, session_hook_command, dry_run);
+    }
+    try installSessionReminderScript(allocator, home, dry_run);
+}
+
+/// Remove Claude hooks from settings.json.
+pub fn removeClaudeHooks(
+    allocator: std.mem.Allocator,
+    home: []const u8,
+    dry_run: bool,
+) !void {
+    const settings_path = try std.fs.path.join(allocator, &.{ home, ".claude", "settings.json" });
+    defer allocator.free(settings_path);
+
+    _ = try removeHooksJson(allocator, settings_path, "PreToolUse", claude_hook_matcher, dry_run);
+    for (session_matchers) |m| {
+        _ = try removeHooksJson(allocator, settings_path, "SessionStart", m, dry_run);
+    }
+}
+
+/// Upsert Gemini BeforeTool hook.
+pub fn upsertGeminiHooks(
+    allocator: std.mem.Allocator,
+    settings_path: []const u8,
+    dry_run: bool,
+) !void {
+    _ = try upsertHooksJson(allocator, settings_path, "BeforeTool", gemini_hook_matcher, gemini_hook_command, dry_run);
+}
+
+/// Remove Gemini BeforeTool hook.
+pub fn removeGeminiHooks(
+    allocator: std.mem.Allocator,
+    settings_path: []const u8,
+    dry_run: bool,
+) !void {
+    _ = try removeHooksJson(allocator, settings_path, "BeforeTool", gemini_hook_matcher, dry_run);
+}
+
 pub fn installAgentConfigs(
     allocator: std.mem.Allocator,
     home: []const u8,
