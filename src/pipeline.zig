@@ -609,11 +609,13 @@ fn parallelExtractWorker(ctx: *ParallelWorkerContext) void {
         if (ctx.cancelled.load(.acquire)) return;
 
         var local_gb = GraphBuffer.init(std.heap.c_allocator, ctx.project_name);
-        ensureProjectStructure(std.heap.c_allocator, ctx.project_name, ctx.files[idx], &local_gb) catch {
+        ensureProjectStructure(std.heap.c_allocator, ctx.project_name, ctx.files[idx], &local_gb) catch |err| {
+            std.log.warn("project structure failed for {s}: {}", .{ ctx.files[idx].rel_path, err });
             local_gb.deinit();
             continue;
         };
-        const extraction = extractFile(std.heap.c_allocator, ctx.project_name, ctx.files[idx], &local_gb) catch {
+        const extraction = extractFile(std.heap.c_allocator, ctx.project_name, ctx.files[idx], &local_gb) catch |err| {
+            std.log.warn("extractor failed for {s}: {}", .{ ctx.files[idx].rel_path, err });
             local_gb.deinit();
             continue;
         };
