@@ -1,0 +1,78 @@
+{
+  "schema_version": "0.1",
+  "goal": "Shared agent comparison tasks for the local worktree-scale repository",
+  "repos": [
+    {
+      "id": "worktree-medium",
+      "path": ".",
+      "project": "cbm-zig-hybrid-serving",
+      "warmup_runs": 1,
+      "measured_runs": 1,
+      "notes": [
+        "Local worktree scenario to validate the hybrid routing path on a larger repository."
+      ],
+      "tasks": [
+        {
+          "id": "find-query-router",
+          "prompt": "Find the QueryRouter implementation entry point.",
+          "tool": "search_code",
+          "args": {
+            "pattern": "QueryRouter",
+            "mode": "compact",
+            "limit": 10
+          },
+          "expect": {
+            "required_names": [
+              "QueryRouter"
+            ],
+            "required_files": [
+              "src/query_router.zig"
+            ],
+            "required_keys": [
+              "results",
+              "total"
+            ]
+          }
+        },
+        {
+          "id": "open-search-code-payload",
+          "prompt": "Open the QueryRouter searchCodePayload implementation.",
+          "tool": "get_code_snippet",
+          "args": {
+            "qualified_name": "searchCodePayload"
+          },
+          "expect": {
+            "required_substrings": [
+              "pub fn searchCodePayload",
+              "collectSearchCodeHits"
+            ],
+            "required_keys": [
+              "source",
+              "file_path"
+            ]
+          }
+        },
+        {
+          "id": "summarize-architecture",
+          "prompt": "Summarize the architecture with packages, hotspots, and entry points.",
+          "tool": "get_architecture",
+          "args": {
+            "aspects": [
+              "packages",
+              "hotspots",
+              "entry_points"
+            ]
+          },
+          "expect": {
+            "required_keys": [
+              "project",
+              "packages",
+              "hotspots",
+              "entry_points"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

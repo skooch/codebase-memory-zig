@@ -9,6 +9,12 @@ MANIFEST_PATH="${1:-$ROOT_DIR/testdata/bench/manifest.json}"
 REPORT_DIR="${2:-$ROOT_DIR/.benchmark_reports}"
 
 C_BIN_DEFAULT="$ROOT_DIR/../codebase-memory-mcp/build/c/codebase-memory-mcp"
+if [ ! -x "$C_BIN_DEFAULT" ]; then
+  ALT_C_BIN_DEFAULT="$ROOT_DIR/../../codebase-memory-mcp/build/c/codebase-memory-mcp"
+  if [ -x "$ALT_C_BIN_DEFAULT" ]; then
+    C_BIN_DEFAULT="$ALT_C_BIN_DEFAULT"
+  fi
+fi
 C_BIN="${CODEBASE_MEMORY_C_BIN:-$C_BIN_DEFAULT}"
 
 if [ -n "${CODEBASE_MEMORY_ZIG_BIN:-}" ]; then

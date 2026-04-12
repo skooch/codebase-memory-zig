@@ -21,6 +21,7 @@ pub fn build(b: *std.Build) void {
 
     const sqlite_flags: []const []const u8 = &.{
         "-DSQLITE_THREADSAFE=1",
+        "-DSQLITE_ENABLE_FTS5=1",
         "-DSQLITE_OMIT_LOAD_EXTENSION=1",
         "-DSQLITE_DQS=0",
         "-DSQLITE_DEFAULT_MEMSTATUS=0",

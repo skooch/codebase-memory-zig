@@ -53,6 +53,10 @@ src/
 - If MCP stdio starts acknowledging only the first request in a piped session, treat `src/mcp.zig` `runFiles` framing as suspect first; this repo has already tripped over `std.Io.Reader.takeDelimiterExclusive` there, and the durable fix is an explicit newline-framed file read loop.
 - If `zig build` appears to leave `zig-out/bin/cbm` on stale behavior after a `src/main.zig` edit, verify the executable with a fresh `--cache-dir` / `--global-cache-dir` / `--prefix` build. A stale installed binary can mask a compile error in the executable step even when an older `zig-out/bin/cbm` is still present. Also avoid importing `discover.zig` directly from `src/main.zig`; use `cbm.discover` there so test builds do not trip Zig's duplicate-module error.
 - If `git commit` or `git add` fails because `.git/index.lock` already exists, treat it as a stale lock, remove it with a non-interactive `rm -f .git/index.lock`, and retry the git command.
+- Keep `scripts/run_interop_alignment.sh` inline Python compatible with the system `python3` here (currently 3.9); avoid `X | Y` type-union syntax in that heredoc or the parity harness will fail before running comparisons.
+- From peer worktrees under `../worktrees/`, the original C repo is not at `../codebase-memory-mcp`; script defaults that compare against the C binary need a `../../codebase-memory-mcp` fallback or explicit override so interop/benchmark runs do not fail on path resolution alone.
+- Fresh worktrees may not include the untracked `vendored/grammars/` and `vendored/tree_sitter/` directories required by `zig build test`; if the build fails with missing `vendored/grammars/*/parser.c`, run `bash scripts/bootstrap_worktree.sh [primary-checkout]` or copy those vendored directories from the primary checkout into the worktree before retrying verification.
+- The agent comparison harness is intentionally `zsh`-only via `scripts/run_agent_comparison.zsh`; keep that entrypoint canonical instead of reintroducing a shell-compat wrapper.
 
 ## Porting from C
 

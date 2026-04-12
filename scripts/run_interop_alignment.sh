@@ -7,6 +7,12 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 MANIFEST_PATH="${1:-$ROOT_DIR/testdata/interop/manifest.json}"
 C_BIN_DEFAULT="$ROOT_DIR/../codebase-memory-mcp/build/c/codebase-memory-mcp"
+if [ ! -x "$C_BIN_DEFAULT" ]; then
+  ALT_C_BIN_DEFAULT="$ROOT_DIR/../../codebase-memory-mcp/build/c/codebase-memory-mcp"
+  if [ -x "$ALT_C_BIN_DEFAULT" ]; then
+    C_BIN_DEFAULT="$ALT_C_BIN_DEFAULT"
+  fi
+fi
 C_BIN="${CODEBASE_MEMORY_C_BIN:-$C_BIN_DEFAULT}"
 REPORT_DIR="${2:-$ROOT_DIR/.interop_reports}"
 
@@ -31,7 +37,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 SHARED_TOOL_NAMES = [
     "delete_project",
@@ -86,7 +92,7 @@ def parse_rpc_envelope(raw: str) -> dict[str, Any]:
     return payload
 
 
-def extract_tool_payload(raw: str, allow_content_wrapper: bool = True) -> tuple[dict[str, Any] | list[Any] | str, str | None]:
+def extract_tool_payload(raw: str, allow_content_wrapper: bool = True) -> Tuple[Union[Dict[str, Any], List[Any], str], Optional[str]]:
     envelope = parse_rpc_envelope(raw)
     if "error" in envelope:
         return {"__error__": envelope.get("error")}, "error"
@@ -383,7 +389,7 @@ def resolve_qualified_name(
     project: str,
     name_hint: str,
     request_id: int,
-) -> tuple[str | None, dict[str, Any], str]:
+) -> Tuple[Optional[str], Dict[str, Any], str]:
     request = {
         "jsonrpc": "2.0",
         "id": request_id,

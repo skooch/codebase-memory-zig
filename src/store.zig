@@ -141,6 +141,27 @@ pub const LabelCount = struct { label: []const u8, count: i64 };
 pub const EdgeTypeCount = struct { edge_type: []const u8, count: i64 };
 pub const LanguageCount = struct { language: []const u8, count: i64 };
 
+pub const ScipSymbol = struct {
+    project: []const u8 = "",
+    symbol: []const u8 = "",
+    qualified_name: []const u8 = "",
+    display_name: []const u8 = "",
+    kind: []const u8 = "",
+    file_path: []const u8 = "",
+    start_line: i32 = 0,
+    end_line: i32 = 0,
+    properties_json: []const u8 = "{}",
+};
+
+pub const ScipOccurrence = struct {
+    project: []const u8 = "",
+    file_path: []const u8 = "",
+    symbol: []const u8 = "",
+    role: []const u8 = "",
+    start_line: i32 = 0,
+    end_line: i32 = 0,
+};
+
 pub const Store = struct {
     db: ?*c.sqlite3 = null,
     allocator: std.mem.Allocator,
@@ -236,6 +257,39 @@ pub const Store = struct {
                 "created_at TEXT NOT NULL DEFAULT '', " ++
                 "updated_at TEXT NOT NULL DEFAULT ''" ++
                 ")",
+            "CREATE VIRTUAL TABLE IF NOT EXISTS search_documents USING fts5(" ++
+                "project UNINDEXED, " ++
+                "rel_path UNINDEXED, " ++
+                "content, " ++
+                "tokenize='unicode61'" ++
+                ")",
+            "CREATE TABLE IF NOT EXISTS scip_documents (" ++
+                "project TEXT NOT NULL REFERENCES projects(name) ON DELETE CASCADE, " ++
+                "rel_path TEXT NOT NULL, " ++
+                "language TEXT DEFAULT '', " ++
+                "PRIMARY KEY(project, rel_path)" ++
+                ")",
+            "CREATE TABLE IF NOT EXISTS scip_symbols (" ++
+                "project TEXT NOT NULL REFERENCES projects(name) ON DELETE CASCADE, " ++
+                "symbol TEXT NOT NULL, " ++
+                "qualified_name TEXT NOT NULL, " ++
+                "display_name TEXT NOT NULL, " ++
+                "kind TEXT NOT NULL, " ++
+                "file_path TEXT NOT NULL, " ++
+                "start_line INTEGER DEFAULT 0, " ++
+                "end_line INTEGER DEFAULT 0, " ++
+                "properties TEXT DEFAULT '{}', " ++
+                "PRIMARY KEY(project, symbol)" ++
+                ")",
+            "CREATE TABLE IF NOT EXISTS scip_occurrences (" ++
+                "project TEXT NOT NULL REFERENCES projects(name) ON DELETE CASCADE, " ++
+                "file_path TEXT NOT NULL, " ++
+                "symbol TEXT NOT NULL, " ++
+                "role TEXT NOT NULL, " ++
+                "start_line INTEGER DEFAULT 0, " ++
+                "end_line INTEGER DEFAULT 0, " ++
+                "PRIMARY KEY(project, file_path, symbol, role, start_line, end_line)" ++
+                ")",
             "CREATE INDEX IF NOT EXISTS idx_nodes_label ON nodes(project, label)",
             "CREATE INDEX IF NOT EXISTS idx_nodes_name ON nodes(project, name)",
             "CREATE INDEX IF NOT EXISTS idx_nodes_file ON nodes(project, file_path)",
@@ -243,6 +297,9 @@ pub const Store = struct {
             "CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(project, source_id)",
             "CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(project, target_id)",
             "CREATE INDEX IF NOT EXISTS idx_edges_type ON edges(project, type)",
+            "CREATE INDEX IF NOT EXISTS idx_scip_symbols_qn ON scip_symbols(project, qualified_name)",
+            "CREATE INDEX IF NOT EXISTS idx_scip_symbols_file ON scip_symbols(project, file_path)",
+            "CREATE INDEX IF NOT EXISTS idx_scip_occurrences_file ON scip_occurrences(project, file_path)",
         };
         for (ddl) |sql| {
             try self.exec(sql);
@@ -333,10 +390,115 @@ pub const Store = struct {
     }
 
     pub fn deleteProject(self: *Store, name: []const u8) !void {
+        try self.clearSearchDocuments(name);
+        try self.clearScipOverlay(name);
         const stmt = try self.prepare("DELETE FROM projects WHERE name = ?1");
         defer self.finalize(stmt);
         try self.bindText(stmt, 1, name);
         _ = try self.stepNoResult(stmt);
+    }
+
+    pub fn clearSearchDocuments(self: *Store, project: []const u8) !void {
+        const stmt = try self.prepare("DELETE FROM search_documents WHERE project = ?1");
+        defer self.finalize(stmt);
+        try self.bindText(stmt, 1, project);
+        _ = try self.stepNoResult(stmt);
+    }
+
+    pub fn insertSearchDocument(self: *Store, project: []const u8, rel_path: []const u8, content: []const u8) !void {
+        const stmt = try self.prepare(
+            "INSERT INTO search_documents(project, rel_path, content) VALUES(?1, ?2, ?3)",
+        );
+        defer self.finalize(stmt);
+        try self.bindText(stmt, 1, project);
+        try self.bindText(stmt, 2, rel_path);
+        try self.bindText(stmt, 3, content);
+        try self.stepDone(stmt);
+    }
+
+    pub fn searchDocumentPaths(self: *Store, project: []const u8, query: []const u8, limit: usize) ![][]u8 {
+        const stmt = try self.prepare(
+            "SELECT rel_path FROM search_documents " ++
+                "WHERE search_documents MATCH ?1 AND project = ?2 " ++
+                "ORDER BY bm25(search_documents) LIMIT ?3",
+        );
+        defer self.finalize(stmt);
+
+        try self.bindText(stmt, 1, query);
+        try self.bindText(stmt, 2, project);
+        try self.bindInt(stmt, 3, @intCast(if (limit == 0) 32 else limit));
+
+        var out = std.ArrayList([]u8).empty;
+        while (true) {
+            const rc = c.sqlite3_step(stmt);
+            if (rc == c.SQLITE_DONE) break;
+            if (rc != c.SQLITE_ROW) return StoreError.SqlError;
+            try out.append(self.allocator, try self.copyColumnText(stmt, 0));
+        }
+        return out.toOwnedSlice(self.allocator);
+    }
+
+    pub fn clearScipOverlay(self: *Store, project: []const u8) !void {
+        const statements = [_][]const u8{
+            "DELETE FROM scip_occurrences WHERE project = ?1",
+            "DELETE FROM scip_symbols WHERE project = ?1",
+            "DELETE FROM scip_documents WHERE project = ?1",
+        };
+        for (statements) |sql| {
+            const stmt = try self.prepare(sql);
+            defer self.finalize(stmt);
+            try self.bindText(stmt, 1, project);
+            _ = try self.stepNoResult(stmt);
+        }
+    }
+
+    pub fn insertScipDocument(self: *Store, project: []const u8, rel_path: []const u8, language: []const u8) !void {
+        const stmt = try self.prepare(
+            "INSERT INTO scip_documents(project, rel_path, language) VALUES(?1, ?2, ?3) " ++
+                "ON CONFLICT(project, rel_path) DO UPDATE SET language = excluded.language",
+        );
+        defer self.finalize(stmt);
+        try self.bindText(stmt, 1, project);
+        try self.bindText(stmt, 2, rel_path);
+        try self.bindText(stmt, 3, language);
+        try self.stepDone(stmt);
+    }
+
+    pub fn insertScipSymbol(self: *Store, symbol: ScipSymbol) !void {
+        const stmt = try self.prepare(
+            "INSERT INTO scip_symbols(project, symbol, qualified_name, display_name, kind, file_path, start_line, end_line, properties) " ++
+                "VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9) " ++
+                "ON CONFLICT(project, symbol) DO UPDATE SET " ++
+                "qualified_name = excluded.qualified_name, display_name = excluded.display_name, kind = excluded.kind, " ++
+                "file_path = excluded.file_path, start_line = excluded.start_line, end_line = excluded.end_line, " ++
+                "properties = excluded.properties",
+        );
+        defer self.finalize(stmt);
+        try self.bindText(stmt, 1, symbol.project);
+        try self.bindText(stmt, 2, symbol.symbol);
+        try self.bindText(stmt, 3, symbol.qualified_name);
+        try self.bindText(stmt, 4, symbol.display_name);
+        try self.bindText(stmt, 5, symbol.kind);
+        try self.bindText(stmt, 6, symbol.file_path);
+        try self.bindInt(stmt, 7, symbol.start_line);
+        try self.bindInt(stmt, 8, symbol.end_line);
+        try self.bindText(stmt, 9, symbol.properties_json);
+        try self.stepDone(stmt);
+    }
+
+    pub fn insertScipOccurrence(self: *Store, occurrence: ScipOccurrence) !void {
+        const stmt = try self.prepare(
+            "INSERT INTO scip_occurrences(project, file_path, symbol, role, start_line, end_line) VALUES(?1, ?2, ?3, ?4, ?5, ?6) " ++
+                "ON CONFLICT(project, file_path, symbol, role, start_line, end_line) DO NOTHING",
+        );
+        defer self.finalize(stmt);
+        try self.bindText(stmt, 1, occurrence.project);
+        try self.bindText(stmt, 2, occurrence.file_path);
+        try self.bindText(stmt, 3, occurrence.symbol);
+        try self.bindText(stmt, 4, occurrence.role);
+        try self.bindInt(stmt, 5, occurrence.start_line);
+        try self.bindInt(stmt, 6, occurrence.end_line);
+        try self.stepDone(stmt);
     }
 
     pub fn getProjectStatus(self: *Store, name: ?[]const u8) !ProjectStatus {
@@ -606,6 +768,77 @@ pub const Store = struct {
         });
     }
 
+    pub fn findScipSymbolByQualifiedName(self: *Store, project: []const u8, qualified_name: []const u8) !?ScipSymbol {
+        const stmt = try self.prepare(
+            "SELECT project, symbol, qualified_name, display_name, kind, file_path, start_line, end_line, properties " ++
+                "FROM scip_symbols WHERE project = ?1 AND qualified_name = ?2 LIMIT 1",
+        );
+        defer self.finalize(stmt);
+        try self.bindText(stmt, 1, project);
+        try self.bindText(stmt, 2, qualified_name);
+
+        const rc = c.sqlite3_step(stmt);
+        if (rc == c.SQLITE_DONE) return null;
+        if (rc != c.SQLITE_ROW) return StoreError.SqlError;
+        return try self.rowToScipSymbol(stmt);
+    }
+
+    pub fn findScipSymbolsByQualifiedNameSuffix(
+        self: *Store,
+        project: []const u8,
+        qualified_name_suffix: []const u8,
+        limit: usize,
+    ) ![]ScipSymbol {
+        const stmt = try self.prepare(
+            "SELECT project, symbol, qualified_name, display_name, kind, file_path, start_line, end_line, properties " ++
+                "FROM scip_symbols WHERE project = ?1 AND qualified_name LIKE ?2 ORDER BY qualified_name ASC LIMIT ?3",
+        );
+        defer self.finalize(stmt);
+
+        const suffix_like = try std.fmt.allocPrint(self.allocator, "%{s}", .{qualified_name_suffix});
+        defer self.allocator.free(suffix_like);
+
+        try self.bindText(stmt, 1, project);
+        try self.bindText(stmt, 2, suffix_like);
+        try self.bindInt(stmt, 3, @as(i64, @intCast(if (limit == 0) 25 else limit)));
+
+        var out = std.ArrayList(ScipSymbol).empty;
+        errdefer {
+            for (out.items) |symbol| self.freeScipSymbol(symbol);
+            out.deinit(self.allocator);
+        }
+        while (true) {
+            const rc = c.sqlite3_step(stmt);
+            if (rc == c.SQLITE_DONE) break;
+            if (rc != c.SQLITE_ROW) return StoreError.SqlError;
+            try out.append(self.allocator, try self.rowToScipSymbol(stmt));
+        }
+        return out.toOwnedSlice(self.allocator);
+    }
+
+    pub fn findScipSymbolsByFile(self: *Store, project: []const u8, file_path: []const u8) ![]ScipSymbol {
+        const stmt = try self.prepare(
+            "SELECT project, symbol, qualified_name, display_name, kind, file_path, start_line, end_line, properties " ++
+                "FROM scip_symbols WHERE project = ?1 AND file_path = ?2 ORDER BY start_line ASC, qualified_name ASC",
+        );
+        defer self.finalize(stmt);
+        try self.bindText(stmt, 1, project);
+        try self.bindText(stmt, 2, file_path);
+
+        var out = std.ArrayList(ScipSymbol).empty;
+        errdefer {
+            for (out.items) |symbol| self.freeScipSymbol(symbol);
+            out.deinit(self.allocator);
+        }
+        while (true) {
+            const rc = c.sqlite3_step(stmt);
+            if (rc == c.SQLITE_DONE) break;
+            if (rc != c.SQLITE_ROW) return StoreError.SqlError;
+            try out.append(self.allocator, try self.rowToScipSymbol(stmt));
+        }
+        return out.toOwnedSlice(self.allocator);
+    }
+
     pub fn listProjectFiles(self: *Store, project: []const u8) ![][]u8 {
         const stmt = try self.prepare(
             "SELECT DISTINCT file_path FROM nodes WHERE project = ?1 AND file_path != '' ORDER BY file_path ASC",
@@ -825,6 +1058,21 @@ pub const Store = struct {
         self.allocator.free(node.qualified_name);
         self.allocator.free(node.file_path);
         self.allocator.free(node.properties_json);
+    }
+
+    pub fn freeScipSymbol(self: *Store, symbol: ScipSymbol) void {
+        self.allocator.free(symbol.project);
+        self.allocator.free(symbol.symbol);
+        self.allocator.free(symbol.qualified_name);
+        self.allocator.free(symbol.display_name);
+        self.allocator.free(symbol.kind);
+        self.allocator.free(symbol.file_path);
+        self.allocator.free(symbol.properties_json);
+    }
+
+    pub fn freeScipSymbols(self: *Store, symbols: []ScipSymbol) void {
+        for (symbols) |symbol| self.freeScipSymbol(symbol);
+        self.allocator.free(symbols);
     }
 
     pub fn countNodes(self: *Store, project: []const u8) !i32 {
@@ -1238,6 +1486,20 @@ pub const Store = struct {
             .label = try self.copyColumnText(stmt, 2),
             .name = try self.copyColumnText(stmt, 3),
             .qualified_name = try self.copyColumnText(stmt, 4),
+            .file_path = try self.copyColumnText(stmt, 5),
+            .start_line = @intCast(c.sqlite3_column_int(stmt, 6)),
+            .end_line = @intCast(c.sqlite3_column_int(stmt, 7)),
+            .properties_json = try self.copyColumnText(stmt, 8),
+        };
+    }
+
+    fn rowToScipSymbol(self: *Store, stmt: *c.sqlite3_stmt) !ScipSymbol {
+        return ScipSymbol{
+            .project = try self.copyColumnText(stmt, 0),
+            .symbol = try self.copyColumnText(stmt, 1),
+            .qualified_name = try self.copyColumnText(stmt, 2),
+            .display_name = try self.copyColumnText(stmt, 3),
+            .kind = try self.copyColumnText(stmt, 4),
             .file_path = try self.copyColumnText(stmt, 5),
             .start_line = @intCast(c.sqlite3_column_int(stmt, 6)),
             .end_line = @intCast(c.sqlite3_column_int(stmt, 7)),

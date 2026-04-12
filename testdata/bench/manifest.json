@@ -60,6 +60,32 @@
           }
         },
         {
+          "id": "search-code-helper",
+          "tool": "search_code",
+          "args": {
+            "pattern": "helper",
+            "mode": "compact",
+            "limit": 10
+          }
+        },
+        {
+          "id": "snippet-helper",
+          "tool": "get_code_snippet",
+          "args": {
+            "qualified_name": "helper"
+          }
+        },
+        {
+          "id": "architecture-packages",
+          "tool": "get_architecture",
+          "args": {
+            "aspects": [
+              "packages",
+              "hotspots"
+            ]
+          }
+        },
+        {
           "id": "function-count",
           "tool": "query_graph",
           "args": {
@@ -413,6 +439,94 @@
           "args": {
             "query": "MATCH (n) WHERE n.label = \"Function\" RETURN count(n) AS count",
             "max_rows": 10
+          }
+        }
+      ]
+    },
+    {
+      "id": "scip-overlay",
+      "path": "testdata/interop/scip",
+      "project": "scip",
+      "warmup_runs": 1,
+      "measured_runs": 2,
+      "accuracy_scenarios": [
+        {
+          "id": "snippet-render-message",
+          "tool": "get_code_snippet",
+          "args": {
+            "qualified_name": "renderMessage"
+          },
+          "expect": {
+            "required_substrings": [
+              "toUpperCase"
+            ]
+          }
+        }
+      ],
+      "performance_scenarios": [
+        {
+          "id": "search-code-render-message",
+          "tool": "search_code",
+          "args": {
+            "pattern": "renderMessage",
+            "mode": "compact",
+            "limit": 10
+          }
+        },
+        {
+          "id": "snippet-render-message",
+          "tool": "get_code_snippet",
+          "args": {
+            "qualified_name": "renderMessage"
+          }
+        },
+        {
+          "id": "architecture-packages",
+          "tool": "get_architecture",
+          "args": {
+            "aspects": [
+              "packages",
+              "hotspots"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "worktree-medium",
+      "path": ".",
+      "project": "cbm-zig-hybrid-serving",
+      "warmup_runs": 1,
+      "measured_runs": 1,
+      "accuracy_scenarios": [],
+      "performance_scenarios": [
+        {
+          "id": "search-code-query-router",
+          "tool": "search_code",
+          "args": {
+            "pattern": "QueryRouter",
+            "mode": "compact",
+            "limit": 10
+          }
+        },
+        {
+          "id": "architecture-summary",
+          "tool": "get_architecture",
+          "args": {
+            "aspects": [
+              "packages",
+              "hotspots",
+              "entry_points"
+            ]
+          }
+        },
+        {
+          "id": "detect-changes-full",
+          "tool": "detect_changes",
+          "args": {
+            "base_branch": "main",
+            "scope": "full",
+            "depth": 3
           }
         }
       ]

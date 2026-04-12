@@ -1,0 +1,72 @@
+{
+  "schema_version": "0.1",
+  "goal": "Shared agent comparison tasks for the python-basic fixture",
+  "repos": [
+    {
+      "id": "python-basic",
+      "path": "testdata/interop/python-basic",
+      "project": "python-basic",
+      "warmup_runs": 1,
+      "measured_runs": 2,
+      "tasks": [
+        {
+          "id": "find-helper",
+          "prompt": "Find the helper function and return the matching code location.",
+          "tool": "search_code",
+          "args": {
+            "pattern": "helper",
+            "mode": "compact",
+            "limit": 10
+          },
+          "expect": {
+            "required_names": [
+              "helper"
+            ],
+            "required_files": [
+              "main.py"
+            ],
+            "required_keys": [
+              "results",
+              "total"
+            ]
+          }
+        },
+        {
+          "id": "open-helper",
+          "prompt": "Open the helper implementation.",
+          "tool": "get_code_snippet",
+          "args": {
+            "qualified_name": "helper"
+          },
+          "expect": {
+            "required_substrings": [
+              "return value * 2"
+            ],
+            "required_keys": [
+              "source",
+              "file_path"
+            ]
+          }
+        },
+        {
+          "id": "summarize-architecture",
+          "prompt": "Summarize the repository structure with packages and hotspots.",
+          "tool": "get_architecture",
+          "args": {
+            "aspects": [
+              "packages",
+              "hotspots"
+            ]
+          },
+          "expect": {
+            "required_keys": [
+              "project",
+              "packages",
+              "hotspots"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
