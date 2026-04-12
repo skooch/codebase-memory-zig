@@ -680,7 +680,6 @@ fn matchLike(actual: []const u8, pattern: []const u8) bool {
     return std.mem.eql(u8, actual, trimmed);
 }
 
-
 fn parseQuery(allocator: std.mem.Allocator, query: []const u8) !ParsedQuery {
     if (!startsWithInsensitive(query, "MATCH ")) return error.UnsupportedQuery;
 
