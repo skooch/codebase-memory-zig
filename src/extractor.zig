@@ -1572,7 +1572,7 @@ fn tsNodeLabel(language: discover.Language, node: ts.Node) ?[]const u8 {
             std.mem.eql(u8, kind, "function_signature_item"))
             if (nodeHasAncestorKind(node, "impl_item") or nodeHasAncestorKind(node, "trait_item")) "Method" else "Function"
         else if (std.mem.eql(u8, kind, "closure_expression"))
-            "Function"
+            if (rustClosureIsDefinition(node)) "Function" else null
         else if (std.mem.eql(u8, kind, "struct_item") or
             std.mem.eql(u8, kind, "enum_item") or
             std.mem.eql(u8, kind, "union_item") or
@@ -1640,6 +1640,14 @@ fn jsTsArrowFunctionIsDefinition(node: ts.Node) bool {
         std.mem.eql(u8, parent_kind, "field_definition");
 }
 
+fn rustClosureIsDefinition(node: ts.Node) bool {
+    const parent = node.parent() orelse return false;
+    const parent_kind = parent.kind();
+    return std.mem.eql(u8, parent_kind, "let_declaration") or
+        std.mem.eql(u8, parent_kind, "const_item") or
+        std.mem.eql(u8, parent_kind, "static_item");
+}
+
 fn nodeHasAncestorKind(node: ts.Node, expected_kind: []const u8) bool {
     var current = node.parent();
     while (current) |ancestor| : (current = ancestor.parent()) {
@@ -1675,6 +1683,11 @@ fn extractTsName(
         const src = bytes[start..end];
         const impl_target = extractRustImplFromText(src) orelse return null;
         return try allocator.dupe(u8, impl_target);
+    }
+
+    if (language == .rust and std.mem.eql(u8, node.kind(), "closure_expression")) {
+        if (try extractRustParentBindingName(allocator, bytes, node)) |name| return name;
+        return null;
     }
 
     const name_node = node.childByFieldName("name") orelse {
@@ -1714,6 +1727,26 @@ fn extractJsTsParentAssignedName(
     if (std.mem.eql(u8, parent_kind, "field_definition")) {
         const property_node = parent.childByFieldName("property") orelse return null;
         return try copyTsNodeText(allocator, bytes, property_node);
+    }
+    return null;
+}
+
+fn extractRustParentBindingName(
+    allocator: std.mem.Allocator,
+    bytes: []const u8,
+    node: ts.Node,
+) !?[]const u8 {
+    const parent = node.parent() orelse return null;
+    const parent_kind = parent.kind();
+    if (std.mem.eql(u8, parent_kind, "let_declaration")) {
+        const pattern_node = parent.childByFieldName("pattern") orelse return null;
+        return try copyTsNodeText(allocator, bytes, pattern_node);
+    }
+    if (std.mem.eql(u8, parent_kind, "const_item") or
+        std.mem.eql(u8, parent_kind, "static_item"))
+    {
+        const name_node = parent.childByFieldName("name") orelse return null;
+        return try copyTsNodeText(allocator, bytes, name_node);
     }
     return null;
 }
