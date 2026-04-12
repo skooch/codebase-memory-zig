@@ -5,16 +5,50 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-MANIFEST_PATH="${1:-$ROOT_DIR/testdata/interop/manifest.json}"
-C_BIN_DEFAULT="$ROOT_DIR/../codebase-memory-mcp/build/c/codebase-memory-mcp"
-if [ ! -x "$C_BIN_DEFAULT" ]; then
-  ALT_C_BIN_DEFAULT="$ROOT_DIR/../../codebase-memory-mcp/build/c/codebase-memory-mcp"
-  if [ -x "$ALT_C_BIN_DEFAULT" ]; then
-    C_BIN_DEFAULT="$ALT_C_BIN_DEFAULT"
+# Parse flags before positional args
+MODE="compare"
+POSITIONAL_ARGS=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --zig-only)
+      if [ "$MODE" = "update-golden" ]; then
+        echo "ERROR: --zig-only and --update-golden are mutually exclusive" >&2
+        exit 1
+      fi
+      MODE="zig-only"
+      shift
+      ;;
+    --update-golden)
+      if [ "$MODE" = "zig-only" ]; then
+        echo "ERROR: --zig-only and --update-golden are mutually exclusive" >&2
+        exit 1
+      fi
+      MODE="update-golden"
+      shift
+      ;;
+    *)
+      POSITIONAL_ARGS+=("$1")
+      shift
+      ;;
+  esac
+done
+
+MANIFEST_PATH="${POSITIONAL_ARGS[0]:-$ROOT_DIR/testdata/interop/manifest.json}"
+REPORT_DIR="${POSITIONAL_ARGS[1]:-$ROOT_DIR/.interop_reports}"
+GOLDEN_DIR="$ROOT_DIR/testdata/interop/golden"
+
+# C binary is only needed in compare mode
+C_BIN=""
+if [ "$MODE" = "compare" ]; then
+  C_BIN_DEFAULT="$ROOT_DIR/../codebase-memory-mcp/build/c/codebase-memory-mcp"
+  if [ ! -x "$C_BIN_DEFAULT" ]; then
+    ALT_C_BIN_DEFAULT="$ROOT_DIR/../../codebase-memory-mcp/build/c/codebase-memory-mcp"
+    if [ -x "$ALT_C_BIN_DEFAULT" ]; then
+      C_BIN_DEFAULT="$ALT_C_BIN_DEFAULT"
+    fi
   fi
+  C_BIN="${CODEBASE_MEMORY_C_BIN:-$C_BIN_DEFAULT}"
 fi
-C_BIN="${CODEBASE_MEMORY_C_BIN:-$C_BIN_DEFAULT}"
-REPORT_DIR="${2:-$ROOT_DIR/.interop_reports}"
 
 if [ -n "${CODEBASE_MEMORY_ZIG_BIN:-}" ]; then
   ZIG_BIN="$CODEBASE_MEMORY_ZIG_BIN"
@@ -30,7 +64,7 @@ if [ ! -d "$REPORT_DIR" ]; then
   mkdir -p "$REPORT_DIR"
 fi
 
-python3 - "$MANIFEST_PATH" "$ROOT_DIR" "$C_BIN" "$ZIG_BIN" "$REPORT_DIR" <<'PY'
+python3 - "$MANIFEST_PATH" "$ROOT_DIR" "$C_BIN" "$ZIG_BIN" "$REPORT_DIR" "$MODE" "$GOLDEN_DIR" <<'PY'
 import json
 import os
 import subprocess
@@ -903,34 +937,346 @@ def check_assertions(tool_name: str, tool_payload: Any, assertions: list[dict[st
     return failures
 
 
+def build_golden_snapshot(
+    fixture_id: str,
+    zig_results: Dict[str, Any],
+    assertions: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Build a golden snapshot dict from Zig canonical outputs for one fixture."""
+    impl_payloads = zig_results.get("tool", {})
+    snapshot = {"fixture_id": fixture_id}  # type: Dict[str, Any]
+
+    # tools_list
+    tl_entries = impl_payloads.get("tools_list", [])
+    if tl_entries:
+        snapshot["tools_list"] = canonical_tools_list(tl_entries[0]["payload"])
+    else:
+        snapshot["tools_list"] = []
+
+    # search_graph
+    sg_entries = impl_payloads.get("search_graph", [])
+    snapshot["search_graph"] = [canonical_search_nodes(e["payload"]) for e in sg_entries]
+
+    # query_graph - store as JSON-safe dicts (tuples become lists)
+    qg_entries = impl_payloads.get("query_graph", [])
+    qg_list = []  # type: List[Dict[str, Any]]
+    for e in qg_entries:
+        columns, rows = canonical_query(e["payload"])
+        qg_list.append({"columns": list(columns), "rows": [list(row) for row in rows]})
+    snapshot["query_graph"] = qg_list
+
+    # trace_call_path - store as lists of [source, target, type]
+    tc_entries = impl_payloads.get("trace_call_path", [])
+    snapshot["trace_call_path"] = [
+        [list(edge) for edge in canonical_trace(e["payload"])]
+        for e in tc_entries
+    ]
+
+    # get_architecture
+    ga_entries = impl_payloads.get("get_architecture", [])
+    snapshot["get_architecture"] = [canonical_architecture(e["payload"]) for e in ga_entries]
+
+    # search_code
+    sc_entries = impl_payloads.get("search_code", [])
+    snapshot["search_code"] = [canonical_search_code(e["payload"]) for e in sc_entries]
+
+    # detect_changes
+    dc_entries = impl_payloads.get("detect_changes", [])
+    snapshot["detect_changes"] = [canonical_detect_changes(e["payload"]) for e in dc_entries]
+
+    # manage_adr
+    ma_entries = impl_payloads.get("manage_adr", [])
+    snapshot["manage_adr"] = [canonical_manage_adr(e["payload"]) for e in ma_entries]
+
+    # list_projects - store project name only (root_path varies by machine)
+    lp_entries = impl_payloads.get("list_projects", [])
+    if lp_entries:
+        projects = canonical_list_projects(lp_entries[0]["payload"])
+        snapshot["list_projects"] = [p["name"] for p in projects]
+    else:
+        snapshot["list_projects"] = []
+
+    # index_repository - store min thresholds from manifest assertions
+    index_assert = assertions.get("index_repository", {}).get("expect", {})
+    snapshot["index_repository"] = {
+        "nodes_min": int(index_assert.get("nodes_min", 0)),
+        "edges_min": int(index_assert.get("edges_min", 0)),
+    }
+
+    return snapshot
+
+
+def compare_golden_snapshot(
+    fixture_id: str,
+    zig_results: Dict[str, Any],
+    golden: Dict[str, Any],
+    assertions: Dict[str, Any],
+) -> List[str]:
+    """Compare Zig canonical outputs against a golden snapshot. Returns list of mismatch descriptions."""
+    mismatches = []  # type: List[str]
+    current = build_golden_snapshot(fixture_id, zig_results, assertions)
+
+    # tools_list
+    if current["tools_list"] != golden.get("tools_list", []):
+        current_set = set(current["tools_list"])
+        golden_set = set(golden.get("tools_list", []))
+        added = sorted(current_set - golden_set)
+        removed = sorted(golden_set - current_set)
+        mismatches.append(
+            "tools_list: added=%s removed=%s" % (added, removed)
+        )
+
+    # search_graph
+    current_sg = current["search_graph"]
+    golden_sg = golden.get("search_graph", [])
+    if len(current_sg) != len(golden_sg):
+        mismatches.append(
+            "search_graph: count %d vs golden %d" % (len(current_sg), len(golden_sg))
+        )
+    else:
+        for i, (cur, gld) in enumerate(zip(current_sg, golden_sg)):
+            if cur != gld:
+                mismatches.append("search_graph[%d]: differs" % i)
+
+    # query_graph
+    current_qg = current["query_graph"]
+    golden_qg = golden.get("query_graph", [])
+    if len(current_qg) != len(golden_qg):
+        mismatches.append(
+            "query_graph: count %d vs golden %d" % (len(current_qg), len(golden_qg))
+        )
+    else:
+        for i, (cur, gld) in enumerate(zip(current_qg, golden_qg)):
+            if cur != gld:
+                mismatches.append("query_graph[%d]: differs" % i)
+
+    # trace_call_path
+    current_tc = current["trace_call_path"]
+    golden_tc = golden.get("trace_call_path", [])
+    if len(current_tc) != len(golden_tc):
+        mismatches.append(
+            "trace_call_path: count %d vs golden %d" % (len(current_tc), len(golden_tc))
+        )
+    else:
+        for i, (cur, gld) in enumerate(zip(current_tc, golden_tc)):
+            if cur != gld:
+                mismatches.append("trace_call_path[%d]: differs" % i)
+
+    # get_architecture
+    current_ga = current["get_architecture"]
+    golden_ga = golden.get("get_architecture", [])
+    if len(current_ga) != len(golden_ga):
+        mismatches.append(
+            "get_architecture: count %d vs golden %d" % (len(current_ga), len(golden_ga))
+        )
+    else:
+        for i, (cur, gld) in enumerate(zip(current_ga, golden_ga)):
+            if cur != gld:
+                mismatches.append("get_architecture[%d]: differs" % i)
+
+    # search_code
+    current_sc = current["search_code"]
+    golden_sc = golden.get("search_code", [])
+    if len(current_sc) != len(golden_sc):
+        mismatches.append(
+            "search_code: count %d vs golden %d" % (len(current_sc), len(golden_sc))
+        )
+    else:
+        for i, (cur, gld) in enumerate(zip(current_sc, golden_sc)):
+            if cur != gld:
+                mismatches.append("search_code[%d]: differs" % i)
+
+    # detect_changes
+    current_dc = current["detect_changes"]
+    golden_dc = golden.get("detect_changes", [])
+    if len(current_dc) != len(golden_dc):
+        mismatches.append(
+            "detect_changes: count %d vs golden %d" % (len(current_dc), len(golden_dc))
+        )
+    else:
+        for i, (cur, gld) in enumerate(zip(current_dc, golden_dc)):
+            if cur != gld:
+                mismatches.append("detect_changes[%d]: differs" % i)
+
+    # manage_adr
+    current_ma = current["manage_adr"]
+    golden_ma = golden.get("manage_adr", [])
+    if len(current_ma) != len(golden_ma):
+        mismatches.append(
+            "manage_adr: count %d vs golden %d" % (len(current_ma), len(golden_ma))
+        )
+    else:
+        for i, (cur, gld) in enumerate(zip(current_ma, golden_ma)):
+            if cur != gld:
+                mismatches.append("manage_adr[%d]: differs" % i)
+
+    # list_projects - compare names only
+    current_lp = current["list_projects"]
+    golden_lp = golden.get("list_projects", [])
+    if current_lp != golden_lp:
+        mismatches.append(
+            "list_projects: %s vs golden %s" % (current_lp, golden_lp)
+        )
+
+    # index_repository - check zig output meets min thresholds from golden
+    golden_idx = golden.get("index_repository", {})
+    idx_entries = zig_results.get("tool", {}).get("index_repository", [])
+    if idx_entries:
+        idx_payload = idx_entries[0]["payload"]
+        nodes = int(idx_payload.get("nodes", 0)) if isinstance(idx_payload, dict) else 0
+        edges = int(idx_payload.get("edges", 0)) if isinstance(idx_payload, dict) else 0
+        nodes_min = int(golden_idx.get("nodes_min", 0))
+        edges_min = int(golden_idx.get("edges_min", 0))
+        if nodes < nodes_min:
+            mismatches.append("index_repository: nodes %d < min %d" % (nodes, nodes_min))
+        if edges < edges_min:
+            mismatches.append("index_repository: edges %d < min %d" % (edges, edges_min))
+
+    return mismatches
+
+
 def main() -> None:
     manifest_path = Path(sys.argv[1])
     root = Path(sys.argv[2]).resolve()
-    c_bin = Path(sys.argv[3])
+    c_bin = Path(sys.argv[3]) if sys.argv[3] else None
     zig_bin = Path(sys.argv[4])
     report_dir = Path(sys.argv[5]).resolve()
+    mode = sys.argv[6] if len(sys.argv) > 6 else "compare"
+    golden_dir = Path(sys.argv[7]) if len(sys.argv) > 7 else None
     report_dir.mkdir(parents=True, exist_ok=True)
 
     manifest = json.loads(manifest_path.read_text())
-    report: dict[str, Any] = {
-        "manifest": str(manifest_path),
+
+    # Dispatch based on mode
+    if mode in ("zig-only", "update-golden"):
+        run_golden_mode(manifest, root, zig_bin, report_dir, mode, golden_dir)
+        return
+
+    # Default: compare mode (original behavior)
+    assert c_bin is not None, "C binary required in compare mode"
+    run_compare_mode(manifest, root, c_bin, zig_bin, report_dir)
+
+
+def run_golden_mode(
+    manifest: Dict[str, Any],
+    root: Path,
+    zig_bin: Path,
+    report_dir: Path,
+    mode: str,
+    golden_dir: Optional[Path],
+) -> None:
+    """Run zig-only or update-golden mode."""
+    assert golden_dir is not None, "golden_dir required for zig-only/update-golden modes"
+    golden_dir.mkdir(parents=True, exist_ok=True)
+
+    all_mismatches = []  # type: List[Dict[str, Any]]
+    fixture_count = 0
+    updated_count = 0
+
+    for fixture in manifest.get("fixtures", []):
+        fixture_id = fixture.get("id", fixture.get("project", "unknown"))
+        root_path = root / fixture.get("path", "")
+        assertions = fixture.get("assertions", {})
+        fixture_count += 1
+
+        # Only run Zig
+        requests, tool_ctx = build_requests(root, fixture, "zig")
+        try:
+            zig_results = call_mcp_sequence(str(zig_bin), str(root_path), requests, "zig")
+            zig_results["tool_ctx"] = tool_ctx
+        except Exception as err:
+            print("ERROR: fixture %s zig failed: %s" % (fixture_id, err))
+            all_mismatches.append({"fixture": fixture_id, "error": str(err)})
+            continue
+
+        # Run assertion checks on Zig output (same as compare mode)
+        impl_payloads = zig_results.get("tool", {})
+        index_payload = (impl_payloads.get("index_repository") or [{"payload": {}}])[0]["payload"]
+        index_assertions = assertions.get("index_repository", {})
+        if index_assertions:
+            failures = check_assertions("index_repository", index_payload, [index_assertions])
+            if failures:
+                print("  WARN: %s index_repository assertion failures: %s" % (fixture_id, failures))
+
+        golden_path = golden_dir / ("%s.json" % fixture_id)
+
+        if mode == "update-golden":
+            snapshot = build_golden_snapshot(fixture_id, zig_results, assertions)
+            golden_path.write_text(json.dumps(snapshot, indent=2, sort_keys=True) + "\n")
+            updated_count += 1
+            print("  updated: %s" % golden_path)
+
+        elif mode == "zig-only":
+            if not golden_path.exists():
+                print("FAIL: %s golden snapshot missing: %s" % (fixture_id, golden_path))
+                all_mismatches.append({
+                    "fixture": fixture_id,
+                    "error": "golden snapshot missing: %s" % golden_path,
+                })
+                continue
+
+            golden = json.loads(golden_path.read_text())
+            diffs = compare_golden_snapshot(fixture_id, zig_results, golden, assertions)
+            if diffs:
+                print("FAIL: %s" % fixture_id)
+                for diff in diffs:
+                    print("  - %s" % diff)
+                all_mismatches.append({
+                    "fixture": fixture_id,
+                    "mismatches": diffs,
+                })
+            else:
+                print("PASS: %s" % fixture_id)
+
+    # Write summary report
+    out_json = report_dir / "interop_golden_report.json"
+    report = {
+        "mode": mode,
+        "fixtures": fixture_count,
+        "mismatches": all_mismatches,
+    }  # type: Dict[str, Any]
+
+    if mode == "update-golden":
+        report["updated"] = updated_count
+        print("\nGolden snapshots updated: %d/%d" % (updated_count, fixture_count))
+    else:
+        report["failures"] = len(all_mismatches)
+        print("\nGolden comparison: %d/%d passed" % (fixture_count - len(all_mismatches), fixture_count))
+
+    out_json.write_text(json.dumps(report, indent=2))
+    print("wrote report: %s" % out_json)
+
+    if mode == "zig-only" and all_mismatches:
+        sys.exit(1)
+
+
+def run_compare_mode(
+    manifest: Dict[str, Any],
+    root: Path,
+    c_bin: Path,
+    zig_bin: Path,
+    report_dir: Path,
+) -> None:
+    """Original compare mode: Zig vs C."""
+    report = {
+        "manifest": str(root / "testdata" / "interop" / "manifest.json"),
         "fixtures": {},
         "mismatches": [],
         "checks": {},
-    }
+    }  # type: Dict[str, Any]
 
     for fixture in manifest.get("fixtures", []):
         fixture_id = fixture.get("id", fixture.get("project", "unknown"))
         root_path = root / fixture.get("path", "")
         assertions = fixture.get("assertions", {})
 
-        results: dict[str, Any] = {
+        results = {
             "zig": {},
             "c": {},
             "request_count": 0,
             "comparison": {},
             "errors": [],
-        }
+        }  # type: Dict[str, Any]
 
         for impl in ("zig", "c"):
             bin_path = str(zig_bin if impl == "zig" else c_bin)
@@ -999,7 +1345,7 @@ def main() -> None:
                 )
 
         # Compare canonical outputs across CUT and C.
-        def get_entries(impl_name: str, tool_name: str) -> list[dict[str, Any]]:
+        def get_entries(impl_name: str, tool_name: str) -> list:
             return results[impl_name].get("tool", {}).get(tool_name, [])
 
         comparisons = {}
