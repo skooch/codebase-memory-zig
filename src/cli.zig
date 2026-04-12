@@ -249,6 +249,152 @@ pub fn claudeLegacyConfigPath(allocator: std.mem.Allocator, home: []const u8) ![
     return std.fs.path.join(allocator, &.{ home, ".claude.json" });
 }
 
+// ── Embedded content ─────────────────────────────────────────────
+
+const skill_name = "codebase-memory";
+
+const skill_content =
+    \\---
+    \\name: codebase-memory
+    \\description: Use the codebase knowledge graph for structural code queries. Triggers on: explore the codebase, understand the architecture, what functions exist, show me the structure, who calls this function, what does X call, trace the call chain, find callers of, show dependencies, impact analysis, dead code, unused functions, high fan-out, refactor candidates, code quality audit, graph query syntax, Cypher query examples, edge types, how to use search_graph.
+    \\---
+    \\
+    \\# Codebase Memory — Knowledge Graph Tools
+    \\
+    \\Graph tools return precise structural results in ~500 tokens vs ~80K for grep.
+    \\
+    \\## Quick Decision Matrix
+    \\
+    \\| Question | Tool call |
+    \\|----------|----------|
+    \\| Who calls X? | `trace_path(direction="inbound")` |
+    \\| What does X call? | `trace_path(direction="outbound")` |
+    \\| Full call context | `trace_path(direction="both")` |
+    \\| Find by name pattern | `search_graph(name_pattern="...")` |
+    \\| Dead code | `search_graph(max_degree=0, exclude_entry_points=true)` |
+    \\| Cross-service edges | `query_graph` with Cypher |
+    \\| Impact of local changes | `detect_changes()` |
+    \\| Risk-classified trace | `trace_path(risk_labels=true)` |
+    \\| Text search | `search_code` or Grep |
+    \\
+    \\## Exploration Workflow
+    \\1. `list_projects` — check if project is indexed
+    \\2. `get_graph_schema` — understand node/edge types
+    \\3. `search_graph(label="Function", name_pattern=".*Pattern.*")` — find code
+    \\4. `get_code_snippet(qualified_name="project.path.FuncName")` — read source
+    \\
+    \\## Tracing Workflow
+    \\1. `search_graph(name_pattern=".*FuncName.*")` — discover exact name
+    \\2. `trace_path(function_name="FuncName", direction="both", depth=3)` — trace
+    \\3. `detect_changes()` — map git diff to affected symbols
+    \\
+    \\## Quality Analysis
+    \\- Dead code: `search_graph(max_degree=0, exclude_entry_points=true)`
+    \\- High fan-out: `search_graph(min_degree=10, relationship="CALLS", direction="outbound")`
+    \\- High fan-in: `search_graph(min_degree=10, relationship="CALLS", direction="inbound")`
+    \\
+    \\## 14 MCP Tools
+    \\`index_repository`, `index_status`, `list_projects`, `delete_project`,
+    \\`search_graph`, `search_code`, `trace_path`, `detect_changes`,
+    \\`query_graph`, `get_graph_schema`, `get_code_snippet`, `get_architecture`,
+    \\`manage_adr`, `ingest_traces`
+    \\
+    \\## Edge Types
+    \\CALLS, HTTP_CALLS, ASYNC_CALLS, IMPORTS, DEFINES, DEFINES_METHOD,
+    \\HANDLES, IMPLEMENTS, OVERRIDE, USAGE, FILE_CHANGES_WITH,
+    \\CONTAINS_FILE, CONTAINS_FOLDER, CONTAINS_PACKAGE
+    \\
+    \\## Cypher Examples (for query_graph)
+    \\```
+    \\MATCH (a)-[r:HTTP_CALLS]->(b) RETURN a.name, b.name, r.url_path, r.confidence LIMIT 20
+    \\MATCH (f:Function) WHERE f.name =~ '.*Handler.*' RETURN f.name, f.file_path
+    \\MATCH (a)-[r:CALLS]->(b) WHERE a.name = 'main' RETURN b.name
+    \\```
+    \\
+    \\## Gotchas
+    \\1. `search_graph(relationship="HTTP_CALLS")` filters nodes by degree — use `query_graph` with Cypher to see actual edges.
+    \\2. `query_graph` has a 200-row cap — use `search_graph` with degree filters for counting.
+    \\3. `trace_path` needs exact names — use `search_graph(name_pattern=...)` first.
+    \\4. `direction="outbound"` misses cross-service callers — use `direction="both"`.
+    \\5. Results default to 10 per page — check `has_more` and use `offset`.
+    \\
+;
+
+const old_skill_names: []const []const u8 = &.{
+    "codebase-memory-exploring",
+    "codebase-memory-tracing",
+    "codebase-memory-quality",
+    "codebase-memory-reference",
+};
+
+pub const SkillsResult = struct {
+    installed: u32,
+    old_removed: bool,
+};
+
+/// Install skills to the given skills directory.
+/// Writes SKILL.md under skills_dir/codebase-memory/.
+/// Cleans up old monolithic skill directories.
+pub fn installSkills(
+    allocator: std.mem.Allocator,
+    skills_dir: []const u8,
+    force: bool,
+    dry_run: bool,
+) !SkillsResult {
+    var result = SkillsResult{ .installed = 0, .old_removed = false };
+
+    // Clean up old monolithic skill directories
+    for (old_skill_names) |old_name| {
+        const old_path = try std.fs.path.join(allocator, &.{ skills_dir, old_name });
+        defer allocator.free(old_path);
+        if (dirExists(old_path)) {
+            result.old_removed = true;
+            if (!dry_run) {
+                std.fs.cwd().deleteTree(old_path) catch {};
+            }
+        }
+    }
+
+    // Install the consolidated skill
+    const skill_dir = try std.fs.path.join(allocator, &.{ skills_dir, skill_name });
+    defer allocator.free(skill_dir);
+    const file_path = try std.fs.path.join(allocator, &.{ skill_dir, "SKILL.md" });
+    defer allocator.free(file_path);
+
+    // Check if already exists (skip unless force)
+    if (!force) {
+        if (std.fs.cwd().access(file_path, .{})) |_| {
+            return result; // file exists and no force
+        } else |_| {}
+    }
+
+    result.installed = 1;
+    if (dry_run) return result;
+
+    try std.fs.cwd().makePath(skill_dir);
+    var file = try std.fs.cwd().createFile(file_path, .{ .truncate = true });
+    defer file.close();
+    try file.writeAll(skill_content);
+
+    return result;
+}
+
+/// Remove installed skills from the skills directory.
+pub fn removeSkills(
+    allocator: std.mem.Allocator,
+    skills_dir: []const u8,
+    dry_run: bool,
+) !u32 {
+    const skill_dir = try std.fs.path.join(allocator, &.{ skills_dir, skill_name });
+    defer allocator.free(skill_dir);
+
+    if (!dirExists(skill_dir)) return 0;
+    if (dry_run) return 1;
+
+    std.fs.cwd().deleteTree(skill_dir) catch return 0;
+    return 1;
+}
+
 pub fn installAgentConfigs(
     allocator: std.mem.Allocator,
     home: []const u8,
