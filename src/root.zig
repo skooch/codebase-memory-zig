@@ -18,6 +18,8 @@ pub const watcher = @import("watcher.zig");
 pub const registry = @import("registry.zig");
 pub const minhash = @import("minhash.zig");
 pub const text_match = @import("text_match.zig");
+pub const service_patterns = @import("service_patterns.zig");
+pub const git_history = @import("git_history.zig");
 
 // Re-export core types at top level for convenience.
 pub const Store = store.Store;
@@ -49,4 +51,8 @@ test {
     _ = @import("store_test.zig");
     _ = @import("query_router_test.zig");
     _ = @import("extractor_test.zig");
+    _ = service_patterns;
+    _ = @import("service_patterns_test.zig");
+    _ = git_history;
+    _ = @import("git_history_test.zig");
 }
