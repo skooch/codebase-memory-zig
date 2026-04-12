@@ -1,6 +1,8 @@
 # codebase-memory-zig
 
-Zig port of [`codebase-memory-mcp`](../codebase-memory-mcp), an MCP server that builds a searchable knowledge graph from source code repositories.
+This is a work in progress.
+
+Zig port of [`codebase-memory-mcp`](https://github.com/DeusData/codebase-memory-mcp), an MCP server that builds a searchable knowledge graph from source code repositories.
 
 ## Requirements
 
