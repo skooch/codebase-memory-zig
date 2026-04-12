@@ -11,6 +11,8 @@ const GraphBufferError = @import("graph_buffer.zig").GraphBufferError;
 const extractor = @import("extractor.zig");
 const minhash = @import("minhash.zig");
 const Registry = @import("registry.zig").Registry;
+const scip = @import("scip.zig");
+const search_index = @import("search_index.zig");
 const store = @import("store.zig");
 const test_tagging = @import("test_tagging.zig");
 
@@ -127,6 +129,14 @@ pub const Pipeline = struct {
 
         try gb.dumpToStore(db);
         try persistFileHashes(db, self.project_name, discovered_files);
+        try search_index.refreshProject(self.allocator, db, self.project_name, discovered_files);
+        const scip_imported = scip.importProjectOverlay(self.allocator, db, self.project_name, self.repo_path) catch |err| imported: {
+            std.log.warn("pipeline skipped SCIP overlay import for {s}: {}", .{ self.project_name, err });
+            break :imported 0;
+        };
+        if (scip_imported > 0) {
+            std.log.info("pipeline imported {} SCIP overlay symbols for {s}", .{ scip_imported, self.project_name });
+        }
         std.log.info(
             "pipeline graph buffer: {} nodes, {} edges",
             .{ gb.nodeCount(), gb.edgeCount() },
@@ -193,6 +203,14 @@ pub const Pipeline = struct {
         try db.upsertProject(self.project_name, self.repo_path);
         try gb.dumpToStore(db);
         try persistFileHashes(db, self.project_name, discovered_files);
+        try search_index.refreshProject(self.allocator, db, self.project_name, discovered_files);
+        const scip_imported = scip.importProjectOverlay(self.allocator, db, self.project_name, self.repo_path) catch |err| imported: {
+            std.log.warn("pipeline skipped SCIP overlay import for {s}: {}", .{ self.project_name, err });
+            break :imported 0;
+        };
+        if (scip_imported > 0) {
+            std.log.info("pipeline imported {} SCIP overlay symbols for {s}", .{ scip_imported, self.project_name });
+        }
         std.log.info(
             "pipeline incremental graph buffer: {} nodes, {} edges",
             .{ gb.nodeCount(), gb.edgeCount() },

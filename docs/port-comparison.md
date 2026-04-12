@@ -54,8 +54,8 @@ It is intentionally not a wish list. It describes:
 | Area | Original C | Zig Port | Status | Interoperable? |
 |------|------------|----------|--------|----------------|
 | Readiness/interoperability gate | Full shared-capability reference implementation | Expanded shared-capability parity harness completed, automated, and passing | `Near parity` | Yes |
-| Daily-use MCP surface | Full 14-tool surface, though `ingest_traces` is stubbed | Complete overlapping tool surface, with remaining differences concentrated in richer trace breadth and other partial rows below | `Partial` | No |
-| Core indexing pipeline | Broad multi-pass pipeline including routes, tests, config links, infra scans, git history, similarity | Strong core pipeline for structure, definitions, imports, calls, usages, semantics, incremental, parallel, similarity | `Partial` | No |
+| Daily-use MCP surface | Full 14-tool surface, though `ingest_traces` is stubbed | Complete overlapping tool surface, now served through a stable MCP contract with internal hybrid routing for search/snippet/architecture/change detection | `Partial` | No |
+| Core indexing pipeline | Broad multi-pass pipeline including routes, tests, config links, infra scans, git history, similarity | Strong core pipeline for structure, definitions, imports, calls, usages, semantics, incremental, parallel, similarity, plus embedded FTS5 refresh and optional SCIP sidecar import | `Partial` | No |
 | Runtime lifecycle | Watcher, auto-index, update notifications, UI-capable runtime | Watcher, auto-index, incremental, transactional indexing, persistent runtime DB | `Near parity` | Yes |
 | CLI/productization | Rich install/update/config for 10 agents plus hooks/instructions | Source-build-friendly install/update/config for Codex CLI and Claude Code | `Partial` | No |
 | Optional/long-tail systems | UI, route graph, infra/resource indexing, git history, config linking | Explicitly deferred or cut beyond the completed shared test-tagging slice | `Deferred` / `Cut` | No |
@@ -147,6 +147,7 @@ This section compares what kinds of graph entities the two systems are built to 
 | Core code edges (`CONTAINS_*`, `DEFINES`, `DEFINES_METHOD`, `CALLS`, `USAGE`) | Yes | Yes | `Near parity` | Yes | All are part of the current Zig daily-use contract. |
 | `SIMILAR_TO` | Yes | Yes | `Near parity` | Yes | Landed in Zig Phase 6. |
 | Shared `CONFIGURES` / `WRITES` contract | Yes | Yes for the verified shared fixture slice | `Near parity` | Yes | The parity fixtures now compare the overlapping `CONFIGURES` row directly and lock the exercised shared `WRITES` queries for Python, JavaScript, and TypeScript; broader config-link systems remain deferred elsewhere. |
+| Internal serving architecture | Graph-centric serving path | Hybrid internal serving path: SQLite graph core, FTS5 lexical index, optional SCIP sidecar overlay, and query router | `Near parity` | Yes | This is an internal implementation improvement in the Zig port; it deliberately preserves the interoperable MCP surface rather than creating a new client contract. |
 | Route graph (`Route`, `HTTP_CALLS`, `ASYNC_CALLS`, `HANDLES`, route-linked data flows) | Yes | Not shipped | `Deferred` | No | This is one of the clearest remaining graph-model differences. |
 | Resource / infra graph (`Resource`, K8s/Kustomize entities) | Yes | Not shipped | `Cut` | No | Intentionally outside the Zig scope. |
 | `TESTS` / test metadata | Yes | Yes for the verified shared Python fixture slice | `Near parity` | Yes | The parity fixture now locks shared `TESTS` and `TESTS_FILE` rows plus file-level `is_test` metadata for the exercised Python naming rules. |

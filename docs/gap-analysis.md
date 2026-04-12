@@ -61,6 +61,12 @@ Completed after the readiness gate:
   - `detect_changes`
   - verified by `zig build`, `zig build test`, and `bash scripts/run_interop_alignment.sh`
   - current evidence: `Comparisons: 67`, `Strict matches: 58`, `Diagnostic-only comparisons: 9`, `Mismatches: 0`, `cli_progress: match`
+- Hybrid serving baseline without MCP contract drift:
+  - `SQLite` remains the canonical graph store
+  - `FTS5` now backs lexical candidate generation in `search_code`
+  - optional `.codebase-memory/scip.json` sidecars can import precise overlay facts into local overlay tables
+  - `src/query_router.zig` now routes `search_code`, `get_code_snippet`, `get_architecture`, and `detect_changes` to the appropriate internal substrate while preserving the existing MCP tool surface
+  - current evidence: `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh`, and `bash scripts/run_benchmark_suite.sh` all pass in the hybrid-serving worktree
 
 Intentionally deferred after Phase 7:
 - The remaining MCP work outside the completed daily-use slice, especially fuller Cypher parity and richer trace modes.

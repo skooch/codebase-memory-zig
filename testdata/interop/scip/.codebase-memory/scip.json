@@ -1,0 +1,42 @@
+{
+  "version": "0.1",
+  "source": "scip",
+  "documents": [
+    {
+      "rel_path": "src/main.ts",
+      "language": "typescript",
+      "symbols": [
+        {
+          "symbol": "scip-typescript fixture renderMessage",
+          "qualified_name": "interop.scip.renderMessage",
+          "display_name": "renderMessage",
+          "kind": "function",
+          "start_line": 1,
+          "end_line": 3
+        },
+        {
+          "symbol": "scip-typescript fixture run",
+          "qualified_name": "interop.scip.run",
+          "display_name": "run",
+          "kind": "function",
+          "start_line": 5,
+          "end_line": 7
+        }
+      ],
+      "occurrences": [
+        {
+          "symbol": "scip-typescript fixture renderMessage",
+          "role": "definition",
+          "start_line": 1,
+          "end_line": 3
+        },
+        {
+          "symbol": "scip-typescript fixture run",
+          "role": "definition",
+          "start_line": 5,
+          "end_line": 7
+        }
+      ]
+    }
+  ]
+}

@@ -88,7 +88,10 @@ pub fn runPass(allocator: std.mem.Allocator, gb: *graph_buffer.GraphBuffer) !Sta
 
     try ensureTestMetadata(allocator, gb);
 
-    for (gb.edgeItems()) |edge| {
+    const base_edge_count = gb.edgeItems().len;
+    var edge_idx: usize = 0;
+    while (edge_idx < base_edge_count) : (edge_idx += 1) {
+        const edge = gb.edgeItems()[edge_idx];
         if (!std.mem.eql(u8, edge.edge_type, "CALLS")) continue;
 
         const source = gb.findNodeById(edge.source_id) orelse continue;

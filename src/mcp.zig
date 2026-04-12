@@ -24,8 +24,10 @@ const adr = @import("adr.zig");
 const discover = @import("discover.zig");
 const store = @import("store.zig");
 const pipeline = @import("pipeline.zig");
+const query_router = @import("query_router.zig");
 const runtime_lifecycle = @import("runtime_lifecycle.zig");
 const cypher = @import("cypher.zig");
+const search_index = @import("search_index.zig");
 const watcher = @import("watcher.zig");
 
 const Store = store.Store;
@@ -501,39 +503,22 @@ pub const McpServer = struct {
         const project = stringArg(args, "project") orelse return self.errorResponse(request_id, -32602, "Missing project");
         const qualified_name = stringArg(args, "qualified_name") orelse return self.errorResponse(request_id, -32602, "Missing qualified_name");
         const include_neighbors = boolArg(args, "include_neighbors") orelse false;
-
-        const project_status = try self.db.getProjectStatus(project);
-        defer self.db.freeProjectStatus(project_status);
-        if (project_status.status == .not_found) {
-            return self.errorResponse(request_id, -32602, "Unknown project");
-        }
-
-        if (try self.db.findNodeByQualifiedName(project, qualified_name)) |node| {
-            defer self.db.freeNode(node);
-            return self.respondWithSnippet(request_id, project, project_status.root_path, node, include_neighbors, null);
-        }
-
-        const suffix_matches = try self.db.findNodesByQualifiedNameSuffix(project, qualified_name, 10);
-        defer self.db.freeNodes(suffix_matches);
-        if (suffix_matches.len == 1) {
-            return self.respondWithSnippet(
+        var router = query_router.QueryRouter.init(self.allocator, self.db);
+        const payload = router.getCodeSnippetPayload(.{
+            .project = project,
+            .qualified_name = qualified_name,
+            .include_neighbors = include_neighbors,
+        }) catch |err| switch (err) {
+            error.UnknownProject => return self.errorResponse(request_id, -32602, "Unknown project"),
+            error.SymbolNotFound => return self.errorResponse(
                 request_id,
-                project,
-                project_status.root_path,
-                suffix_matches[0],
-                include_neighbors,
-                "suffix",
-            );
-        }
-        if (suffix_matches.len > 1) {
-            return self.respondWithSnippetSuggestions(request_id, qualified_name, suffix_matches);
-        }
-
-        return self.errorResponse(
-            request_id,
-            -32602,
-            "symbol not found. Use search_graph(name_pattern=\"...\") first to discover the exact qualified_name, then pass it to get_code_snippet.",
-        );
+                -32602,
+                "symbol not found. Use search_graph(name_pattern=\"...\") first to discover the exact qualified_name, then pass it to get_code_snippet.",
+            ),
+            else => return err,
+        };
+        defer self.allocator.free(payload);
+        return self.successResponse(request_id, payload);
     }
 
     fn handleDeleteProject(self: *McpServer, request_id: ?std.json.Value, args: std.json.Value) !?[]const u8 {
@@ -579,200 +564,59 @@ pub const McpServer = struct {
 
     fn handleGetArchitecture(self: *McpServer, request_id: ?std.json.Value, args: std.json.Value) !?[]const u8 {
         const project = stringArg(args, "project") orelse return self.errorResponse(request_id, -32602, "Missing project");
-        const status = try self.db.getProjectStatus(project);
-        defer self.db.freeProjectStatus(status);
-        if (status.status == .not_found) {
-            return self.errorResponse(request_id, -32602, "Unknown project");
-        }
-
-        const schema = try self.db.getSchema(project);
-        defer self.db.freeSchema(schema);
-        const files = try self.db.listProjectFiles(project);
-        defer self.db.freePaths(files);
-
-        var payload = std.ArrayList(u8).empty;
-        try payload.appendSlice(self.allocator, "{");
-        try appendJsonStringField(&payload, self.allocator, "project", project, true);
-        try appendJsonIntField(&payload, self.allocator, "total_nodes", status.nodes, false);
-        try appendJsonIntField(&payload, self.allocator, "total_edges", status.edges, false);
-
-        if (aspectWanted(args, "structure")) {
-            try appendSchemaCountsField(&payload, self.allocator, "node_labels", schema.labels);
-        }
-        if (aspectWanted(args, "dependencies")) {
-            try appendEdgeTypeCountsField(&payload, self.allocator, "edge_types", schema.edge_types);
-        }
-        if (explicitArchitectureAspectWanted(args, "languages")) {
-            try appendLanguageSummaryField(&payload, self.allocator, files);
-        }
-        if (explicitArchitectureAspectWanted(args, "packages")) {
-            try appendDirectorySummaryField(&payload, self.allocator, files);
-        }
-        if (explicitArchitectureAspectWanted(args, "hotspots")) {
-            try appendHotspotsField(&payload, self, project, 10);
-        }
-        if (explicitArchitectureAspectWanted(args, "entry_points")) {
-            try appendEntryPointsField(&payload, self, project, 15);
-        }
-        if (explicitArchitectureAspectWanted(args, "route_summaries")) {
-            try appendRoutesField(&payload, self, project);
-        }
-
-        try payload.appendSlice(self.allocator, "}");
-        const owned_payload = try payload.toOwnedSlice(self.allocator);
-        defer self.allocator.free(owned_payload);
-        return self.successResponse(request_id, owned_payload);
+        var router = query_router.QueryRouter.init(self.allocator, self.db);
+        const payload = router.getArchitecturePayload(.{
+            .project = project,
+            .include_structure = aspectWanted(args, "structure"),
+            .include_dependencies = aspectWanted(args, "dependencies"),
+            .include_languages = explicitArchitectureAspectWanted(args, "languages"),
+            .include_packages = explicitArchitectureAspectWanted(args, "packages"),
+            .include_hotspots = explicitArchitectureAspectWanted(args, "hotspots"),
+            .include_entry_points = explicitArchitectureAspectWanted(args, "entry_points"),
+            .include_routes = explicitArchitectureAspectWanted(args, "route_summaries"),
+        }) catch |err| switch (err) {
+            error.UnknownProject => return self.errorResponse(request_id, -32602, "Unknown project"),
+            else => return err,
+        };
+        defer self.allocator.free(payload);
+        return self.successResponse(request_id, payload);
     }
 
     fn handleSearchCode(self: *McpServer, request_id: ?std.json.Value, args: std.json.Value) !?[]const u8 {
         const project = stringArg(args, "project") orelse return self.errorResponse(request_id, -32602, "Missing project");
         const pattern = stringArg(args, "pattern") orelse return self.errorResponse(request_id, -32602, "Missing pattern");
-        const status = try self.db.getProjectStatus(project);
-        defer self.db.freeProjectStatus(status);
-        if (status.status == .not_found) {
-            return self.errorResponse(request_id, -32602, "Unknown project");
-        }
-
-        const mode = parseSearchCodeMode(stringArg(args, "mode"));
-        const file_pattern = stringArg(args, "file_pattern");
-        const path_filter = stringArg(args, "path_filter");
-        const regex = boolArg(args, "regex") orelse false;
-        const limit = intArg(args, "limit") orelse 25;
-        const context = intArg(args, "context") orelse 0;
-
-        const hits = try collectSearchCodeHits(
-            self.allocator,
-            self.db,
-            project,
-            status.root_path,
-            pattern,
-            mode,
-            file_pattern,
-            path_filter,
-            regex,
-            limit,
-            context,
-        );
-        defer freeCodeSearchHits(self.allocator, hits);
-
-        var payload = std.ArrayList(u8).empty;
-        try payload.appendSlice(self.allocator, "{");
-        try appendJsonStringField(&payload, self.allocator, "mode", searchCodeModeText(mode), true);
-        try appendJsonIntField(&payload, self.allocator, "total", @intCast(hits.len), false);
-        try payload.appendSlice(self.allocator, ",\"results\":[");
-        for (hits, 0..) |hit, idx| {
-            if (idx > 0) try payload.append(self.allocator, ',');
-            try payload.appendSlice(self.allocator, "{");
-            try appendJsonStringField(&payload, self.allocator, "file", hit.file_path, true);
-            try appendJsonStringField(&payload, self.allocator, "file_path", hit.file_path, false);
-            if (mode != .files) {
-                try appendJsonIntField(&payload, self.allocator, "line", @intCast(hit.line), false);
-                if (hit.start_line > 0) try appendJsonIntField(&payload, self.allocator, "start_line", hit.start_line, false);
-                if (hit.end_line > 0) try appendJsonIntField(&payload, self.allocator, "end_line", hit.end_line, false);
-                if (mode == .full or hit.name == null) {
-                    try appendJsonStringField(&payload, self.allocator, "snippet", hit.snippet, false);
-                }
-                if (hit.name) |name| {
-                    try appendJsonStringField(&payload, self.allocator, "node", name, false);
-                    try appendJsonStringField(&payload, self.allocator, "name", name, false);
-                }
-                if (hit.label) |label| try appendJsonStringField(&payload, self.allocator, "label", label, false);
-                if (hit.qualified_name) |qn| try appendJsonStringField(&payload, self.allocator, "qualified_name", qn, false);
-                try appendJsonIntField(&payload, self.allocator, "in_degree", hit.in_degree, false);
-                try appendJsonIntField(&payload, self.allocator, "out_degree", hit.out_degree, false);
-                try payload.appendSlice(self.allocator, ",\"match_lines\":[");
-                for (hit.match_lines, 0..) |match_line, match_idx| {
-                    if (match_idx > 0) try payload.append(self.allocator, ',');
-                    try payload.writer(self.allocator).print("{d}", .{match_line});
-                }
-                try payload.append(self.allocator, ']');
-            }
-            try payload.appendSlice(self.allocator, "}");
-        }
-        const dedup_ratio = try dedupRatioText(self.allocator, hits);
-        defer self.allocator.free(dedup_ratio);
-        try payload.writer(self.allocator).print(
-            "],\"has_more\":false,\"total_results\":{d},\"raw_match_count\":0,\"total_grep_matches\":{d},\"dedup_ratio\":{f}}}",
-            .{
-                hits.len,
-                totalSearchMatchLines(hits),
-                std.json.fmt(dedup_ratio, .{}),
-            },
-        );
-
-        const owned_payload = try payload.toOwnedSlice(self.allocator);
-        defer self.allocator.free(owned_payload);
-        return self.successResponse(request_id, owned_payload);
+        var router = query_router.QueryRouter.init(self.allocator, self.db);
+        const payload = router.searchCodePayload(.{
+            .project = project,
+            .pattern = pattern,
+            .mode = parseSearchCodeMode(stringArg(args, "mode")),
+            .file_pattern = stringArg(args, "file_pattern"),
+            .path_filter = stringArg(args, "path_filter"),
+            .regex = boolArg(args, "regex") orelse false,
+            .limit = intArg(args, "limit") orelse 25,
+            .context = intArg(args, "context") orelse 0,
+        }) catch |err| switch (err) {
+            error.UnknownProject => return self.errorResponse(request_id, -32602, "Unknown project"),
+            else => return err,
+        };
+        defer self.allocator.free(payload);
+        return self.successResponse(request_id, payload);
     }
 
     fn handleDetectChanges(self: *McpServer, request_id: ?std.json.Value, args: std.json.Value) !?[]const u8 {
         const project = stringArg(args, "project") orelse return self.errorResponse(request_id, -32602, "Missing project");
-        const status = try self.db.getProjectStatus(project);
-        defer self.db.freeProjectStatus(status);
-        if (status.status == .not_found) {
-            return self.errorResponse(request_id, -32602, "Unknown project");
-        }
-
-        const base_branch = stringArg(args, "base_branch") orelse "main";
-        const scope = stringArg(args, "scope");
-        const depth = intArg(args, "depth") orelse 3;
-
-        const want_symbols = scope == null or
-            std.mem.eql(u8, scope.?, "symbols") or
-            std.mem.eql(u8, scope.?, "impact") or
-            std.mem.eql(u8, scope.?, "full");
-        const include_blast_radius = scope != null and std.mem.eql(u8, scope.?, "full");
-
-        const changed_files = try collectChangedFiles(self.allocator, status.root_path, base_branch);
-        defer freeOwnedStrings(self.allocator, changed_files);
-        const impacted = if (want_symbols)
-            try collectImpactedSymbols(self.allocator, self.db, project, changed_files)
-        else
-            &[_]ChangeSymbol{};
-        defer if (want_symbols) freeChangeSymbols(self.allocator, impacted);
-        const blast_radius = if (include_blast_radius)
-            try collectBlastRadius(self.allocator, self.db, project, impacted, depth)
-        else
-            &[_]BlastItem{};
-        defer if (include_blast_radius) freeBlastItems(self.allocator, blast_radius);
-
-        var payload = std.ArrayList(u8).empty;
-        try payload.appendSlice(self.allocator, "{");
-        try appendJsonStringField(&payload, self.allocator, "project", project, true);
-        try appendJsonStringField(&payload, self.allocator, "base_branch", base_branch, false);
-        if (scope) |scope_value| try appendJsonStringField(&payload, self.allocator, "scope", scope_value, false);
-        try appendJsonIntField(&payload, self.allocator, "depth", @intCast(depth), false);
-        try appendJsonStringArrayField(&payload, self.allocator, "changed_files", changed_files, false);
-        try appendJsonIntField(&payload, self.allocator, "changed_count", @intCast(changed_files.len), false);
-        try payload.appendSlice(self.allocator, ",\"impacted_symbols\":[");
-        for (impacted, 0..) |item, idx| {
-            if (idx > 0) try payload.append(self.allocator, ',');
-            try payload.appendSlice(self.allocator, "{");
-            try appendJsonStringField(&payload, self.allocator, "name", item.name, true);
-            try appendJsonStringField(&payload, self.allocator, "label", item.label, false);
-            try appendJsonStringField(&payload, self.allocator, "file", item.file_path, false);
-            try appendJsonStringField(&payload, self.allocator, "file_path", item.file_path, false);
-            try appendJsonStringField(&payload, self.allocator, "qualified_name", item.qualified_name, false);
-            try payload.appendSlice(self.allocator, "}");
-        }
-        if (include_blast_radius) {
-            try payload.appendSlice(self.allocator, "],\"blast_radius\":[");
-            for (blast_radius, 0..) |item, idx| {
-                if (idx > 0) try payload.append(self.allocator, ',');
-                try payload.appendSlice(self.allocator, "{");
-                try appendJsonStringField(&payload, self.allocator, "name", item.name, true);
-                try appendJsonStringField(&payload, self.allocator, "qualified_name", item.qualified_name, false);
-                try appendJsonStringField(&payload, self.allocator, "file_path", item.file_path, false);
-                try appendJsonIntField(&payload, self.allocator, "hop", @intCast(item.hop), false);
-                try appendJsonStringField(&payload, self.allocator, "risk", riskLabel(item.hop), false);
-                try payload.appendSlice(self.allocator, "}");
-            }
-        }
-        try payload.appendSlice(self.allocator, "]}");
-
-        const owned_payload = try payload.toOwnedSlice(self.allocator);
-        defer self.allocator.free(owned_payload);
-        return self.successResponse(request_id, owned_payload);
+        var router = query_router.QueryRouter.init(self.allocator, self.db);
+        const payload = router.detectChangesPayload(.{
+            .project = project,
+            .base_branch = stringArg(args, "base_branch") orelse "main",
+            .scope = stringArg(args, "scope"),
+            .depth = intArg(args, "depth") orelse 3,
+        }) catch |err| switch (err) {
+            error.UnknownProject => return self.errorResponse(request_id, -32602, "Unknown project"),
+            else => return err,
+        };
+        defer self.allocator.free(payload);
+        return self.successResponse(request_id, payload);
     }
 
     fn handleManageAdr(self: *McpServer, request_id: ?std.json.Value, args: std.json.Value) !?[]const u8 {
@@ -1022,7 +866,7 @@ fn freeOwnedNode(allocator: std.mem.Allocator, node: store.Node) void {
     allocator.free(node.properties_json);
 }
 
-const SearchCodeMode = enum { compact, full, files };
+const SearchCodeMode = query_router.SearchCodeMode;
 
 const CodeSearchHit = struct {
     file_path: []u8,
@@ -1492,6 +1336,26 @@ fn collectSearchCodeHits(
     limit: usize,
     context: usize,
 ) ![]CodeSearchHit {
+    if (try search_index.findCandidatePaths(allocator, db, project, pattern, regex, limit)) |candidate_paths| {
+        defer db.freePaths(candidate_paths);
+        const indexed_hits = try collectSearchCodeHitsFromPaths(
+            allocator,
+            db,
+            project,
+            root_path,
+            pattern,
+            mode,
+            file_pattern,
+            path_filter,
+            regex,
+            limit,
+            context,
+            candidate_paths,
+        );
+        if (indexed_hits.len > 0) return indexed_hits;
+        allocator.free(indexed_hits);
+    }
+
     const files = try discover.discoverFiles(allocator, root_path, .{ .mode = .full });
     defer {
         for (files) |file| {
@@ -1514,78 +1378,22 @@ fn collectSearchCodeHits(
     }
 
     file_loop: for (files) |file| {
-        if (path_filter) |filter| {
-            if (std.mem.indexOf(u8, file.rel_path, filter) == null) continue;
-        }
-        if (file_pattern) |pattern_filter| {
-            if (!globMatch(file.rel_path, pattern_filter)) continue;
-        }
-
-        const bytes = std.fs.cwd().readFileAlloc(allocator, file.path, 8 * 1024 * 1024) catch continue;
-        defer allocator.free(bytes);
-        const file_nodes = try db.findNodesByFile(project, file.rel_path);
-        defer db.freeNodes(file_nodes);
-
-        var line_iter = std.mem.splitAny(u8, bytes, "\n");
-        var line_no: u32 = 1;
-        while (line_iter.next()) |line| : (line_no += 1) {
-            if (!searchPatternMatches(line, pattern, regex)) continue;
-
-            if (mode == .files) {
-                const key = try allocator.dupe(u8, file.rel_path);
-                if (seen.contains(key)) {
-                    allocator.free(key);
-                    break;
-                }
-                try seen.put(key, out.items.len);
-                try out.append(allocator, .{
-                    .file_path = try allocator.dupe(u8, file.rel_path),
-                    .snippet = try allocator.dupe(u8, ""),
-                    .match_lines = try allocator.dupe(u32, &[_]u32{}),
-                });
-                if (out.items.len >= limit) break :file_loop;
-                break;
-            }
-
-            const snippet = try buildSearchSnippet(allocator, bytes, line_no, if (mode == .full) context else 0);
-            const symbol = bestSearchCodeNode(file_nodes, line_no);
-            const dedupe_key = if (mode == .compact and symbol != null)
-                try allocator.dupe(u8, symbol.?.qualified_name)
-            else
-                try std.fmt.allocPrint(allocator, "{s}:{d}", .{ file.rel_path, line_no });
-            if (seen.get(dedupe_key)) |existing_index| {
-                allocator.free(dedupe_key);
-                const existing = &out.items[existing_index];
-                const lines = try allocator.realloc(existing.match_lines, existing.match_lines.len + 1);
-                lines[existing.match_lines.len] = line_no;
-                existing.match_lines = lines;
-                allocator.free(snippet);
-                continue;
-            }
-            try seen.put(dedupe_key, out.items.len);
-
-            const degree = if (symbol) |node|
-                try db.getNodeDegree(project, node.id)
-            else
-                store.NodeDegree{};
-            const match_lines = try allocator.alloc(u32, 1);
-            match_lines[0] = line_no;
-
-            try out.append(allocator, .{
-                .file_path = try allocator.dupe(u8, file.rel_path),
-                .line = line_no,
-                .snippet = snippet,
-                .name = if (symbol) |node| try allocator.dupe(u8, compatibleNodeDisplayName(node)) else null,
-                .label = if (symbol) |node| try allocator.dupe(u8, node.label) else null,
-                .qualified_name = if (symbol) |node| try allocator.dupe(u8, node.qualified_name) else null,
-                .start_line = if (symbol) |node| node.start_line else 0,
-                .end_line = if (symbol) |node| node.end_line else 0,
-                .in_degree = degree.callers,
-                .out_degree = degree.callees,
-                .match_lines = match_lines,
-            });
-            if (out.items.len >= limit) break :file_loop;
-        }
+        if (try appendSearchCodeHitsForPath(
+            allocator,
+            db,
+            project,
+            file.path,
+            file.rel_path,
+            pattern,
+            mode,
+            file_pattern,
+            path_filter,
+            regex,
+            limit,
+            context,
+            &out,
+            &seen,
+        )) break :file_loop;
     }
 
     if (mode != .files and out.items.len > 1) {
@@ -1594,6 +1402,154 @@ fn collectSearchCodeHits(
     }
 
     return out.toOwnedSlice(allocator);
+}
+
+fn collectSearchCodeHitsFromPaths(
+    allocator: std.mem.Allocator,
+    db: *Store,
+    project: []const u8,
+    root_path: []const u8,
+    pattern: []const u8,
+    mode: SearchCodeMode,
+    file_pattern: ?[]const u8,
+    path_filter: ?[]const u8,
+    regex: bool,
+    limit: usize,
+    context: usize,
+    rel_paths: [][]u8,
+) ![]CodeSearchHit {
+    var out = std.ArrayList(CodeSearchHit).empty;
+    errdefer {
+        for (out.items) |hit| freeCodeSearchHit(allocator, hit);
+        out.deinit(allocator);
+    }
+
+    var seen = std.StringHashMap(usize).init(allocator);
+    defer {
+        var it = seen.iterator();
+        while (it.next()) |entry| allocator.free(entry.key_ptr.*);
+        seen.deinit();
+    }
+
+    path_loop: for (rel_paths) |rel_path| {
+        const abs_path = std.fs.path.join(allocator, &.{ root_path, rel_path }) catch continue;
+        defer allocator.free(abs_path);
+
+        if (try appendSearchCodeHitsForPath(
+            allocator,
+            db,
+            project,
+            abs_path,
+            rel_path,
+            pattern,
+            mode,
+            file_pattern,
+            path_filter,
+            regex,
+            limit,
+            context,
+            &out,
+            &seen,
+        )) break :path_loop;
+    }
+
+    if (mode != .files and out.items.len > 1) {
+        try foldContainedSearchHits(allocator, &out);
+        std.sort.pdq(CodeSearchHit, out.items, {}, searchCodeLessThan);
+    }
+
+    return out.toOwnedSlice(allocator);
+}
+
+fn appendSearchCodeHitsForPath(
+    allocator: std.mem.Allocator,
+    db: *Store,
+    project: []const u8,
+    abs_path: []const u8,
+    rel_path: []const u8,
+    pattern: []const u8,
+    mode: SearchCodeMode,
+    file_pattern: ?[]const u8,
+    path_filter: ?[]const u8,
+    regex: bool,
+    limit: usize,
+    context: usize,
+    out: *std.ArrayList(CodeSearchHit),
+    seen: *std.StringHashMap(usize),
+) !bool {
+    if (path_filter) |filter| {
+        if (std.mem.indexOf(u8, rel_path, filter) == null) return false;
+    }
+    if (file_pattern) |pattern_filter| {
+        if (!globMatch(rel_path, pattern_filter)) return false;
+    }
+
+    const bytes = std.fs.cwd().readFileAlloc(allocator, abs_path, 8 * 1024 * 1024) catch return false;
+    defer allocator.free(bytes);
+    const file_nodes = try db.findNodesByFile(project, rel_path);
+    defer db.freeNodes(file_nodes);
+
+    var line_iter = std.mem.splitAny(u8, bytes, "\n");
+    var line_no: u32 = 1;
+    while (line_iter.next()) |line| : (line_no += 1) {
+        if (!searchPatternMatches(line, pattern, regex)) continue;
+
+        if (mode == .files) {
+            const key = try allocator.dupe(u8, rel_path);
+            if (seen.contains(key)) {
+                allocator.free(key);
+                break;
+            }
+            try seen.put(key, out.items.len);
+            try out.append(allocator, .{
+                .file_path = try allocator.dupe(u8, rel_path),
+                .snippet = try allocator.dupe(u8, ""),
+                .match_lines = try allocator.dupe(u32, &[_]u32{}),
+            });
+            return out.items.len >= limit;
+        }
+
+        const snippet = try buildSearchSnippet(allocator, bytes, line_no, if (mode == .full) context else 0);
+        const symbol = bestSearchCodeNode(file_nodes, line_no);
+        const dedupe_key = if (mode == .compact and symbol != null)
+            try allocator.dupe(u8, symbol.?.qualified_name)
+        else
+            try std.fmt.allocPrint(allocator, "{s}:{d}", .{ rel_path, line_no });
+        if (seen.get(dedupe_key)) |existing_index| {
+            allocator.free(dedupe_key);
+            const existing = &out.items[existing_index];
+            const lines = try allocator.realloc(existing.match_lines, existing.match_lines.len + 1);
+            lines[existing.match_lines.len] = line_no;
+            existing.match_lines = lines;
+            allocator.free(snippet);
+            continue;
+        }
+        try seen.put(dedupe_key, out.items.len);
+
+        const degree = if (symbol) |node|
+            try db.getNodeDegree(project, node.id)
+        else
+            store.NodeDegree{};
+        const match_lines = try allocator.alloc(u32, 1);
+        match_lines[0] = line_no;
+
+        try out.append(allocator, .{
+            .file_path = try allocator.dupe(u8, rel_path),
+            .line = line_no,
+            .snippet = snippet,
+            .name = if (symbol) |node| try allocator.dupe(u8, compatibleNodeDisplayName(node)) else null,
+            .label = if (symbol) |node| try allocator.dupe(u8, node.label) else null,
+            .qualified_name = if (symbol) |node| try allocator.dupe(u8, node.qualified_name) else null,
+            .start_line = if (symbol) |node| node.start_line else 0,
+            .end_line = if (symbol) |node| node.end_line else 0,
+            .in_degree = degree.callers,
+            .out_degree = degree.callees,
+            .match_lines = match_lines,
+        });
+        if (out.items.len >= limit) return true;
+    }
+
+    return false;
 }
 
 fn buildSearchSnippet(
