@@ -980,9 +980,9 @@ def build_golden_snapshot(
     sc_entries = impl_payloads.get("search_code", [])
     snapshot["search_code"] = [canonical_search_code(e["payload"]) for e in sc_entries]
 
-    # detect_changes
+    # detect_changes - store count only (output is git-state-dependent)
     dc_entries = impl_payloads.get("detect_changes", [])
-    snapshot["detect_changes"] = [canonical_detect_changes(e["payload"]) for e in dc_entries]
+    snapshot["detect_changes_count"] = len(dc_entries)
 
     # manage_adr
     ma_entries = impl_payloads.get("manage_adr", [])
@@ -1086,17 +1086,15 @@ def compare_golden_snapshot(
             if cur != gld:
                 mismatches.append("search_code[%d]: differs" % i)
 
-    # detect_changes
-    current_dc = current["detect_changes"]
-    golden_dc = golden.get("detect_changes", [])
-    if len(current_dc) != len(golden_dc):
+    # detect_changes - only compare call count (output is git-state-dependent)
+    current_dc_count = current["detect_changes_count"]
+    golden_dc_count = golden.get("detect_changes_count", golden.get("detect_changes", []))
+    if isinstance(golden_dc_count, list):
+        golden_dc_count = len(golden_dc_count)
+    if current_dc_count != golden_dc_count:
         mismatches.append(
-            "detect_changes: count %d vs golden %d" % (len(current_dc), len(golden_dc))
+            "detect_changes: count %d vs golden %d" % (current_dc_count, golden_dc_count)
         )
-    else:
-        for i, (cur, gld) in enumerate(zip(current_dc, golden_dc)):
-            if cur != gld:
-                mismatches.append("detect_changes[%d]: differs" % i)
 
     # manage_adr
     current_ma = current["manage_adr"]
