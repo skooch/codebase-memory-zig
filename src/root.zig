@@ -47,4 +47,6 @@ test {
     _ = minhash;
     _ = text_match;
     _ = @import("store_test.zig");
+    _ = @import("query_router_test.zig");
+    _ = @import("extractor_test.zig");
 }

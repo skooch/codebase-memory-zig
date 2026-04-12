@@ -208,3 +208,66 @@ fn findExactFileNodeInStore(db: *store.Store, project_name: []const u8, file_pat
     }
     return error.TestUnexpectedResult;
 }
+
+// --- Error-path and edge-case tests ---
+
+test "deleteProject is idempotent on non-existent project" {
+    var db = try store.Store.openMemory(std.testing.allocator);
+    defer db.deinit();
+
+    // DELETE WHERE name = ? on an empty projects table should be a no-op
+    try db.deleteProject("nonexistent_project_xyz");
+}
+
+test "searchNodes returns empty for unknown project" {
+    var db = try store.Store.openMemory(std.testing.allocator);
+    defer db.deinit();
+
+    const nodes = try db.searchNodes(.{
+        .project = "ghost_project",
+        .limit = 10,
+    });
+    defer db.freeNodes(nodes);
+
+    try std.testing.expectEqual(@as(usize, 0), nodes.len);
+}
+
+test "findNodeById returns null for invalid ID" {
+    var db = try store.Store.openMemory(std.testing.allocator);
+    defer db.deinit();
+
+    const result = try db.findNodeById("test", 99999);
+    try std.testing.expectEqual(@as(?store.Node, null), result);
+}
+
+test "searchGraph returns empty page for unknown project" {
+    var db = try store.Store.openMemory(std.testing.allocator);
+    defer db.deinit();
+
+    const page = try db.searchGraph(.{ .project = "nonexistent" });
+    defer db.freeGraphSearchPage(page);
+
+    try std.testing.expectEqual(@as(usize, 0), page.total);
+    try std.testing.expectEqual(@as(usize, 0), page.hits.len);
+}
+
+test "getProjectStatus returns not_found for missing project" {
+    var db = try store.Store.openMemory(std.testing.allocator);
+    defer db.deinit();
+
+    const status = try db.getProjectStatus("absent_project_xyz");
+    defer db.freeProjectStatus(status);
+
+    try std.testing.expectEqual(store.ProjectStatus.Status.not_found, status.status);
+    try std.testing.expectEqualStrings("absent_project_xyz", status.project);
+}
+
+test "traverseEdgesBreadthFirst returns empty for nonexistent node" {
+    var db = try store.Store.openMemory(std.testing.allocator);
+    defer db.deinit();
+
+    const result = try db.traverseEdgesBreadthFirst("test", 99999, .both, 3, null);
+    defer db.freeTraversalEdges(result);
+
+    try std.testing.expectEqual(@as(usize, 0), result.len);
+}
