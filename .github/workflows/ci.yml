@@ -18,6 +18,17 @@ jobs:
         with:
           version: 0.15.2
 
+      - name: Cache vendored grammars
+        uses: actions/cache@v4
+        with:
+          path: |
+            vendored/grammars
+            vendored/tree_sitter
+          key: grammars-${{ hashFiles('scripts/fetch_grammars.sh') }}
+
+      - name: Fetch tree-sitter grammars
+        run: bash scripts/fetch_grammars.sh
+
       - name: Format check
         run: zig fmt --check src/ build.zig
 
