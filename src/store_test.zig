@@ -266,8 +266,138 @@ test "traverseEdgesBreadthFirst returns empty for nonexistent node" {
     var db = try store.Store.openMemory(std.testing.allocator);
     defer db.deinit();
 
-    const result = try db.traverseEdgesBreadthFirst("test", 99999, .both, 3, null);
+    const result = try db.traverseEdgesBreadthFirst("test", 99999, .both, 3, null, null);
     defer db.freeTraversalEdges(result);
 
     try std.testing.expectEqual(@as(usize, 0), result.len);
+}
+
+test "traverseEdgesBreadthFirst multi-edge-type filtering" {
+    var db = try store.Store.openMemory(std.testing.allocator);
+    defer db.deinit();
+
+    try db.upsertProject("mt", "/tmp/mt");
+    const a_id = try db.upsertNode(.{
+        .project = "mt",
+        .label = "Function",
+        .name = "a",
+        .qualified_name = "mt:a",
+        .file_path = "main.py",
+    });
+    const b_id = try db.upsertNode(.{
+        .project = "mt",
+        .label = "Function",
+        .name = "b",
+        .qualified_name = "mt:b",
+        .file_path = "main.py",
+    });
+    const c_id = try db.upsertNode(.{
+        .project = "mt",
+        .label = "Function",
+        .name = "c",
+        .qualified_name = "mt:c",
+        .file_path = "main.py",
+    });
+    const d_id = try db.upsertNode(.{
+        .project = "mt",
+        .label = "Function",
+        .name = "d",
+        .qualified_name = "mt:d",
+        .file_path = "main.py",
+    });
+
+    // a -> b via CALLS
+    _ = try db.upsertEdge(.{ .project = "mt", .source_id = a_id, .target_id = b_id, .edge_type = "CALLS" });
+    // a -> c via DATA_FLOWS
+    _ = try db.upsertEdge(.{ .project = "mt", .source_id = a_id, .target_id = c_id, .edge_type = "DATA_FLOWS" });
+    // a -> d via HTTP_CALLS
+    _ = try db.upsertEdge(.{ .project = "mt", .source_id = a_id, .target_id = d_id, .edge_type = "HTTP_CALLS" });
+
+    // Single type: only CALLS
+    {
+        const result = try db.traverseEdgesBreadthFirst("mt", a_id, .outbound, 1, &.{"CALLS"}, null);
+        defer db.freeTraversalEdges(result);
+        try std.testing.expectEqual(@as(usize, 1), result.len);
+        try std.testing.expectEqual(b_id, result[0].target_id);
+    }
+
+    // Two types: CALLS + DATA_FLOWS
+    {
+        const result = try db.traverseEdgesBreadthFirst("mt", a_id, .outbound, 1, &.{ "CALLS", "DATA_FLOWS" }, null);
+        defer db.freeTraversalEdges(result);
+        try std.testing.expectEqual(@as(usize, 2), result.len);
+    }
+
+    // Three types: all edges
+    {
+        const result = try db.traverseEdgesBreadthFirst("mt", a_id, .outbound, 1, &.{ "CALLS", "DATA_FLOWS", "HTTP_CALLS" }, null);
+        defer db.freeTraversalEdges(result);
+        try std.testing.expectEqual(@as(usize, 3), result.len);
+    }
+
+    // Null types: all edges (no filter)
+    {
+        const result = try db.traverseEdgesBreadthFirst("mt", a_id, .outbound, 1, null, null);
+        defer db.freeTraversalEdges(result);
+        try std.testing.expectEqual(@as(usize, 3), result.len);
+    }
+}
+
+test "traverseEdgesBreadthFirst max_results cap" {
+    var db = try store.Store.openMemory(std.testing.allocator);
+    defer db.deinit();
+
+    try db.upsertProject("mr", "/tmp/mr");
+    const root_id = try db.upsertNode(.{
+        .project = "mr",
+        .label = "Function",
+        .name = "root",
+        .qualified_name = "mr:root",
+        .file_path = "main.py",
+    });
+    // Create a chain: root -> n1 -> n2 -> n3 -> n4
+    var prev_id = root_id;
+    var node_ids: [4]i64 = undefined;
+    for (0..4) |i| {
+        const name = switch (i) {
+            0 => "n1",
+            1 => "n2",
+            2 => "n3",
+            3 => "n4",
+            else => unreachable,
+        };
+        const qn = switch (i) {
+            0 => "mr:n1",
+            1 => "mr:n2",
+            2 => "mr:n3",
+            3 => "mr:n4",
+            else => unreachable,
+        };
+        const nid = try db.upsertNode(.{
+            .project = "mr",
+            .label = "Function",
+            .name = name,
+            .qualified_name = qn,
+            .file_path = "main.py",
+        });
+        node_ids[i] = nid;
+        _ = try db.upsertEdge(.{ .project = "mr", .source_id = prev_id, .target_id = nid, .edge_type = "CALLS" });
+        prev_id = nid;
+    }
+
+    // Without cap: 4 edges
+    {
+        const result = try db.traverseEdgesBreadthFirst("mr", root_id, .outbound, 10, null, null);
+        defer db.freeTraversalEdges(result);
+        try std.testing.expectEqual(@as(usize, 4), result.len);
+    }
+
+    // With max_results=2: caps visited nodes, so BFS stops after visiting ~2 neighbors
+    {
+        const result = try db.traverseEdgesBreadthFirst("mr", root_id, .outbound, 10, null, 2);
+        defer db.freeTraversalEdges(result);
+        // With max_results=2 the BFS should stop before visiting all 4 targets
+        try std.testing.expect(result.len < 4);
+        try std.testing.expect(result.len >= 1);
+    }
 }

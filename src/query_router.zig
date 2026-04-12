@@ -1078,7 +1078,7 @@ fn collectBlastRadius(
 
     for (impacted) |symbol| {
         if (symbol.id == 0) continue;
-        const traversal = try db.traverseEdgesBreadthFirst(project, symbol.id, .both, @intCast(depth), null);
+        const traversal = try db.traverseEdgesBreadthFirst(project, symbol.id, .both, @intCast(depth), null, null);
         defer db.freeTraversalEdges(traversal);
 
         for (traversal) |edge| {

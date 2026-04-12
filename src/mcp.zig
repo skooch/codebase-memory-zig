@@ -403,7 +403,7 @@ pub const McpServer = struct {
 
         const traversal_direction = parseTraversalDirection(direction) orelse
             return self.errorResponse(request_id, -32602, "Invalid direction");
-        const edges = try self.db.traverseEdgesBreadthFirst(project, start.id, traversal_direction, max_depth, null);
+        const edges = try self.db.traverseEdgesBreadthFirst(project, start.id, traversal_direction, max_depth, null, null);
         defer self.db.freeTraversalEdges(edges);
 
         var payload = std.ArrayList(u8).empty;

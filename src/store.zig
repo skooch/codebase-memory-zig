@@ -1178,9 +1178,9 @@ pub const Store = struct {
         self: *Store,
         project: []const u8,
         source_ids: []const i64,
-        edge_type: ?[]const u8,
+        edge_types: ?[]const []const u8,
     ) ![]Edge {
-        return self.findEdgesBatch(project, source_ids, edge_type, "source_id");
+        return self.findEdgesBatch(project, source_ids, edge_types, "source_id");
     }
 
     /// Query edges for a batch of target node IDs in a single round-trip.
@@ -1188,21 +1188,21 @@ pub const Store = struct {
         self: *Store,
         project: []const u8,
         target_ids: []const i64,
-        edge_type: ?[]const u8,
+        edge_types: ?[]const []const u8,
     ) ![]Edge {
-        return self.findEdgesBatch(project, target_ids, edge_type, "target_id");
+        return self.findEdgesBatch(project, target_ids, edge_types, "target_id");
     }
 
     fn findEdgesBatch(
         self: *Store,
         project: []const u8,
         ids: []const i64,
-        edge_type: ?[]const u8,
+        edge_types: ?[]const []const u8,
         comptime id_column: []const u8,
     ) ![]Edge {
         if (ids.len == 0) return self.allocator.alloc(Edge, 0);
 
-        // Build: SELECT ... FROM edges WHERE project = ? AND <col> IN (?, ?, ...) [AND type = ?] ORDER BY id
+        // Build: SELECT ... FROM edges WHERE project = ? AND <col> IN (?, ?, ...) [AND type IN (?, ...)] ORDER BY id
         var sql_buf = std.ArrayList(u8).empty;
         defer sql_buf.deinit(self.allocator);
 
@@ -1215,15 +1215,24 @@ pub const Store = struct {
             try sql_buf.append(self.allocator, '?');
         }
         try sql_buf.append(self.allocator, ')');
-        if (edge_type != null) {
-            try sql_buf.appendSlice(self.allocator, " AND type = ?");
+        if (edge_types) |types| {
+            if (types.len == 1) {
+                try sql_buf.appendSlice(self.allocator, " AND type = ?");
+            } else if (types.len > 1) {
+                try sql_buf.appendSlice(self.allocator, " AND type IN (");
+                for (types, 0..) |_, i| {
+                    if (i > 0) try sql_buf.append(self.allocator, ',');
+                    try sql_buf.append(self.allocator, '?');
+                }
+                try sql_buf.append(self.allocator, ')');
+            }
         }
         try sql_buf.appendSlice(self.allocator, " ORDER BY id");
 
         const stmt = try self.prepare(sql_buf.items);
         defer self.finalize(stmt);
 
-        // Bind: project, then each id, then optional edge_type
+        // Bind: project, then each id, then optional edge_types
         var bind_index: c_int = 1;
         try self.bindText(stmt, bind_index, project);
         bind_index += 1;
@@ -1231,8 +1240,11 @@ pub const Store = struct {
             try self.bindInt(stmt, bind_index, node_id);
             bind_index += 1;
         }
-        if (edge_type) |et| {
-            try self.bindText(stmt, bind_index, et);
+        if (edge_types) |types| {
+            for (types) |et| {
+                try self.bindText(stmt, bind_index, et);
+                bind_index += 1;
+            }
         }
 
         var out = std.ArrayList(Edge).empty;
@@ -1325,7 +1337,8 @@ pub const Store = struct {
         start_node_id: i64,
         direction: TraversalDirection,
         max_depth: u32,
-        edge_type: ?[]const u8,
+        edge_types: ?[]const []const u8,
+        max_results: ?u32,
     ) ![]TraversalEdge {
         var current_level = std.ArrayList(i64).empty;
         defer current_level.deinit(self.allocator);
@@ -1350,8 +1363,14 @@ pub const Store = struct {
 
         var depth: u32 = 1;
         while (current_level.items.len > 0 and depth <= max_depth) {
+            // Check max_results cap on visited nodes (excluding start node)
+            if (max_results) |cap| {
+                // visited count minus 1 for the start node
+                if (visited.count() > cap) break;
+            }
+
             if (direction == .outbound or direction == .both) {
-                const edges = try self.findEdgesBySourceBatch(project, current_level.items, edge_type);
+                const edges = try self.findEdgesBySourceBatch(project, current_level.items, edge_types);
                 defer self.freeEdges(edges);
                 for (edges) |edge| {
                     try self.collectTraversalEdge(&out, &seen_edges, edge, depth);
@@ -1363,7 +1382,7 @@ pub const Store = struct {
             }
 
             if (direction == .inbound or direction == .both) {
-                const edges = try self.findEdgesByTargetBatch(project, current_level.items, edge_type);
+                const edges = try self.findEdgesByTargetBatch(project, current_level.items, edge_types);
                 defer self.freeEdges(edges);
                 for (edges) |edge| {
                     try self.collectTraversalEdge(&out, &seen_edges, edge, depth);
@@ -1825,7 +1844,7 @@ test "store breadth-first traversal reuses shared edge traversal logic" {
         .edge_type = "REFERENCES",
     });
 
-    const outbound = try s.traverseEdgesBreadthFirst("p2", start_id, .outbound, 2, "CALLS");
+    const outbound = try s.traverseEdgesBreadthFirst("p2", start_id, .outbound, 2, &.{"CALLS"}, null);
     defer s.freeTraversalEdges(outbound);
     try std.testing.expectEqual(@as(usize, 2), outbound.len);
     try std.testing.expectEqual(@as(i64, start_id), outbound[0].source_id);
@@ -1835,11 +1854,11 @@ test "store breadth-first traversal reuses shared edge traversal logic" {
     try std.testing.expectEqual(@as(i64, end_id), outbound[1].target_id);
     try std.testing.expectEqual(@as(u32, 2), outbound[1].depth);
 
-    const inbound = try s.traverseEdgesBreadthFirst("p2", middle_id, .inbound, 1, null);
+    const inbound = try s.traverseEdgesBreadthFirst("p2", middle_id, .inbound, 1, null, null);
     defer s.freeTraversalEdges(inbound);
     try std.testing.expectEqual(@as(usize, 2), inbound.len);
 
-    const both = try s.traverseEdgesBreadthFirst("p2", middle_id, .both, 1, null);
+    const both = try s.traverseEdgesBreadthFirst("p2", middle_id, .both, 1, null, null);
     defer s.freeTraversalEdges(both);
     try std.testing.expectEqual(@as(usize, 3), both.len);
 }
