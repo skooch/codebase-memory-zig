@@ -69,12 +69,15 @@ Completed after the readiness gate:
   - current evidence: `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh`, and `bash scripts/run_benchmark_suite.sh` all pass in the hybrid-serving worktree
 
 Intentionally deferred after Phase 7:
-- The remaining MCP work outside the completed daily-use slice, especially fuller Cypher parity and richer trace modes.
+- The remaining MCP work outside the completed daily-use slice, especially fuller Cypher parity.
 - Full Cypher parity beyond the broader day-to-day query subset now supporting node/edge reads, filtering, sorting, and counts.
 - Deeper usage/type-reference extraction parity and broader cross-language semantics beyond the current target daily-use slice.
 - Git-history coupling, route nodes, config-linking, and richer decorator/enrichment follow-ons.
 - Broader installer/self-update behavior beyond the current source-build-friendly Codex CLI / Claude Code support.
 - Idle-store and session-lifecycle extras beyond the current persistent-store + watcher runtime model.
+
+Completed in Plan 03:
+- Advanced trace parity: modes (calls/data_flow/cross_service), multi-edge-type BFS, risk labels, test-file filtering, function_name alias, structured callees/callers response format.
 
 ## Shared Capability Full-Parity Follow-On
 
@@ -110,7 +113,7 @@ Complete slices:
 
 Deferred or optional future slices:
 - Public surface expansion:
-  - richer trace breadth beyond the current call-edge slice
+  - trace breadth now covers modes, risk labels, and multi-edge-type filtering (Plan 03 complete); remaining gap is edge types the extractor does not yet produce (DATA_FLOWS, HTTP_CALLS, ASYNC_CALLS)
 - Query/runtime expansion:
   - full Cypher lexer/parser/executor parity beyond the verified shared read-only floor
   - broader traversal and query-analysis parity beyond the current shared `detect_changes` contract
@@ -232,7 +235,7 @@ The Zig stub has the 14 tool names as an enum but zero handler implementations.
 | `index_repository` | Full (full/fast modes, cancellation, lock, auto-index) | WORKS | High — remaining gap is broader contract parity, not basic availability |
 | `search_graph` | Full (regex, degree filter, pagination, sort, include_connected, exclude_entry_points) | STUB | High — complex query builder with 12+ parameters |
 | `query_graph` | Full (Cypher lex/parse/execute, max_rows, project filter) | STUB | High — depends on Cypher engine |
-| `trace_call_path` | Full (BFS, inbound/outbound/both, edge type filter, depth, risk classification) | STUB | Medium — BFS + store queries |
+| `trace_call_path` | Full (BFS, inbound/outbound/both, edge type filter, depth, risk classification) | WORKS (modes, multi-edge-type, risk labels, test filtering) | Medium — BFS + store queries |
 | `get_code_snippet` | Full (exact QN + fuzzy name, include_neighbors, source file read) | STUB | Medium — store lookup + file I/O |
 | `get_graph_schema` | Full (label/type counts, relationship patterns, samples) | STUB | Low — aggregate SQL queries |
 | `get_architecture` | Full (languages, packages, entry points, routes, hotspots, Louvain clusters, layers, file tree, ADR) | STUB | High — many aggregate queries, clustering |
@@ -335,8 +338,8 @@ The Zig store has the schema (tables + indexes + pragmas) and opens in-memory DB
 
 | Operation | C | Zig |
 |-----------|---|-----|
-| `cbm_store_bfs` (direction, edge types, max depth, max results) | Full | MISSING |
-| `cbm_hop_to_risk` / `cbm_risk_label` | Full | MISSING |
+| `cbm_store_bfs` (direction, edge types, max depth, max results) | Full | WORKS (multi-edge-type, max_results) |
+| `cbm_hop_to_risk` / `cbm_risk_label` | Full | WORKS |
 | `cbm_build_impact_summary` | Full | MISSING |
 | `cbm_deduplicate_hops` | Full | MISSING |
 

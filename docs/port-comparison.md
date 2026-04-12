@@ -91,7 +91,7 @@ It is intentionally not a wish list. It describes:
 | `index_repository` | Full | Implemented | `Near parity` | Yes | Core readiness tool; interop-gated. |
 | `search_graph` | Full | Implemented with rich filters and pagination | `Near parity` | Yes | The Zig Phase 5 work specifically broadened this toward daily-use parity. |
 | `query_graph` | Full Cypher-oriented surface | Shared read-only Cypher parity floor for the fixture and harness query set | `Near parity` | Yes | The Zig executor now matches the original on the overlapping read-only query forms this repo counts as shared capability, including row ordering for the parity fixtures. |
-| `trace_call_path` / `trace_path` | Calls, data-flow, cross-service, risk labels, include-tests | Call-edge traversal only | `Partial` | No | Zig does not implement the broader tracing modes or risk labeling. |
+| `trace_call_path` / `trace_path` | Calls, data-flow, cross-service, risk labels, include-tests | Calls, data-flow, cross-service modes; multi-edge-type BFS; risk labels; test-file filtering; function_name alias; structured callees/callers response | `Near parity` | Yes | Zig now implements trace modes, risk classification, test filtering, and the richer response format matching the C reference surface. |
 | `get_code_snippet` | Full | Implemented | `Near parity` | Yes | Zig supports exact lookup, suffix fallback, ambiguity suggestions, neighbor info. |
 | `get_graph_schema` | Full | Implemented | `Near parity` | Yes | Good match for the low-risk public surface. |
 | `get_architecture` | Languages, packages, entry points, routes, hotspots, boundaries, layers, clusters, ADR | Shared architecture summary sections, counts, and structured fields aligned on the parity fixtures | `Near parity` | Yes | The harness now proves the overlapping architecture-summary contract is aligned; richer original-only route and clustering sections remain outside this shared row. |
@@ -109,8 +109,8 @@ It is intentionally not a wish list. It describes:
 |-----------|------------|----------|----------------|
 | Indexing argument name | `repo_path` | `project_path` | Wrappers or fixtures must normalize this difference. |
 | Trace tool naming | `trace_path` plus `trace_call_path` alias | `trace_call_path` only | The Zig port follows the clearer explicit name. |
-| Trace entry argument | `function_name` | `start_node_qn` | Zig prefers deterministic graph identity over name-only lookup. |
-| Trace modes | `calls`, `data_flow`, `cross_service` | call-edge traversal only | Users should not expect original trace modes in the Zig port. |
+| Trace entry argument | `function_name` | `start_node_qn` (with `function_name` alias) | Zig accepts both; prefers qualified name but falls back to name-based search. |
+| Trace modes | `calls`, `data_flow`, `cross_service` | `calls`, `data_flow`, `cross_service` | Zig now implements all three trace modes with matching edge type presets. |
 | Tools advertised via `tools/list` | 14 total | 13 overlapping implemented tools | Shared overlap is aligned; the remaining count difference is the original's stub `ingest_traces`. |
 
 ## 3. Indexing Pipeline and Graph Construction
