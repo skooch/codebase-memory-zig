@@ -2,6 +2,15 @@
 
 Zig port of [codebase-memory-mcp](../codebase-memory-mcp) — an MCP server that builds knowledge graphs from codebases.
 
+## Setup
+
+After first clone, fetch vendored tree-sitter grammars:
+
+```sh
+bash scripts/fetch_grammars.sh        # idempotent, skips if already present
+bash scripts/fetch_grammars.sh --force # re-fetch from upstream
+```
+
 ## Build
 
 ```sh
