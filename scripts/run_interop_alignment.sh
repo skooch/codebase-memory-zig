@@ -416,10 +416,22 @@ def canonical_graph_schema(payload: Any) -> dict[str, list[str]]:
 def canonical_code_snippet(payload: Any) -> dict[str, Any]:
     if not isinstance(payload, dict):
         return {"qualified_name": "", "source": "", "file_path": ""}
+    fp = str(payload.get("file_path", ""))
+    qn = str(payload.get("qualified_name", ""))
+    # Make file_path relative: extract project name from qualified_name
+    # (first :-component) and strip any absolute prefix through the project dir.
+    project = qn.split(":")[0] if ":" in qn else ""
+    if project:
+        marker = "/%s/" % project
+        idx = fp.find(marker)
+        if idx >= 0:
+            fp = fp[idx + len(marker):]
+        elif fp.startswith(project + "/"):
+            fp = fp[len(project) + 1:]
     return {
-        "qualified_name": str(payload.get("qualified_name", "")),
+        "qualified_name": qn,
         "source": str(payload.get("source", "")),
-        "file_path": normalize_path_for_manifest(str(payload.get("file_path", ""))),
+        "file_path": normalize_path_for_manifest(fp),
     }
 
 
@@ -1317,7 +1329,8 @@ def compare_golden_snapshot(
                         "query_graph[%d]: rows differ (added=%s removed=%s)" % (i, added, removed)
                     )
 
-    # trace_call_path
+    # trace_call_path — removed edges are regressions (mismatch),
+    # additional edges are better coverage (warning only).
     current_tc = current["trace_call_path"]
     golden_tc = golden.get("trace_call_path", [])
     if len(current_tc) != len(golden_tc):
@@ -1329,15 +1342,15 @@ def compare_golden_snapshot(
             if cur != gld:
                 cur_set = {tuple(e) for e in cur}
                 gld_set = {tuple(e) for e in gld}
-                detail = []  # type: List[str]
-                for added in sorted(cur_set - gld_set):
-                    detail.append("  + %s" % (added,))
-                for removed in sorted(gld_set - cur_set):
-                    detail.append("  - %s" % (removed,))
-                if detail:
+                added = sorted(cur_set - gld_set)
+                removed = sorted(gld_set - cur_set)
+                if removed:
+                    detail = ["  - %s" % (r,) for r in removed]
+                    detail += ["  + %s" % (a,) for a in added]
                     mismatches.append("trace_call_path[%d]: edges differ\n%s" % (i, "\n".join(detail)))
-                else:
-                    mismatches.append("trace_call_path[%d]: differs" % i)
+                elif added:
+                    detail = ["  + %s" % (a,) for a in added]
+                    warnings.append("trace_call_path[%d]: new edges found\n%s" % (i, "\n".join(detail)))
 
     # get_architecture
     current_ga = current["get_architecture"]

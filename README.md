@@ -1,8 +1,43 @@
 # codebase-memory-zig
 
-This is a work in progress.
-
 Zig port of [`codebase-memory-mcp`](https://github.com/DeusData/codebase-memory-mcp), an MCP server that builds a searchable knowledge graph from source code repositories.
+
+This is not a line-for-line translation. The Zig port restructures internals for better performance, cuts some features, introduces a hybrid serving architecture (FTS5 + graph + optional SCIP overlay), and ships tooling that the C original does not have.
+
+**This project is not currently in a finished state, I'm still porting it. Please don't submit bugs just yet!**
+
+## Some differences compared to the original
+
+| Area | What Changed | Impact |
+|------|-------------|--------|
+| Cold indexing | 3.2x--8.2x faster across all benchmarked fixtures | Small repos index in ~13 ms vs ~48 ms; medium repos in ~1.4 s vs ~11.2 s |
+| Free-text search | SQLite FTS5 virtual table with `unicode61` tokenizer | Prefix matching and token-aware ranking without spawning grep subprocesses |
+| Query routing | `query_router.zig` dispatches each tool to the best substrate | FTS5 for `search_code`, graph for `trace_call_path`, SCIP for enrichment |
+| SCIP sidecar | Optional `.codebase-memory/scip.json` import | Precise type/symbol metadata from language servers, without blocking baseline indexing |
+| Graph queries | CTE pre-computation + batch BFS traversal | Fewer DB round-trips; replaces O(N * \|edges\|) correlated subqueries |
+| JSON marshaling | `std.json` comptime struct reflection | ~1000 fewer LOC vs manual yyjson; new fields require only struct changes |
+| Error safety | Error unions with `try`/`errdefer` | Missing error checks fail at compile time; transactional indexing prevents corrupt state |
+| SQLite tuning | WAL journal, 64 MB mmap, `busy_timeout = 10s` | Better concurrent-access behavior and read throughput out of the box |
+
+Benchmark data: [`.benchmark_reports/benchmark_report.md`](.benchmark_reports/benchmark_report.md) -- Details: [`docs/differentiators.md`](docs/differentiators.md)
+
+## Port progress
+
+The Zig port covers the daily-use MCP surface and core indexing pipeline. It is not yet a full feature-for-feature replacement for every C subsystem. Full details: [`docs/port-comparison.md`](docs/port-comparison.md)
+
+| Area | Status | Notes |
+|------|--------|-------|
+| MCP tools (13 of 14) | Near parity | All tools except `ingest_traces` (stubbed in C too) |
+| Core indexing (structure, definitions, imports, calls, usages, semantics) | Near parity | Parallel extraction, incremental reindex, transactional writes |
+| Languages (Python, JavaScript, TypeScript, Rust, Zig) | Near parity | Tree-sitter-backed; heuristic fallback for other languages |
+| Similarity detection (`SIMILAR_TO`) | Near parity | MinHash/LSH with tuned thresholds |
+| Watcher / auto-reindex / runtime lifecycle | Near parity | Adaptive polling, persistent runtime DB, signal-driven shutdown |
+| CLI install/uninstall/update (Codex CLI, Claude Code) | Near parity | 2 of the original's 10 agent targets |
+| Route / cross-service graph | Deferred | C models HTTP/async route relationships |
+| LSP hybrid type resolution | Deferred | C has Go/C/C++ LSP-assisted paths |
+| Git history / config linking passes | Deferred | C has deeper metadata and impact analysis |
+| Graph UI | Cut | C ships an optional visualization server |
+| Infra scanning (Docker, K8s, Terraform) | Cut | Outside project scope |
 
 ## Requirements
 
@@ -78,7 +113,7 @@ find src -name '*.zig' | zlint -S
 
 Pinned `zlint` release: `v0.7.9`
 
-## Project Layout
+## Project layout
 
 ```text
 src/
@@ -106,11 +141,12 @@ vendored/
 ## Docs
 
 - [CLAUDE.md](CLAUDE.md) for agent-facing repo guidance
+- [docs/differentiators.md](docs/differentiators.md) for where the Zig port is better than the C original
+- [docs/port-comparison.md](docs/port-comparison.md) for full feature-by-feature parity tracking
 - [docs/zig-port-plan.md](docs/zig-port-plan.md) for the broader port roadmap
 - [docs/gap-analysis.md](docs/gap-analysis.md) for parity and remaining gaps
-- [docs/port-comparison.md](docs/port-comparison.md) for C-vs-Zig comparison notes
 
-## Verification Notes
+## Verification notes
 
 Typical local verification for behavior or build changes:
 
