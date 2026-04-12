@@ -673,13 +673,13 @@ pub fn upsertHooksJson(
     try hook_obj.put(try arena.dupe(u8, "command"), .{ .string = try arena.dupe(u8, command) });
 
     var hooks_arr = std.json.Array.init(arena);
-    try hooks_arr.append(arena, .{ .object = hook_obj });
+    try hooks_arr.append(.{ .object = hook_obj });
 
     var entry = std.json.ObjectMap.init(arena);
     try entry.put(try arena.dupe(u8, "matcher"), .{ .string = try arena.dupe(u8, matcher) });
     try entry.put(try arena.dupe(u8, "hooks"), .{ .array = hooks_arr });
 
-    try event_arr.append(arena, .{ .object = entry });
+    try event_arr.append(.{ .object = entry });
 
     // Render
     var out = std.ArrayList(u8).empty;
@@ -856,12 +856,100 @@ pub fn installAgentConfigs(
     const detected = detectAgents(allocator, home);
     var report = InstallReport{ .detected = detected };
 
-    if (detected.codex or options.force) {
-        report.codex = try installCodexConfig(allocator, home, options);
-    }
+    // Claude Code: MCP + skills + hooks + instructions (no instructions file in C ref for Claude itself)
     if (detected.claude or options.force) {
         report.claude = try installClaudeConfig(allocator, home, options);
+        // Skills
+        const skills_dir = try std.fs.path.join(allocator, &.{ home, ".claude", "skills" });
+        defer allocator.free(skills_dir);
+        const sr = try installSkills(allocator, skills_dir, options.force, options.dry_run);
+        if (sr.installed > 0 or sr.old_removed) report.skills = .updated;
+        // Hooks
+        try upsertClaudeHooks(allocator, home, options.dry_run);
+        report.hooks = .updated;
     }
+
+    // Codex: MCP + instructions
+    if (detected.codex or options.force) {
+        report.codex = try installCodexConfig(allocator, home, options);
+        const ip = try std.fs.path.join(allocator, &.{ home, ".codex", "AGENTS.md" });
+        defer allocator.free(ip);
+        _ = try upsertInstructions(allocator, ip, agent_instructions_content, options.dry_run);
+    }
+
+    // Gemini: MCP + hooks + instructions
+    if (detected.gemini or options.force) {
+        report.gemini = try installGenericJsonConfig(allocator, home, options, .{
+            .config_parts = &.{ ".gemini", "settings.json" },
+            .format = .mcp_servers,
+        });
+        const ip = try std.fs.path.join(allocator, &.{ home, ".gemini", "GEMINI.md" });
+        defer allocator.free(ip);
+        _ = try upsertInstructions(allocator, ip, agent_instructions_content, options.dry_run);
+        const cp = try std.fs.path.join(allocator, &.{ home, ".gemini", "settings.json" });
+        defer allocator.free(cp);
+        try upsertGeminiHooks(allocator, cp, options.dry_run);
+    }
+
+    // Zed: MCP only (platform-specific path)
+    if (detected.zed or options.force) {
+        report.zed = try installZedConfig(allocator, home, options);
+    }
+
+    // VS Code: MCP only (platform-specific path)
+    if (detected.vscode or options.force) {
+        report.vscode = try installVscodeConfig(allocator, home, options);
+    }
+
+    // OpenCode: MCP + instructions
+    if (detected.opencode or options.force) {
+        report.opencode = try installGenericJsonConfig(allocator, home, options, .{
+            .config_parts = &.{ ".config", "opencode", "opencode.json" },
+            .format = .opencode,
+        });
+        const ip = try std.fs.path.join(allocator, &.{ home, ".config", "opencode", "AGENTS.md" });
+        defer allocator.free(ip);
+        _ = try upsertInstructions(allocator, ip, agent_instructions_content, options.dry_run);
+    }
+
+    // Antigravity: MCP + instructions
+    if (detected.antigravity or options.force) {
+        report.antigravity = try installGenericJsonConfig(allocator, home, options, .{
+            .config_parts = &.{ ".gemini", "antigravity", "mcp_config.json" },
+            .format = .mcp_servers,
+        });
+        const ip = try std.fs.path.join(allocator, &.{ home, ".gemini", "antigravity", "AGENTS.md" });
+        defer allocator.free(ip);
+        _ = try upsertInstructions(allocator, ip, agent_instructions_content, options.dry_run);
+    }
+
+    // KiloCode: MCP + instructions (platform-specific config path)
+    if (detected.kilocode or options.force) {
+        report.kilocode = try installKilocodeConfig(allocator, home, options);
+        const ip = try std.fs.path.join(allocator, &.{ home, ".kilocode", "rules", "codebase-memory-mcp.md" });
+        defer allocator.free(ip);
+        _ = try upsertInstructions(allocator, ip, agent_instructions_content, options.dry_run);
+    }
+
+    // Aider: instructions only (no MCP config)
+    if (detected.aider or options.force) {
+        const ip = try std.fs.path.join(allocator, &.{ home, "CONVENTIONS.md" });
+        defer allocator.free(ip);
+        if (try upsertInstructions(allocator, ip, agent_instructions_content, options.dry_run)) {
+            report.aider = .updated;
+        } else {
+            report.aider = .unchanged;
+        }
+    }
+
+    // OpenClaw: MCP only
+    if (detected.openclaw or options.force) {
+        report.openclaw = try installGenericJsonConfig(allocator, home, options, .{
+            .config_parts = &.{ ".openclaw", "openclaw.json" },
+            .format = .mcp_servers,
+        });
+    }
+
     return report;
 }
 
@@ -870,9 +958,101 @@ pub fn uninstallAgentConfigs(
     home: []const u8,
     dry_run: bool,
 ) !InstallReport {
-    var report = InstallReport{ .detected = detectAgents(allocator, home) };
-    report.codex = try uninstallCodexConfig(allocator, home, dry_run);
+    const detected = detectAgents(allocator, home);
+    var report = InstallReport{ .detected = detected };
+
+    // Claude Code
     report.claude = try uninstallClaudeConfig(allocator, home, dry_run);
+    if (detected.claude) {
+        const skills_dir = try std.fs.path.join(allocator, &.{ home, ".claude", "skills" });
+        defer allocator.free(skills_dir);
+        const removed = try removeSkills(allocator, skills_dir, dry_run);
+        if (removed > 0) report.skills = .removed;
+        try removeClaudeHooks(allocator, home, dry_run);
+        report.hooks = .removed;
+    }
+
+    // Codex
+    report.codex = try uninstallCodexConfig(allocator, home, dry_run);
+    if (detected.codex) {
+        const ip = try std.fs.path.join(allocator, &.{ home, ".codex", "AGENTS.md" });
+        defer allocator.free(ip);
+        _ = try removeInstructions(allocator, ip, dry_run);
+    }
+
+    // Gemini
+    if (detected.gemini) {
+        const cp = try std.fs.path.join(allocator, &.{ home, ".gemini", "settings.json" });
+        defer allocator.free(cp);
+        if (try removeJsonMcpEntry(allocator, cp, "mcpServers", dry_run)) {
+            report.gemini = .removed;
+        }
+        try removeGeminiHooks(allocator, cp, dry_run);
+        const ip = try std.fs.path.join(allocator, &.{ home, ".gemini", "GEMINI.md" });
+        defer allocator.free(ip);
+        _ = try removeInstructions(allocator, ip, dry_run);
+    }
+
+    // Zed
+    if (detected.zed) {
+        report.zed = try uninstallZedConfig(allocator, home, dry_run);
+    }
+
+    // VS Code
+    if (detected.vscode) {
+        report.vscode = try uninstallVscodeConfig(allocator, home, dry_run);
+    }
+
+    // OpenCode
+    if (detected.opencode) {
+        const cp = try std.fs.path.join(allocator, &.{ home, ".config", "opencode", "opencode.json" });
+        defer allocator.free(cp);
+        if (try removeJsonMcpEntry(allocator, cp, "mcp", dry_run)) {
+            report.opencode = .removed;
+        }
+        const ip = try std.fs.path.join(allocator, &.{ home, ".config", "opencode", "AGENTS.md" });
+        defer allocator.free(ip);
+        _ = try removeInstructions(allocator, ip, dry_run);
+    }
+
+    // Antigravity
+    if (detected.antigravity) {
+        const cp = try std.fs.path.join(allocator, &.{ home, ".gemini", "antigravity", "mcp_config.json" });
+        defer allocator.free(cp);
+        if (try removeJsonMcpEntry(allocator, cp, "mcpServers", dry_run)) {
+            report.antigravity = .removed;
+        }
+        const ip = try std.fs.path.join(allocator, &.{ home, ".gemini", "antigravity", "AGENTS.md" });
+        defer allocator.free(ip);
+        _ = try removeInstructions(allocator, ip, dry_run);
+    }
+
+    // KiloCode
+    if (detected.kilocode) {
+        report.kilocode = try uninstallKilocodeConfig(allocator, home, dry_run);
+        const ip = try std.fs.path.join(allocator, &.{ home, ".kilocode", "rules", "codebase-memory-mcp.md" });
+        defer allocator.free(ip);
+        _ = try removeInstructions(allocator, ip, dry_run);
+    }
+
+    // Aider
+    if (detected.aider) {
+        const ip = try std.fs.path.join(allocator, &.{ home, "CONVENTIONS.md" });
+        defer allocator.free(ip);
+        if (try removeInstructions(allocator, ip, dry_run)) {
+            report.aider = .removed;
+        }
+    }
+
+    // OpenClaw
+    if (detected.openclaw) {
+        const cp = try std.fs.path.join(allocator, &.{ home, ".openclaw", "openclaw.json" });
+        defer allocator.free(cp);
+        if (try removeJsonMcpEntry(allocator, cp, "mcpServers", dry_run)) {
+            report.openclaw = .removed;
+        }
+    }
+
     return report;
 }
 
@@ -1071,6 +1251,331 @@ fn updateClaudeConfigJson(
     return rendered;
 }
 
+// ── Generic JSON MCP config ──────────────────────────────────────
+
+/// JSON config format variants for different agents.
+const McpConfigFormat = enum {
+    /// mcpServers: { "command": path } — Claude, Gemini, Antigravity, KiloCode, OpenClaw
+    mcp_servers,
+    /// context_servers: { "command": path, "args": [""] } — Zed
+    context_servers,
+    /// servers: { "type": "stdio", "command": path } — VS Code
+    vscode_servers,
+    /// mcp: { "enabled": true, "type": "local", "command": [path] } — OpenCode
+    opencode,
+};
+
+const GenericAgentConfig = struct {
+    config_parts: []const []const u8,
+    format: McpConfigFormat,
+};
+
+/// The MCP server key name in JSON config files (matches C reference).
+const mcp_server_key = "codebase-memory-mcp";
+
+/// Build the JSON entry value for a given format.
+fn buildMcpEntry(arena: std.mem.Allocator, binary_path: []const u8, format: McpConfigFormat) !std.json.Value {
+    var entry = std.json.ObjectMap.init(arena);
+    switch (format) {
+        .mcp_servers => {
+            try entry.put(try arena.dupe(u8, "command"), .{ .string = try arena.dupe(u8, binary_path) });
+        },
+        .context_servers => {
+            try entry.put(try arena.dupe(u8, "command"), .{ .string = try arena.dupe(u8, binary_path) });
+            var args = std.json.Array.init(arena);
+            try args.append(.{ .string = try arena.dupe(u8, "") });
+            try entry.put(try arena.dupe(u8, "args"), .{ .array = args });
+        },
+        .vscode_servers => {
+            try entry.put(try arena.dupe(u8, "type"), .{ .string = try arena.dupe(u8, "stdio") });
+            try entry.put(try arena.dupe(u8, "command"), .{ .string = try arena.dupe(u8, binary_path) });
+        },
+        .opencode => {
+            try entry.put(try arena.dupe(u8, "enabled"), .{ .bool = true });
+            try entry.put(try arena.dupe(u8, "type"), .{ .string = try arena.dupe(u8, "local") });
+            var cmd_arr = std.json.Array.init(arena);
+            try cmd_arr.append(.{ .string = try arena.dupe(u8, binary_path) });
+            try entry.put(try arena.dupe(u8, "command"), .{ .array = cmd_arr });
+        },
+    }
+    return .{ .object = entry };
+}
+
+/// Get the top-level JSON key name for a given format.
+fn formatKeyName(format: McpConfigFormat) []const u8 {
+    return switch (format) {
+        .mcp_servers => "mcpServers",
+        .context_servers => "context_servers",
+        .vscode_servers => "servers",
+        .opencode => "mcp",
+    };
+}
+
+/// Generic JSON MCP config installer.
+fn installGenericJsonConfig(
+    allocator: std.mem.Allocator,
+    home: []const u8,
+    options: InstallOptions,
+    agent: GenericAgentConfig,
+) !InstallReport.Action {
+    const config_path = try joinHomePath(allocator, home, agent.config_parts);
+    defer allocator.free(config_path);
+
+    const updated = try updateGenericMcpJson(allocator, config_path, options.binary_path, agent.format, true);
+    defer allocator.free(updated);
+    if (updated.len == 0) return .unchanged;
+    if (options.dry_run) return .updated;
+
+    if (std.fs.path.dirname(config_path)) |dir| {
+        try std.fs.cwd().makePath(dir);
+    }
+    var file = try std.fs.cwd().createFile(config_path, .{ .truncate = true });
+    defer file.close();
+    try file.writeAll(updated);
+    return .updated;
+}
+
+/// Generic MCP entry removal from a JSON config file.
+fn removeJsonMcpEntry(
+    allocator: std.mem.Allocator,
+    config_path: []const u8,
+    key_name: []const u8,
+    dry_run: bool,
+) !bool {
+    var arena_state = std.heap.ArenaAllocator.init(allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    const existing = std.fs.cwd().readFileAlloc(allocator, config_path, 10 * 1024 * 1024) catch |err| switch (err) {
+        error.FileNotFound => return false,
+        else => return err,
+    };
+    defer allocator.free(existing);
+
+    var parsed = std.json.parseFromSlice(std.json.Value, arena, existing, .{}) catch return false;
+    defer parsed.deinit();
+
+    if (parsed.value != .object) return false;
+    const servers = parsed.value.object.getPtr(key_name) orelse return false;
+    if (servers.* != .object) return false;
+    if (!servers.object.orderedRemove(mcp_server_key)) return false;
+
+    if (dry_run) return true;
+
+    var out = std.ArrayList(u8).empty;
+    defer out.deinit(allocator);
+    try out.writer(allocator).print("{f}", .{std.json.fmt(parsed.value, .{ .whitespace = .indent_2 })});
+    try out.append(allocator, '\n');
+
+    var file = try std.fs.cwd().createFile(config_path, .{ .truncate = true });
+    defer file.close();
+    try file.writeAll(out.items);
+    return true;
+}
+
+/// Generic JSON MCP config update (parameterized by format).
+fn updateGenericMcpJson(
+    allocator: std.mem.Allocator,
+    config_path: []const u8,
+    binary_path: []const u8,
+    format: McpConfigFormat,
+    install_entry: bool,
+) ![]u8 {
+    var arena_state = std.heap.ArenaAllocator.init(allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    const existing = std.fs.cwd().readFileAlloc(allocator, config_path, 10 * 1024 * 1024) catch |err| switch (err) {
+        error.FileNotFound => null,
+        else => return err,
+    };
+    defer if (existing) |contents| allocator.free(contents);
+
+    var parsed = if (existing) |contents|
+        std.json.parseFromSlice(std.json.Value, arena, contents, .{}) catch null
+    else
+        null;
+    defer if (parsed) |*value| value.deinit();
+
+    var root = if (parsed) |value| value.value else std.json.Value{ .object = std.json.ObjectMap.init(arena) };
+    if (root != .object) {
+        root = .{ .object = std.json.ObjectMap.init(arena) };
+    }
+
+    const key_name = formatKeyName(format);
+
+    const servers_ptr = blk: {
+        if (root.object.getPtr(key_name)) |existing_servers| {
+            if (existing_servers.* != .object) {
+                existing_servers.* = .{ .object = std.json.ObjectMap.init(arena) };
+            }
+            break :blk &existing_servers.*.object;
+        }
+        try root.object.put(try arena.dupe(u8, key_name), .{ .object = std.json.ObjectMap.init(arena) });
+        break :blk &root.object.getPtr(key_name).?.*.object;
+    };
+
+    if (install_entry) {
+        const entry_val = try buildMcpEntry(arena, binary_path, format);
+        if (servers_ptr.getPtr(mcp_server_key)) |existing_entry| {
+            existing_entry.* = entry_val;
+        } else {
+            try servers_ptr.put(try arena.dupe(u8, mcp_server_key), entry_val);
+        }
+    } else {
+        if (!servers_ptr.orderedRemove(mcp_server_key)) {
+            return allocator.dupe(u8, "");
+        }
+    }
+
+    var out = std.ArrayList(u8).empty;
+    defer out.deinit(allocator);
+    try out.writer(allocator).print("{f}", .{std.json.fmt(root, .{ .whitespace = .indent_2 })});
+    try out.append(allocator, '\n');
+    const rendered = try out.toOwnedSlice(allocator);
+    if (existing) |contents| {
+        if (std.mem.eql(u8, contents, rendered)) {
+            allocator.free(rendered);
+            return allocator.dupe(u8, "");
+        }
+    }
+    return rendered;
+}
+
+// ── Platform-specific agent config installers ────────────────────
+
+fn installZedConfig(
+    allocator: std.mem.Allocator,
+    home: []const u8,
+    options: InstallOptions,
+) !InstallReport.Action {
+    const builtin = @import("builtin");
+    const config_path = if (builtin.os.tag == .macos)
+        try std.fs.path.join(allocator, &.{ home, "Library", "Application Support", "Zed", "settings.json" })
+    else
+        try std.fs.path.join(allocator, &.{ home, ".config", "zed", "settings.json" });
+    defer allocator.free(config_path);
+
+    const updated = try updateGenericMcpJson(allocator, config_path, options.binary_path, .context_servers, true);
+    defer allocator.free(updated);
+    if (updated.len == 0) return .unchanged;
+    if (options.dry_run) return .updated;
+
+    if (std.fs.path.dirname(config_path)) |dir| {
+        try std.fs.cwd().makePath(dir);
+    }
+    var file = try std.fs.cwd().createFile(config_path, .{ .truncate = true });
+    defer file.close();
+    try file.writeAll(updated);
+    return .updated;
+}
+
+fn uninstallZedConfig(
+    allocator: std.mem.Allocator,
+    home: []const u8,
+    dry_run: bool,
+) !InstallReport.Action {
+    const builtin = @import("builtin");
+    const config_path = if (builtin.os.tag == .macos)
+        try std.fs.path.join(allocator, &.{ home, "Library", "Application Support", "Zed", "settings.json" })
+    else
+        try std.fs.path.join(allocator, &.{ home, ".config", "zed", "settings.json" });
+    defer allocator.free(config_path);
+
+    if (try removeJsonMcpEntry(allocator, config_path, "context_servers", dry_run)) {
+        return .removed;
+    }
+    return .skipped;
+}
+
+fn installVscodeConfig(
+    allocator: std.mem.Allocator,
+    home: []const u8,
+    options: InstallOptions,
+) !InstallReport.Action {
+    const builtin = @import("builtin");
+    const config_path = if (builtin.os.tag == .macos)
+        try std.fs.path.join(allocator, &.{ home, "Library", "Application Support", "Code", "User", "mcp.json" })
+    else
+        try std.fs.path.join(allocator, &.{ home, ".config", "Code", "User", "mcp.json" });
+    defer allocator.free(config_path);
+
+    const updated = try updateGenericMcpJson(allocator, config_path, options.binary_path, .vscode_servers, true);
+    defer allocator.free(updated);
+    if (updated.len == 0) return .unchanged;
+    if (options.dry_run) return .updated;
+
+    if (std.fs.path.dirname(config_path)) |dir| {
+        try std.fs.cwd().makePath(dir);
+    }
+    var file = try std.fs.cwd().createFile(config_path, .{ .truncate = true });
+    defer file.close();
+    try file.writeAll(updated);
+    return .updated;
+}
+
+fn uninstallVscodeConfig(
+    allocator: std.mem.Allocator,
+    home: []const u8,
+    dry_run: bool,
+) !InstallReport.Action {
+    const builtin = @import("builtin");
+    const config_path = if (builtin.os.tag == .macos)
+        try std.fs.path.join(allocator, &.{ home, "Library", "Application Support", "Code", "User", "mcp.json" })
+    else
+        try std.fs.path.join(allocator, &.{ home, ".config", "Code", "User", "mcp.json" });
+    defer allocator.free(config_path);
+
+    if (try removeJsonMcpEntry(allocator, config_path, "servers", dry_run)) {
+        return .removed;
+    }
+    return .skipped;
+}
+
+fn installKilocodeConfig(
+    allocator: std.mem.Allocator,
+    home: []const u8,
+    options: InstallOptions,
+) !InstallReport.Action {
+    const builtin = @import("builtin");
+    const config_path = if (builtin.os.tag == .macos)
+        try std.fs.path.join(allocator, &.{ home, "Library", "Application Support", "Code", "User", "globalStorage", "kilocode.kilo-code", "settings", "mcp_settings.json" })
+    else
+        try std.fs.path.join(allocator, &.{ home, ".config", "Code", "User", "globalStorage", "kilocode.kilo-code", "settings", "mcp_settings.json" });
+    defer allocator.free(config_path);
+
+    const updated = try updateGenericMcpJson(allocator, config_path, options.binary_path, .mcp_servers, true);
+    defer allocator.free(updated);
+    if (updated.len == 0) return .unchanged;
+    if (options.dry_run) return .updated;
+
+    if (std.fs.path.dirname(config_path)) |dir| {
+        try std.fs.cwd().makePath(dir);
+    }
+    var file = try std.fs.cwd().createFile(config_path, .{ .truncate = true });
+    defer file.close();
+    try file.writeAll(updated);
+    return .updated;
+}
+
+fn uninstallKilocodeConfig(
+    allocator: std.mem.Allocator,
+    home: []const u8,
+    dry_run: bool,
+) !InstallReport.Action {
+    const builtin = @import("builtin");
+    const config_path = if (builtin.os.tag == .macos)
+        try std.fs.path.join(allocator, &.{ home, "Library", "Application Support", "Code", "User", "globalStorage", "kilocode.kilo-code", "settings", "mcp_settings.json" })
+    else
+        try std.fs.path.join(allocator, &.{ home, ".config", "Code", "User", "globalStorage", "kilocode.kilo-code", "settings", "mcp_settings.json" });
+    defer allocator.free(config_path);
+
+    if (try removeJsonMcpEntry(allocator, config_path, "mcpServers", dry_run)) {
+        return .removed;
+    }
+    return .skipped;
+}
+
 fn replaceManagedBlock(
     allocator: std.mem.Allocator,
     existing: ?[]const u8,
@@ -1117,6 +1622,17 @@ fn pathExists(root: []const u8, relative: []const u8) bool {
 fn dirExists(path: []const u8) bool {
     const stat = std.fs.cwd().statFile(path) catch return false;
     return stat.kind == .directory;
+}
+
+/// Join home dir with a slice of path components.
+fn joinHomePath(allocator: std.mem.Allocator, home: []const u8, parts: []const []const u8) ![]u8 {
+    var result = try allocator.dupe(u8, home);
+    for (parts) |part| {
+        const next = try std.fs.path.join(allocator, &.{ result, part });
+        allocator.free(result);
+        result = next;
+    }
+    return result;
 }
 
 test "config roundtrip preserves values" {
