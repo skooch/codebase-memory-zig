@@ -1,0 +1,325 @@
+{
+  "detect_changes": [
+    {
+      "changed_count": 2,
+      "changed_files": [
+        "scripts/run_interop_alignment.sh",
+        "testdata/interop/golden/.gitkeep"
+      ],
+      "impacted_symbols": []
+    }
+  ],
+  "fixture_id": "rust-parity",
+  "get_architecture": [
+    {
+      "edge_types": [
+        "CALLS",
+        "CONTAINS_FILE",
+        "CONTAINS_FOLDER",
+        "DEFINES",
+        "DEFINES_METHOD",
+        "USAGE"
+      ],
+      "node_labels": [
+        "Class",
+        "Field",
+        "File",
+        "Folder",
+        "Function",
+        "Interface",
+        "Method",
+        "Module",
+        "Project",
+        "Variable"
+      ]
+    }
+  ],
+  "index_repository": {
+    "edges_min": 5,
+    "nodes_min": 9
+  },
+  "list_projects": [
+    "rust-parity"
+  ],
+  "manage_adr": [],
+  "query_graph": [
+    {
+      "columns": [
+        "count"
+      ],
+      "rows": [
+        [
+          "1"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "n.name"
+      ],
+      "rows": [
+        [
+          "boot"
+        ],
+        [
+          "decorate"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "a.name",
+        "b.name"
+      ],
+      "rows": [
+        [
+          "boot",
+          "decorate"
+        ],
+        [
+          "boot",
+          "run"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "a.label",
+        "a.file_path",
+        "b.label",
+        "b.name"
+      ],
+      "rows": [
+        [
+          "Module",
+          "src/lib.rs",
+          "Class",
+          "Config"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "a.label",
+        "a.file_path",
+        "b.label",
+        "b.name"
+      ],
+      "rows": [
+        [
+          "Module",
+          "src/lib.rs",
+          "Class",
+          "Worker"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "a.name",
+        "b.name"
+      ],
+      "rows": []
+    },
+    {
+      "columns": [
+        "n.name"
+      ],
+      "rows": [
+        [
+          "Config"
+        ],
+        [
+          "Worker"
+        ],
+        [
+          "package"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "n.name"
+      ],
+      "rows": [
+        [
+          "config"
+        ],
+        [
+          "mode"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "count"
+      ],
+      "rows": [
+        [
+          "2"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "n.name"
+      ],
+      "rows": [
+        [
+          "edition"
+        ],
+        [
+          "name"
+        ],
+        [
+          "version"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "a.name",
+        "b.name"
+      ],
+      "rows": [
+        [
+          "Runner",
+          "run"
+        ],
+        [
+          "Worker",
+          "run"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "b.name"
+      ],
+      "rows": [
+        [
+          "src/lib.rs"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "b.name"
+      ],
+      "rows": [
+        [
+          "config"
+        ],
+        [
+          "mode"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "b.name"
+      ],
+      "rows": [
+        [
+          "edition"
+        ],
+        [
+          "name"
+        ],
+        [
+          "version"
+        ]
+      ]
+    }
+  ],
+  "search_code": [
+    {
+      "results": [
+        {
+          "file_path": "src/lib.rs",
+          "label": "Function",
+          "name": "decorate"
+        },
+        {
+          "file_path": "src/lib.rs",
+          "label": "Function",
+          "name": "boot"
+        }
+      ],
+      "total_results": 2
+    }
+  ],
+  "search_graph": [
+    [
+      {
+        "file_path": "src/lib.rs",
+        "label": "Class",
+        "name": "Config",
+        "qualified_name": "rust-parity:src/lib.rs:rust:symbol:rust:Config"
+      },
+      {
+        "file_path": "src/lib.rs",
+        "label": "Class",
+        "name": "Worker",
+        "qualified_name": "rust-parity:src/lib.rs:rust:symbol:rust:Worker"
+      },
+      {
+        "file_path": "Cargo.toml",
+        "label": "Class",
+        "name": "package",
+        "qualified_name": "rust-parity:Cargo.toml:toml:symbol:toml:package"
+      }
+    ],
+    [
+      {
+        "file_path": "src/lib.rs",
+        "label": "Interface",
+        "name": "Runner",
+        "qualified_name": "rust-parity:src/lib.rs:rust:symbol:rust:Runner"
+      }
+    ],
+    [
+      {
+        "file_path": "src/lib.rs",
+        "label": "Function",
+        "name": "boot",
+        "qualified_name": "rust-parity:src/lib.rs:rust:symbol:rust:boot"
+      },
+      {
+        "file_path": "src/lib.rs",
+        "label": "Function",
+        "name": "decorate",
+        "qualified_name": "rust-parity:src/lib.rs:rust:symbol:rust:decorate"
+      }
+    ]
+  ],
+  "tools_list": [
+    "delete_project",
+    "detect_changes",
+    "get_architecture",
+    "get_code_snippet",
+    "get_graph_schema",
+    "index_repository",
+    "index_status",
+    "list_projects",
+    "manage_adr",
+    "query_graph",
+    "search_code",
+    "search_graph",
+    "trace_call_path"
+  ],
+  "trace_call_path": [
+    [
+      [
+        "boot",
+        "decorate",
+        "CALLS"
+      ],
+      [
+        "boot",
+        "run",
+        "CALLS"
+      ]
+    ]
+  ]
+}

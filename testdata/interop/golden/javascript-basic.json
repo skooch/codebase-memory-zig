@@ -1,0 +1,85 @@
+{
+  "detect_changes": [],
+  "fixture_id": "javascript-basic",
+  "get_architecture": [],
+  "index_repository": {
+    "edges_min": 2,
+    "nodes_min": 5
+  },
+  "list_projects": [
+    "javascript-basic"
+  ],
+  "manage_adr": [],
+  "query_graph": [
+    {
+      "columns": [
+        "count"
+      ],
+      "rows": [
+        [
+          "2"
+        ]
+      ]
+    }
+  ],
+  "search_code": [],
+  "search_graph": [
+    [
+      {
+        "file_path": "index.js",
+        "label": "Class",
+        "name": "BaseLogger",
+        "qualified_name": "javascript-basic:index.js:javascript:symbol:javascript:BaseLogger"
+      },
+      {
+        "file_path": "index.js",
+        "label": "Class",
+        "name": "TraceLogger",
+        "qualified_name": "javascript-basic:index.js:javascript:symbol:javascript:TraceLogger"
+      }
+    ],
+    [
+      {
+        "file_path": "index.js",
+        "label": "Function",
+        "name": "emit",
+        "qualified_name": "javascript-basic:index.js:javascript:symbol:javascript:emit"
+      },
+      {
+        "file_path": "index.js",
+        "label": "Function",
+        "name": "run",
+        "qualified_name": "javascript-basic:index.js:javascript:symbol:javascript:run"
+      }
+    ]
+  ],
+  "tools_list": [
+    "delete_project",
+    "detect_changes",
+    "get_architecture",
+    "get_code_snippet",
+    "get_graph_schema",
+    "index_repository",
+    "index_status",
+    "list_projects",
+    "manage_adr",
+    "query_graph",
+    "search_code",
+    "search_graph",
+    "trace_call_path"
+  ],
+  "trace_call_path": [
+    [
+      [
+        "emit",
+        "format",
+        "CALLS"
+      ],
+      [
+        "run",
+        "emit",
+        "CALLS"
+      ]
+    ]
+  ]
+}

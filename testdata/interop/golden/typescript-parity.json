@@ -1,0 +1,224 @@
+{
+  "detect_changes": [
+    {
+      "changed_count": 2,
+      "changed_files": [
+        "scripts/run_interop_alignment.sh",
+        "testdata/interop/golden/.gitkeep"
+      ],
+      "impacted_symbols": []
+    }
+  ],
+  "fixture_id": "typescript-parity",
+  "get_architecture": [
+    {
+      "edge_types": [
+        "CALLS",
+        "CONTAINS_FILE",
+        "DEFINES",
+        "DEFINES_METHOD"
+      ],
+      "node_labels": [
+        "Class",
+        "File",
+        "Function",
+        "Interface",
+        "Method",
+        "Module",
+        "Project"
+      ]
+    }
+  ],
+  "index_repository": {
+    "edges_min": 5,
+    "nodes_min": 8
+  },
+  "list_projects": [
+    "typescript-parity"
+  ],
+  "manage_adr": [],
+  "query_graph": [
+    {
+      "columns": [
+        "count"
+      ],
+      "rows": [
+        [
+          "2"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "n.name"
+      ],
+      "rows": [
+        [
+          "annotate"
+        ],
+        [
+          "boot"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "a.name",
+        "b.name"
+      ],
+      "rows": [
+        [
+          "boot",
+          "annotate"
+        ],
+        [
+          "boot",
+          "run"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "a.label",
+        "a.name",
+        "b.label",
+        "b.name"
+      ],
+      "rows": []
+    },
+    {
+      "columns": [
+        "a.name",
+        "b.name"
+      ],
+      "rows": []
+    },
+    {
+      "columns": [
+        "a.name",
+        "b.name"
+      ],
+      "rows": []
+    },
+    {
+      "columns": [
+        "n.name"
+      ],
+      "rows": []
+    },
+    {
+      "columns": [
+        "n.name"
+      ],
+      "rows": [
+        [
+          "index.ts"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "n.name"
+      ],
+      "rows": [
+        [
+          "index.ts"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "n.name"
+      ],
+      "rows": [
+        [
+          "run"
+        ]
+      ]
+    }
+  ],
+  "search_code": [
+    {
+      "results": [
+        {
+          "file_path": "index.ts",
+          "label": "Function",
+          "name": "annotate"
+        },
+        {
+          "file_path": "index.ts",
+          "label": "Function",
+          "name": "boot"
+        }
+      ],
+      "total_results": 2
+    }
+  ],
+  "search_graph": [
+    [
+      {
+        "file_path": "index.ts",
+        "label": "Class",
+        "name": "Worker",
+        "qualified_name": "typescript-parity:index.ts:typescript:symbol:typescript:Worker"
+      }
+    ],
+    [
+      {
+        "file_path": "index.ts",
+        "label": "Interface",
+        "name": "Configured",
+        "qualified_name": "typescript-parity:index.ts:typescript:symbol:typescript:Configured"
+      },
+      {
+        "file_path": "index.ts",
+        "label": "Interface",
+        "name": "Runner",
+        "qualified_name": "typescript-parity:index.ts:typescript:symbol:typescript:Runner"
+      }
+    ],
+    [
+      {
+        "file_path": "index.ts",
+        "label": "Function",
+        "name": "annotate",
+        "qualified_name": "typescript-parity:index.ts:typescript:symbol:typescript:annotate"
+      },
+      {
+        "file_path": "index.ts",
+        "label": "Function",
+        "name": "boot",
+        "qualified_name": "typescript-parity:index.ts:typescript:symbol:typescript:boot"
+      }
+    ]
+  ],
+  "tools_list": [
+    "delete_project",
+    "detect_changes",
+    "get_architecture",
+    "get_code_snippet",
+    "get_graph_schema",
+    "index_repository",
+    "index_status",
+    "list_projects",
+    "manage_adr",
+    "query_graph",
+    "search_code",
+    "search_graph",
+    "trace_call_path"
+  ],
+  "trace_call_path": [
+    [
+      [
+        "boot",
+        "annotate",
+        "CALLS"
+      ],
+      [
+        "boot",
+        "run",
+        "CALLS"
+      ]
+    ]
+  ]
+}

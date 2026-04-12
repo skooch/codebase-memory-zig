@@ -1,0 +1,81 @@
+{
+  "detect_changes": [],
+  "fixture_id": "zig-basic",
+  "get_architecture": [],
+  "index_repository": {
+    "edges_min": 1,
+    "nodes_min": 5
+  },
+  "list_projects": [
+    "zig-basic"
+  ],
+  "manage_adr": [],
+  "query_graph": [
+    {
+      "columns": [
+        "count"
+      ],
+      "rows": [
+        [
+          "2"
+        ]
+      ]
+    }
+  ],
+  "search_code": [],
+  "search_graph": [
+    [
+      {
+        "file_path": "main.zig",
+        "label": "Function",
+        "name": "add",
+        "qualified_name": "zig-basic:main.zig:zig:symbol:zig:add"
+      },
+      {
+        "file_path": "main.zig",
+        "label": "Function",
+        "name": "run",
+        "qualified_name": "zig-basic:main.zig:zig:symbol:zig:run"
+      }
+    ]
+  ],
+  "tools_list": [
+    "delete_project",
+    "detect_changes",
+    "get_architecture",
+    "get_code_snippet",
+    "get_graph_schema",
+    "index_repository",
+    "index_status",
+    "list_projects",
+    "manage_adr",
+    "query_graph",
+    "search_code",
+    "search_graph",
+    "trace_call_path"
+  ],
+  "trace_call_path": [
+    [
+      [
+        "run",
+        "Settings",
+        "USAGE"
+      ],
+      [
+        "run",
+        "add",
+        "CALLS"
+      ],
+      [
+        "run",
+        "doubled",
+        "USAGE"
+      ],
+      [
+        "run",
+        "retry_limit",
+        "USAGE"
+      ]
+    ]
+  ]
+}

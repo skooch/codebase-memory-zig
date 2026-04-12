@@ -1,0 +1,72 @@
+{
+  "detect_changes": [],
+  "fixture_id": "python-basic",
+  "get_architecture": [],
+  "index_repository": {
+    "edges_min": 2,
+    "nodes_min": 4
+  },
+  "list_projects": [
+    "python-basic"
+  ],
+  "manage_adr": [],
+  "query_graph": [
+    {
+      "columns": [
+        "count"
+      ],
+      "rows": [
+        [
+          "2"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "n.name"
+      ],
+      "rows": []
+    }
+  ],
+  "search_code": [],
+  "search_graph": [
+    [
+      {
+        "file_path": "util.py",
+        "label": "Function",
+        "name": "helper",
+        "qualified_name": "python-basic:util.py:python:symbol:python:helper"
+      },
+      {
+        "file_path": "main.py",
+        "label": "Function",
+        "name": "main",
+        "qualified_name": "python-basic:main.py:python:symbol:python:main"
+      }
+    ]
+  ],
+  "tools_list": [
+    "delete_project",
+    "detect_changes",
+    "get_architecture",
+    "get_code_snippet",
+    "get_graph_schema",
+    "index_repository",
+    "index_status",
+    "list_projects",
+    "manage_adr",
+    "query_graph",
+    "search_code",
+    "search_graph",
+    "trace_call_path"
+  ],
+  "trace_call_path": [
+    [
+      [
+        "main",
+        "helper",
+        "CALLS"
+      ]
+    ]
+  ]
+}

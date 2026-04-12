@@ -1,0 +1,232 @@
+{
+  "detect_changes": [
+    {
+      "changed_count": 2,
+      "changed_files": [
+        "scripts/run_interop_alignment.sh",
+        "testdata/interop/golden/.gitkeep"
+      ],
+      "impacted_symbols": []
+    }
+  ],
+  "fixture_id": "javascript-parity",
+  "get_architecture": [
+    {
+      "edge_types": [
+        "CALLS",
+        "CONTAINS_FILE",
+        "DEFINES",
+        "DEFINES_METHOD",
+        "USAGE"
+      ],
+      "node_labels": [
+        "Class",
+        "File",
+        "Function",
+        "Method",
+        "Module",
+        "Project",
+        "Variable"
+      ]
+    }
+  ],
+  "index_repository": {
+    "edges_min": 4,
+    "nodes_min": 7
+  },
+  "list_projects": [
+    "javascript-parity"
+  ],
+  "manage_adr": [],
+  "query_graph": [
+    {
+      "columns": [
+        "count"
+      ],
+      "rows": [
+        [
+          "2"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "n.name"
+      ],
+      "rows": [
+        [
+          "decorate"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "a.name",
+        "b.name"
+      ],
+      "rows": [
+        [
+          "boot",
+          "log"
+        ],
+        [
+          "index.js",
+          "boot"
+        ],
+        [
+          "index.js",
+          "decorate"
+        ],
+        [
+          "log",
+          "write"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "a.label",
+        "a.file_path",
+        "b.label",
+        "b.name"
+      ],
+      "rows": [
+        [
+          "Module",
+          "index.js",
+          "Class",
+          "BaseLogger"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "a.name",
+        "b.name"
+      ],
+      "rows": []
+    },
+    {
+      "columns": [
+        "n.name"
+      ],
+      "rows": [
+        [
+          "boot"
+        ],
+        [
+          "settings"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "n.name"
+      ],
+      "rows": [
+        [
+          "index.js"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "n.name"
+      ],
+      "rows": [
+        [
+          "index.js"
+        ]
+      ]
+    }
+  ],
+  "search_code": [
+    {
+      "results": [
+        {
+          "file_path": "index.js",
+          "label": "Function",
+          "name": "decorate"
+        },
+        {
+          "file_path": "index.js",
+          "label": "Variable",
+          "name": "boot"
+        },
+        {
+          "file_path": "index.js",
+          "label": "Module",
+          "name": "index.js"
+        }
+      ],
+      "total_results": 3
+    }
+  ],
+  "search_graph": [
+    [
+      {
+        "file_path": "index.js",
+        "label": "Class",
+        "name": "BaseLogger",
+        "qualified_name": "javascript-parity:index.js:javascript:symbol:javascript:BaseLogger"
+      },
+      {
+        "file_path": "index.js",
+        "label": "Class",
+        "name": "FileLogger",
+        "qualified_name": "javascript-parity:index.js:javascript:symbol:javascript:FileLogger"
+      }
+    ],
+    [
+      {
+        "file_path": "index.js",
+        "label": "Function",
+        "name": "decorate",
+        "qualified_name": "javascript-parity:index.js:javascript:symbol:javascript:decorate"
+      }
+    ],
+    [
+      {
+        "file_path": "index.js",
+        "label": "Variable",
+        "name": "boot",
+        "qualified_name": "javascript-parity:index.js:javascript:symbol:javascript:boot"
+      },
+      {
+        "file_path": "index.js",
+        "label": "Variable",
+        "name": "settings",
+        "qualified_name": "javascript-parity:index.js:javascript:symbol:javascript:settings"
+      }
+    ]
+  ],
+  "tools_list": [
+    "delete_project",
+    "detect_changes",
+    "get_architecture",
+    "get_code_snippet",
+    "get_graph_schema",
+    "index_repository",
+    "index_status",
+    "list_projects",
+    "manage_adr",
+    "query_graph",
+    "search_code",
+    "search_graph",
+    "trace_call_path"
+  ],
+  "trace_call_path": [
+    [
+      [
+        "boot",
+        "log",
+        "CALLS"
+      ],
+      [
+        "log",
+        "write",
+        "CALLS"
+      ]
+    ]
+  ]
+}

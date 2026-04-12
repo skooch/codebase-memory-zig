@@ -1,0 +1,114 @@
+{
+  "detect_changes": [],
+  "fixture_id": "rust-basic",
+  "get_architecture": [],
+  "index_repository": {
+    "edges_min": 4,
+    "nodes_min": 8
+  },
+  "list_projects": [
+    "rust-basic"
+  ],
+  "manage_adr": [],
+  "query_graph": [
+    {
+      "columns": [
+        "count"
+      ],
+      "rows": [
+        [
+          "1"
+        ]
+      ]
+    }
+  ],
+  "search_code": [],
+  "search_graph": [
+    [
+      {
+        "file_path": "src/lib.rs",
+        "label": "Class",
+        "name": "Counter",
+        "qualified_name": "rust-basic:src/lib.rs:rust:symbol:rust:Counter"
+      }
+    ],
+    [
+      {
+        "file_path": "src/lib.rs",
+        "label": "Function",
+        "name": "build",
+        "qualified_name": "rust-basic:src/lib.rs:rust:symbol:rust:build"
+      },
+      {
+        "file_path": "src/lib.rs",
+        "label": "Function",
+        "name": "emit",
+        "qualified_name": "rust-basic:src/lib.rs:rust:symbol:rust:emit"
+      }
+    ]
+  ],
+  "tools_list": [
+    "delete_project",
+    "detect_changes",
+    "get_architecture",
+    "get_code_snippet",
+    "get_graph_schema",
+    "index_repository",
+    "index_status",
+    "list_projects",
+    "manage_adr",
+    "query_graph",
+    "search_code",
+    "search_graph",
+    "trace_call_path"
+  ],
+  "trace_call_path": [
+    [
+      [
+        "Counter",
+        "bump",
+        "DEFINES_METHOD"
+      ],
+      [
+        "Counter",
+        "new",
+        "DEFINES_METHOD"
+      ],
+      [
+        "Counter",
+        "notify",
+        "DEFINES_METHOD"
+      ],
+      [
+        "Notifier",
+        "notify",
+        "DEFINES_METHOD"
+      ],
+      [
+        "build",
+        "Counter",
+        "USAGE"
+      ],
+      [
+        "build",
+        "bump",
+        "CALLS"
+      ],
+      [
+        "build",
+        "emit",
+        "CALLS"
+      ],
+      [
+        "emit",
+        "Notifier",
+        "USAGE"
+      ],
+      [
+        "emit",
+        "notify",
+        "CALLS"
+      ]
+    ]
+  ]
+}

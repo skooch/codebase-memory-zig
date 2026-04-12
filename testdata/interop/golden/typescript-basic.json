@@ -1,0 +1,84 @@
+{
+  "detect_changes": [],
+  "fixture_id": "typescript-basic",
+  "get_architecture": [],
+  "index_repository": {
+    "edges_min": 3,
+    "nodes_min": 6
+  },
+  "list_projects": [
+    "typescript-basic"
+  ],
+  "manage_adr": [],
+  "query_graph": [
+    {
+      "columns": [
+        "count"
+      ],
+      "rows": [
+        [
+          "2"
+        ]
+      ]
+    }
+  ],
+  "search_code": [],
+  "search_graph": [
+    [
+      {
+        "file_path": "index.ts",
+        "label": "Class",
+        "name": "WorkerImpl",
+        "qualified_name": "typescript-basic:index.ts:typescript:symbol:typescript:WorkerImpl"
+      }
+    ],
+    [
+      {
+        "file_path": "index.ts",
+        "label": "Function",
+        "name": "makeWorker",
+        "qualified_name": "typescript-basic:index.ts:typescript:symbol:typescript:makeWorker"
+      },
+      {
+        "file_path": "index.ts",
+        "label": "Function",
+        "name": "run",
+        "qualified_name": "typescript-basic:index.ts:typescript:symbol:typescript:run"
+      }
+    ]
+  ],
+  "tools_list": [
+    "delete_project",
+    "detect_changes",
+    "get_architecture",
+    "get_code_snippet",
+    "get_graph_schema",
+    "index_repository",
+    "index_status",
+    "list_projects",
+    "manage_adr",
+    "query_graph",
+    "search_code",
+    "search_graph",
+    "trace_call_path"
+  ],
+  "trace_call_path": [
+    [
+      [
+        "makeWorker",
+        "Worker",
+        "USAGE"
+      ],
+      [
+        "run",
+        "execute",
+        "CALLS"
+      ],
+      [
+        "run",
+        "makeWorker",
+        "CALLS"
+      ]
+    ]
+  ]
+}

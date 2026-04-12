@@ -1,0 +1,350 @@
+{
+  "detect_changes": [
+    {
+      "changed_count": 2,
+      "changed_files": [
+        "scripts/run_interop_alignment.sh",
+        "testdata/interop/golden/.gitkeep"
+      ],
+      "impacted_symbols": []
+    }
+  ],
+  "fixture_id": "python-parity",
+  "get_architecture": [
+    {
+      "edge_types": [
+        "CALLS",
+        "CONFIGURES",
+        "CONTAINS_FILE",
+        "DECORATES",
+        "DEFINES",
+        "DEFINES_METHOD",
+        "IMPORTS",
+        "USAGE"
+      ],
+      "node_labels": [
+        "Class",
+        "File",
+        "Function",
+        "Method",
+        "Module",
+        "Project",
+        "Variable"
+      ]
+    }
+  ],
+  "index_repository": {
+    "edges_min": 5,
+    "nodes_min": 7
+  },
+  "list_projects": [
+    "python-parity"
+  ],
+  "manage_adr": [],
+  "query_graph": [
+    {
+      "columns": [
+        "count"
+      ],
+      "rows": [
+        [
+          "2"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "n.name"
+      ],
+      "rows": [
+        [
+          "bootstrap"
+        ],
+        [
+          "get_max_connections"
+        ],
+        [
+          "trace"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "a.name",
+        "b.name"
+      ],
+      "rows": [
+        [
+          "bootstrap",
+          "configure"
+        ],
+        [
+          "bootstrap",
+          "run"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "a.label",
+        "a.file_path",
+        "b.label",
+        "b.name"
+      ],
+      "rows": [
+        [
+          "Module",
+          "main.py",
+          "Function",
+          "trace"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "a.label",
+        "a.file_path",
+        "b.label",
+        "b.name"
+      ],
+      "rows": [
+        [
+          "Module",
+          "models.py",
+          "Class",
+          "BaseWorker"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "a.label",
+        "a.name",
+        "b.label",
+        "b.name"
+      ],
+      "rows": []
+    },
+    {
+      "columns": [
+        "a.label",
+        "a.name",
+        "b.label",
+        "b.name"
+      ],
+      "rows": [
+        [
+          "Function",
+          "bootstrap",
+          "Function",
+          "trace"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "n.name"
+      ],
+      "rows": [
+        [
+          "default_mode"
+        ],
+        [
+          "feature"
+        ],
+        [
+          "max_connections"
+        ],
+        [
+          "mode"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "a.name",
+        "b.name"
+      ],
+      "rows": [
+        [
+          "get_max_connections",
+          "max_connections"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "a.name",
+        "b.name"
+      ],
+      "rows": []
+    },
+    {
+      "columns": [
+        "a.name",
+        "b.name"
+      ],
+      "rows": []
+    },
+    {
+      "columns": [
+        "a.label",
+        "a.name",
+        "b.label",
+        "b.name"
+      ],
+      "rows": [
+        [
+          "File",
+          "main.py",
+          "Module",
+          "models.py"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "b.name"
+      ],
+      "rows": [
+        [
+          "main.py"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "b.name"
+      ],
+      "rows": [
+        [
+          "__init__"
+        ],
+        [
+          "configure"
+        ],
+        [
+          "run"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "b.name"
+      ],
+      "rows": [
+        [
+          "feature"
+        ],
+        [
+          "max_connections"
+        ],
+        [
+          "mode"
+        ]
+      ]
+    }
+  ],
+  "search_code": [
+    {
+      "results": [
+        {
+          "file_path": "main.py",
+          "label": "Function",
+          "name": "bootstrap"
+        },
+        {
+          "file_path": "models.py",
+          "label": "Function",
+          "name": "trace"
+        },
+        {
+          "file_path": "main.py",
+          "label": "Module",
+          "name": "main.py"
+        }
+      ],
+      "total_results": 3
+    }
+  ],
+  "search_graph": [
+    [
+      {
+        "file_path": "models.py",
+        "label": "Class",
+        "name": "BaseWorker",
+        "qualified_name": "python-parity:models.py:python:symbol:python:BaseWorker"
+      },
+      {
+        "file_path": "models.py",
+        "label": "Class",
+        "name": "Worker",
+        "qualified_name": "python-parity:models.py:python:symbol:python:Worker"
+      }
+    ],
+    [
+      {
+        "file_path": "main.py",
+        "label": "Function",
+        "name": "bootstrap",
+        "qualified_name": "python-parity:main.py:python:symbol:python:bootstrap"
+      },
+      {
+        "file_path": "main.py",
+        "label": "Function",
+        "name": "get_max_connections",
+        "qualified_name": "python-parity:main.py:python:symbol:python:get_max_connections"
+      },
+      {
+        "file_path": "models.py",
+        "label": "Function",
+        "name": "trace",
+        "qualified_name": "python-parity:models.py:python:symbol:python:trace"
+      }
+    ]
+  ],
+  "tools_list": [
+    "delete_project",
+    "detect_changes",
+    "get_architecture",
+    "get_code_snippet",
+    "get_graph_schema",
+    "index_repository",
+    "index_status",
+    "list_projects",
+    "manage_adr",
+    "query_graph",
+    "search_code",
+    "search_graph",
+    "trace_call_path"
+  ],
+  "trace_call_path": [
+    [
+      [
+        "Worker",
+        "run",
+        "DEFINES_METHOD"
+      ],
+      [
+        "bootstrap",
+        "Worker",
+        "USAGE"
+      ],
+      [
+        "bootstrap",
+        "configure",
+        "CALLS"
+      ],
+      [
+        "bootstrap",
+        "run",
+        "CALLS"
+      ],
+      [
+        "bootstrap",
+        "trace",
+        "DECORATES"
+      ]
+    ]
+  ]
+}

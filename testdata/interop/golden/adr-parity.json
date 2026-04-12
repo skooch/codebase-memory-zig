@@ -1,0 +1,52 @@
+{
+  "detect_changes": [],
+  "fixture_id": "adr-parity",
+  "get_architecture": [],
+  "index_repository": {
+    "edges_min": 1,
+    "nodes_min": 2
+  },
+  "list_projects": [
+    "adr-parity"
+  ],
+  "manage_adr": [
+    {
+      "content": "",
+      "sections": [],
+      "status": "updated"
+    },
+    {
+      "content": "## PURPOSE\nPersist ADRs.\n\n## STACK\nZig and SQLite.\n\n## ARCHITECTURE\nProject-scoped ADR storage.",
+      "sections": [],
+      "status": ""
+    },
+    {
+      "content": "",
+      "sections": [
+        "## PURPOSE",
+        "## STACK",
+        "## ARCHITECTURE"
+      ],
+      "status": ""
+    }
+  ],
+  "query_graph": [],
+  "search_code": [],
+  "search_graph": [],
+  "tools_list": [
+    "delete_project",
+    "detect_changes",
+    "get_architecture",
+    "get_code_snippet",
+    "get_graph_schema",
+    "index_repository",
+    "index_status",
+    "list_projects",
+    "manage_adr",
+    "query_graph",
+    "search_code",
+    "search_graph",
+    "trace_call_path"
+  ],
+  "trace_call_path": []
+}

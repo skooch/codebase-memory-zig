@@ -1,0 +1,57 @@
+{
+  "detect_changes": [],
+  "fixture_id": "test-tagging",
+  "get_architecture": [],
+  "index_repository": {
+    "edges_min": 6,
+    "nodes_min": 6
+  },
+  "list_projects": [
+    "test-tagging"
+  ],
+  "manage_adr": [],
+  "query_graph": [
+    {
+      "columns": [
+        "a.name",
+        "b.name"
+      ],
+      "rows": [
+        [
+          "test_widget_renders",
+          "render_widget"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "a.name",
+        "b.name"
+      ],
+      "rows": [
+        [
+          "test_widget.py",
+          "widget.py"
+        ]
+      ]
+    }
+  ],
+  "search_code": [],
+  "search_graph": [],
+  "tools_list": [
+    "delete_project",
+    "detect_changes",
+    "get_architecture",
+    "get_code_snippet",
+    "get_graph_schema",
+    "index_repository",
+    "index_status",
+    "list_projects",
+    "manage_adr",
+    "query_graph",
+    "search_code",
+    "search_graph",
+    "trace_call_path"
+  ],
+  "trace_call_path": []
+}
