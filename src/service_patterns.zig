@@ -88,7 +88,6 @@ const http_client_patterns: []const []const u8 = &.{
     "node-fetch",
     "undici.fetch",
     "undici.request",
-    "fetch(",
     "net/http.Get",
     "net/http.Post",
     "net/http.Do",

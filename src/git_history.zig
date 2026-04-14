@@ -133,7 +133,8 @@ pub fn computeCouplingsFromCommits(allocator: std.mem.Allocator, commits: []cons
         const min_count = @min(count_a, count_b);
         if (min_count == 0) continue;
 
-        const score: f64 = @as(f64, @floatFromInt(co_changes)) / @as(f64, @floatFromInt(min_count));
+        const raw_score: f64 = @as(f64, @floatFromInt(co_changes)) / @as(f64, @floatFromInt(min_count));
+        const score: f64 = @min(1.0, raw_score);
         if (score < MIN_COUPLING_SCORE) continue;
 
         const file_a_owned = try allocator.dupe(u8, a);

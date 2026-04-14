@@ -37,11 +37,11 @@ pub fn runPass(
 
         const source_label: []const u8 = if (is_http) "http_call" else "async_call";
 
-        // Build a deterministic Route QN: __route__METHOD__<target_name>
+        // Build a deterministic Route QN: __route__METHOD__<target_qualified_name>
         const route_qn = std.fmt.allocPrint(
             allocator,
             "__route__{s}__{s}",
-            .{ method, target.name },
+            .{ method, target.qualified_name },
         ) catch return error.OutOfMemory;
         defer allocator.free(route_qn);
 
@@ -96,7 +96,7 @@ test "runPass creates Route nodes from HTTP_CALLS edges" {
     try std.testing.expectEqual(@as(usize, 1), routes);
 
     // Verify Route node exists.
-    const route = gb.findNodeByQualifiedName("__route__GET__get");
+    const route = gb.findNodeByQualifiedName("__route__GET__test:requests.get");
     try std.testing.expect(route != null);
     try std.testing.expectEqualStrings("Route", route.?.label);
 }
@@ -115,7 +115,7 @@ test "runPass creates Route nodes from ASYNC_CALLS edges" {
     const routes = try runPass(allocator, &gb);
     try std.testing.expectEqual(@as(usize, 1), routes);
 
-    const route = gb.findNodeByQualifiedName("__route__ASYNC__publish");
+    const route = gb.findNodeByQualifiedName("__route__ASYNC__test:pubsub.publish");
     try std.testing.expect(route != null);
     try std.testing.expectEqualStrings("Route", route.?.label);
 }
