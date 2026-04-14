@@ -1891,7 +1891,7 @@
       "scope_tools": ["index_repository", "query_graph", "list_projects"],
       "assertions": {
         "index_repository": {
-          "expect": { "nodes_min": 4, "edges_min": 2 }
+          "expect": { "nodes_min": 10, "edges_min": 15 }
         },
         "query_graph": [
           {
@@ -1901,17 +1901,19 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["a.name", "b.name"]
+              "columns": ["a.name", "b.name"],
+              "required_rows_min": 1
             }
           },
           {
             "args": {
-              "query": "MATCH (a)-[r]->(b) WHERE type(r) = 'THROWS' OR type(r) = 'RAISES' RETURN a.name, type(r), b.name ORDER BY a.name, b.name",
+              "query": "MATCH (a)-[r]->(b) WHERE r.type = 'THROWS' OR r.type = 'RAISES' RETURN a.name, r.type, b.name ORDER BY a.name, b.name",
               "project": "edge-parity",
               "max_rows": 20
             },
             "expect": {
-              "columns": ["a.name", "type(r)", "b.name"]
+              "columns": ["a.name", "r.type", "b.name"],
+              "required_rows_min": 1
             }
           },
           {
@@ -1922,7 +1924,7 @@
             },
             "expect": {
               "columns": ["n.name"],
-              "required_rows_min": 1
+              "required_rows_min": 2
             }
           },
           {
@@ -1933,7 +1935,7 @@
             },
             "expect": {
               "columns": ["n.name"],
-              "required_rows_min": 1
+              "required_rows_min": 2
             }
           }
         ]
