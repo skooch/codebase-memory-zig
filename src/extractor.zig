@@ -54,6 +54,18 @@ pub const UnresolvedUsage = struct {
     file_path: []const u8,
 };
 
+pub const UnresolvedWrite = struct {
+    writer_id: i64,
+    var_name: []const u8,
+    file_path: []const u8,
+};
+
+pub const UnresolvedThrow = struct {
+    thrower_id: i64,
+    exception_name: []const u8,
+    file_path: []const u8,
+};
+
 pub const SemanticHint = struct {
     child_id: i64,
     parent_name: []const u8,
@@ -70,6 +82,8 @@ pub const FileExtraction = struct {
     unresolved_calls: []UnresolvedCall,
     unresolved_imports: []UnresolvedImport,
     unresolved_usages: []UnresolvedUsage,
+    unresolved_writes: []UnresolvedWrite,
+    unresolved_throws: []UnresolvedThrow,
     semantic_hints: []SemanticHint,
 };
 
@@ -94,6 +108,8 @@ pub fn extractFile(
     var unresolved_imports = std.ArrayList(UnresolvedImport).empty;
     var unresolved_usages = std.ArrayList(UnresolvedUsage).empty;
     var semantic_hints = std.ArrayList(SemanticHint).empty;
+    var unresolved_writes = std.ArrayList(UnresolvedWrite).empty;
+    var unresolved_throws = std.ArrayList(UnresolvedThrow).empty;
     var scope_markers = std.ArrayList(TsSymbol).empty;
     var pending_decorators = std.ArrayList([]const u8).empty;
     errdefer freePendingExtractedSymbols(allocator, &symbols);
@@ -101,6 +117,8 @@ pub fn extractFile(
     errdefer freePendingUnresolvedCalls(allocator, &unresolved_calls);
     errdefer freePendingUnresolvedImports(allocator, &unresolved_imports);
     errdefer freePendingUnresolvedUsages(allocator, &unresolved_usages);
+    errdefer freePendingUnresolvedWrites(allocator, &unresolved_writes);
+    errdefer freePendingUnresolvedThrows(allocator, &unresolved_throws);
     errdefer freePendingSemanticHints(allocator, &semantic_hints);
     defer freePendingStringSlices(allocator, &pending_decorators);
     defer scope_markers.deinit(allocator);
@@ -134,6 +152,8 @@ pub fn extractFile(
             &unresolved_calls,
             &unresolved_imports,
             &unresolved_usages,
+            &unresolved_writes,
+            &unresolved_throws,
             &semantic_hints,
         );
     }
@@ -178,6 +198,8 @@ pub fn extractFile(
                 &unresolved_calls,
                 &unresolved_imports,
                 &unresolved_usages,
+                &unresolved_writes,
+                &unresolved_throws,
                 &semantic_hints,
             );
         },
@@ -465,6 +487,24 @@ pub fn extractFile(
                 });
             }
         }
+
+        if (assignmentLhs(clean_line)) |var_name| {
+            const writer_id = if (current_scope_id != 0) current_scope_id else module_id;
+            try unresolved_writes.append(allocator, .{
+                .writer_id = writer_id,
+                .var_name = try allocator.dupe(u8, var_name),
+                .file_path = try allocator.dupe(u8, rel),
+            });
+        }
+
+        if (parseThrowException(file.language, clean_line)) |exception_name| {
+            const thrower_id = if (current_scope_id != 0) current_scope_id else module_id;
+            try unresolved_throws.append(allocator, .{
+                .thrower_id = thrower_id,
+                .exception_name = try allocator.dupe(u8, exception_name),
+                .file_path = try allocator.dupe(u8, rel),
+            });
+        }
     }
 
     return finishExtraction(
@@ -477,6 +517,8 @@ pub fn extractFile(
         &unresolved_calls,
         &unresolved_imports,
         &unresolved_usages,
+        &unresolved_writes,
+        &unresolved_throws,
         &semantic_hints,
     );
 }
@@ -2250,6 +2292,134 @@ fn assignmentRhs(line: []const u8) ?[]const u8 {
     return null;
 }
 
+/// Extract the variable name from the left-hand side of an assignment.
+/// Handles Python (`x = ...`, `self.x = ...`), JS/TS (`const x = ...`, `let x = ...`, `var x = ...`),
+/// Rust (`let x = ...`, `let mut x = ...`), and Zig bare assignments.
+/// Skips compound assignments (`+=`, `-=`, etc.), destructuring, and non-identifier targets.
+fn assignmentLhs(line: []const u8) ?[]const u8 {
+    const trimmed = std.mem.trim(u8, line, " \t");
+    if (trimmed.len == 0) return null;
+
+    // Find the first standalone '=' (not ==, !=, <=, >=, =>)
+    var eq_pos: ?usize = null;
+    {
+        var i: usize = 0;
+        while (i < trimmed.len) : (i += 1) {
+            if (trimmed[i] != '=') continue;
+            // Skip compound assignments: +=, -=, *=, /=, %=, &=, |=, ^=, ~=
+            if (i > 0) {
+                const prev = trimmed[i - 1];
+                if (prev == '+' or prev == '-' or prev == '*' or prev == '/' or
+                    prev == '%' or prev == '&' or prev == '|' or prev == '^' or
+                    prev == '~' or prev == '!' or prev == '<' or prev == '>' or
+                    prev == '=')
+                {
+                    continue;
+                }
+            }
+            // Skip == and =>
+            if (i + 1 < trimmed.len and (trimmed[i + 1] == '=' or trimmed[i + 1] == '>')) continue;
+            eq_pos = i;
+            break;
+        }
+    }
+    const eq = eq_pos orelse return null;
+    if (eq == 0) return null;
+
+    const lhs_raw = std.mem.trim(u8, trimmed[0..eq], " \t");
+    if (lhs_raw.len == 0) return null;
+
+    // Skip destructuring (contains [ or { before =)
+    for (lhs_raw) |ch| {
+        if (ch == '[' or ch == '{') return null;
+    }
+
+    // Strip leading keywords: const, let, var, mut
+    var lhs = lhs_raw;
+    const prefixes = [_][]const u8{ "const ", "let mut ", "let ", "var ", "export const ", "export let ", "export var " };
+    for (prefixes) |prefix| {
+        if (std.mem.startsWith(u8, lhs, prefix)) {
+            lhs = std.mem.trim(u8, lhs[prefix.len..], " \t");
+            break;
+        }
+    }
+
+    // Strip type annotations for TS: `x: string` -> `x`
+    if (std.mem.indexOf(u8, lhs, ":")) |colon_pos| {
+        lhs = std.mem.trim(u8, lhs[0..colon_pos], " \t");
+    }
+
+    // Handle `self.x` (Python) -> extract `x`
+    if (std.mem.startsWith(u8, lhs, "self.")) {
+        lhs = lhs["self.".len..];
+    }
+
+    // Must be a simple identifier: [a-zA-Z_][a-zA-Z0-9_]*
+    if (lhs.len == 0) return null;
+    if (!isIdentStart(lhs[0])) return null;
+    for (lhs[1..]) |ch| {
+        if (!isIdentChar(ch)) return null;
+    }
+    return lhs;
+}
+
+/// Extract the exception type from a throw statement.
+/// JS/TS/TSX only: `throw new ErrorName(...)` -> `ErrorName`, `throw error` -> `error`.
+/// Skips bare `throw;` (rethrow).
+fn parseThrowException(language: discover.Language, line: []const u8) ?[]const u8 {
+    switch (language) {
+        .javascript, .typescript, .tsx => {},
+        else => return null,
+    }
+    const trimmed = std.mem.trim(u8, line, " \t");
+    if (!std.mem.startsWith(u8, trimmed, "throw ")) return null;
+    var rest = std.mem.trim(u8, trimmed["throw ".len..], " \t");
+    if (rest.len == 0) return null;
+    // Skip bare "throw;" rethrow
+    if (rest.len == 1 and rest[0] == ';') return null;
+    // Strip trailing semicolon
+    if (rest[rest.len - 1] == ';') {
+        rest = std.mem.trim(u8, rest[0 .. rest.len - 1], " \t");
+    }
+    if (rest.len == 0) return null;
+
+    // `throw new ErrorName(...)` -> extract ErrorName
+    if (std.mem.startsWith(u8, rest, "new ")) {
+        var name_part = std.mem.trim(u8, rest["new ".len..], " \t");
+        // Trim off the constructor arguments: `ErrorName(...)` -> `ErrorName`
+        if (std.mem.indexOf(u8, name_part, "(")) |paren_pos| {
+            name_part = name_part[0..paren_pos];
+        }
+        name_part = std.mem.trim(u8, name_part, " \t");
+        if (name_part.len == 0) return null;
+        if (!isIdentStart(name_part[0])) return null;
+        for (name_part[1..]) |ch| {
+            if (!isIdentChar(ch)) return null;
+        }
+        return name_part;
+    }
+
+    // `throw error` -> extract identifier
+    if (std.mem.indexOf(u8, rest, "(")) |paren_pos| {
+        rest = rest[0..paren_pos];
+    }
+    rest = std.mem.trim(u8, rest, " \t");
+    if (rest.len == 0) return null;
+    if (!isIdentStart(rest[0])) return null;
+    for (rest[1..]) |ch| {
+        if (!isIdentChar(ch)) return null;
+    }
+    return rest;
+}
+
+fn isIdentStart(ch: u8) bool {
+    return (ch >= 'a' and ch <= 'z') or (ch >= 'A' and ch <= 'Z') or ch == '_';
+}
+
+fn isIdentChar(ch: u8) bool {
+    return isIdentStart(ch) or (ch >= '0' and ch <= '9');
+}
+
 fn appendArgumentReferenceCandidates(
     allocator: std.mem.Allocator,
     line: []const u8,
@@ -2399,6 +2569,8 @@ fn finishExtraction(
     unresolved_calls: *std.ArrayList(UnresolvedCall),
     unresolved_imports: *std.ArrayList(UnresolvedImport),
     unresolved_usages: *std.ArrayList(UnresolvedUsage),
+    unresolved_writes: *std.ArrayList(UnresolvedWrite),
+    unresolved_throws: *std.ArrayList(UnresolvedThrow),
     semantic_hints: *std.ArrayList(SemanticHint),
 ) !FileExtraction {
     errdefer allocator.free(file_path);
@@ -2415,6 +2587,12 @@ fn finishExtraction(
     const owned_usages = try unresolved_usages.toOwnedSlice(allocator);
     errdefer freeUnresolvedUsages(allocator, owned_usages);
 
+    const owned_writes = try unresolved_writes.toOwnedSlice(allocator);
+    errdefer freeUnresolvedWrites(allocator, owned_writes);
+
+    const owned_throws = try unresolved_throws.toOwnedSlice(allocator);
+    errdefer freeUnresolvedThrows(allocator, owned_throws);
+
     const owned_hints = try semantic_hints.toOwnedSlice(allocator);
     errdefer freeSemanticHints(allocator, owned_hints);
 
@@ -2427,6 +2605,8 @@ fn finishExtraction(
         .unresolved_calls = owned_calls,
         .unresolved_imports = owned_imports,
         .unresolved_usages = owned_usages,
+        .unresolved_writes = owned_writes,
+        .unresolved_throws = owned_throws,
         .semantic_hints = owned_hints,
     };
 }
@@ -2635,6 +2815,22 @@ fn freePendingUnresolvedUsages(allocator: std.mem.Allocator, usages: *std.ArrayL
     usages.deinit(allocator);
 }
 
+fn freePendingUnresolvedWrites(allocator: std.mem.Allocator, writes: *std.ArrayList(UnresolvedWrite)) void {
+    for (writes.items) |w| {
+        allocator.free(w.var_name);
+        allocator.free(w.file_path);
+    }
+    writes.deinit(allocator);
+}
+
+fn freePendingUnresolvedThrows(allocator: std.mem.Allocator, throws: *std.ArrayList(UnresolvedThrow)) void {
+    for (throws.items) |t| {
+        allocator.free(t.exception_name);
+        allocator.free(t.file_path);
+    }
+    throws.deinit(allocator);
+}
+
 fn freePendingSemanticHints(allocator: std.mem.Allocator, hints: *std.ArrayList(SemanticHint)) void {
     for (hints.items) |h| {
         allocator.free(h.parent_name);
@@ -2679,6 +2875,22 @@ pub fn freeUnresolvedUsages(allocator: std.mem.Allocator, usages: []UnresolvedUs
     allocator.free(usages);
 }
 
+pub fn freeUnresolvedWrites(allocator: std.mem.Allocator, writes: []UnresolvedWrite) void {
+    for (writes) |w| {
+        allocator.free(w.var_name);
+        allocator.free(w.file_path);
+    }
+    allocator.free(writes);
+}
+
+pub fn freeUnresolvedThrows(allocator: std.mem.Allocator, throws: []UnresolvedThrow) void {
+    for (throws) |t| {
+        allocator.free(t.exception_name);
+        allocator.free(t.file_path);
+    }
+    allocator.free(throws);
+}
+
 pub fn freeSemanticHints(allocator: std.mem.Allocator, hints: []SemanticHint) void {
     for (hints) |h| {
         allocator.free(h.parent_name);
@@ -2694,6 +2906,8 @@ pub fn freeFileExtraction(allocator: std.mem.Allocator, extraction: FileExtracti
     freeUnresolvedCalls(allocator, extraction.unresolved_calls);
     freeUnresolvedImports(allocator, extraction.unresolved_imports);
     freeUnresolvedUsages(allocator, extraction.unresolved_usages);
+    freeUnresolvedWrites(allocator, extraction.unresolved_writes);
+    freeUnresolvedThrows(allocator, extraction.unresolved_throws);
     freeSemanticHints(allocator, extraction.semantic_hints);
 }
 
