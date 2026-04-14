@@ -3481,3 +3481,63 @@ test "rust field helper parses struct fields without matching functions" {
     try std.testing.expectEqualStrings("mode", parseRustFieldName("mode: String,") orelse return error.TestUnexpectedResult);
     try std.testing.expect(parseRustFieldName("fn run(&self) -> String {") == null);
 }
+
+test "assignmentLhs extracts simple variable names from assignments" {
+    // Python
+    try std.testing.expectEqualStrings("x", assignmentLhs("x = 42") orelse return error.TestUnexpectedResult);
+    try std.testing.expectEqualStrings("result", assignmentLhs("result = compute()") orelse return error.TestUnexpectedResult);
+    try std.testing.expectEqualStrings("name", assignmentLhs("self.name = \"default\"") orelse return error.TestUnexpectedResult);
+
+    // JS/TS declarations
+    try std.testing.expectEqualStrings("x", assignmentLhs("const x = 42") orelse return error.TestUnexpectedResult);
+    try std.testing.expectEqualStrings("y", assignmentLhs("let y = 10") orelse return error.TestUnexpectedResult);
+    try std.testing.expectEqualStrings("z", assignmentLhs("var z = 0") orelse return error.TestUnexpectedResult);
+    try std.testing.expectEqualStrings("data", assignmentLhs("export const data = []") orelse return error.TestUnexpectedResult);
+
+    // Rust
+    try std.testing.expectEqualStrings("x", assignmentLhs("let x = 42") orelse return error.TestUnexpectedResult);
+    try std.testing.expectEqualStrings("y", assignmentLhs("let mut y = vec![]") orelse return error.TestUnexpectedResult);
+
+    // TS type annotations
+    try std.testing.expectEqualStrings("x", assignmentLhs("const x: number = 42") orelse return error.TestUnexpectedResult);
+
+    // Skip compound assignments
+    try std.testing.expect(assignmentLhs("x += 1") == null);
+    try std.testing.expect(assignmentLhs("x -= 1") == null);
+    try std.testing.expect(assignmentLhs("x *= 2") == null);
+
+    // Skip destructuring
+    try std.testing.expect(assignmentLhs("const { a, b } = obj") == null);
+    try std.testing.expect(assignmentLhs("const [x, y] = arr") == null);
+
+    // Skip comparisons
+    try std.testing.expect(assignmentLhs("if x == 42:") == null);
+    try std.testing.expect(assignmentLhs("x != y") == null);
+    try std.testing.expect(assignmentLhs("x >= y") == null);
+
+    // Skip dotted LHS (non self.)
+    try std.testing.expect(assignmentLhs("obj.field = 1") == null);
+
+    // Skip empty
+    try std.testing.expect(assignmentLhs("") == null);
+    try std.testing.expect(assignmentLhs("return 42") == null);
+}
+
+test "parseThrowException extracts exception types from JS throw statements" {
+    // `throw new ErrorName(...)` -> ErrorName
+    try std.testing.expectEqualStrings("ValidationError", parseThrowException(.javascript, "throw new ValidationError(\"bad\");") orelse return error.TestUnexpectedResult);
+    try std.testing.expectEqualStrings("Error", parseThrowException(.javascript, "throw new Error(\"fail\");") orelse return error.TestUnexpectedResult);
+    try std.testing.expectEqualStrings("TypeError", parseThrowException(.typescript, "throw new TypeError(\"wrong type\");") orelse return error.TestUnexpectedResult);
+
+    // Bare throw identifier
+    try std.testing.expectEqualStrings("error", parseThrowException(.javascript, "throw error;") orelse return error.TestUnexpectedResult);
+    try std.testing.expectEqualStrings("err", parseThrowException(.tsx, "throw err") orelse return error.TestUnexpectedResult);
+
+    // Skip bare rethrow
+    try std.testing.expect(parseThrowException(.javascript, "throw;") == null);
+
+    // Non-JS languages return null
+    try std.testing.expect(parseThrowException(.python, "raise ValueError(\"bad\")") == null);
+    try std.testing.expect(parseThrowException(.rust, "panic!(\"fail\")") == null);
+    try std.testing.expect(parseThrowException(.zig, "return error.OutOfMemory") == null);
+}
