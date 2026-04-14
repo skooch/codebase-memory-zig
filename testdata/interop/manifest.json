@@ -1832,6 +1832,56 @@
           }
         ]
       }
+    },
+    {
+      "id": "graph-enrichment-config-deps",
+      "path": "testdata/interop/graph-enrichment/config-deps",
+      "project": "graph-enrichment-config-deps",
+      "language": "javascript",
+      "scope_tools": ["index_repository", "query_graph", "list_projects"],
+      "assertions": {
+        "index_repository": {
+          "expect": { "nodes_min": 3, "edges_min": 1 }
+        },
+        "query_graph": [
+          {
+            "args": {
+              "query": "MATCH (n) WHERE n.label = 'Variable' RETURN n.name ORDER BY n.name ASC",
+              "project": "graph-enrichment-config-deps",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["n.name"],
+              "required_rows_min": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "graph-enrichment-http-calls",
+      "path": "testdata/interop/graph-enrichment/http-calls",
+      "project": "graph-enrichment-http-calls",
+      "language": "python",
+      "scope_tools": ["index_repository", "query_graph", "list_projects"],
+      "assertions": {
+        "index_repository": {
+          "expect": { "nodes_min": 3, "edges_min": 1 }
+        },
+        "query_graph": [
+          {
+            "args": {
+              "query": "MATCH (n:Function) RETURN n.name ORDER BY n.name ASC",
+              "project": "graph-enrichment-http-calls",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["n.name"],
+              "required_rows_min": 1
+            }
+          }
+        ]
+      }
     }
   ]
 }

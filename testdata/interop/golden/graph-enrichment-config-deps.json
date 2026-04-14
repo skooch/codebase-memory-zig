@@ -1,0 +1,45 @@
+{
+  "delete_project": [],
+  "detect_changes_count": 0,
+  "fixture_id": "graph-enrichment-config-deps",
+  "get_architecture": [],
+  "get_code_snippet": [],
+  "get_graph_schema": [],
+  "index_repository": {
+    "edges_actual": 10,
+    "edges_min": 1,
+    "nodes_actual": 7,
+    "nodes_min": 3
+  },
+  "index_status": [],
+  "list_projects": [
+    "config-deps"
+  ],
+  "manage_adr": [],
+  "query_graph": [
+    {
+      "columns": [
+        "n.name"
+      ],
+      "rows": []
+    }
+  ],
+  "search_code": [],
+  "search_graph": [],
+  "tools_list": [
+    "delete_project",
+    "detect_changes",
+    "get_architecture",
+    "get_code_snippet",
+    "get_graph_schema",
+    "index_repository",
+    "index_status",
+    "list_projects",
+    "manage_adr",
+    "query_graph",
+    "search_code",
+    "search_graph",
+    "trace_call_path"
+  ],
+  "trace_call_path": []
+}
