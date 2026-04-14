@@ -153,7 +153,8 @@ This section compares what kinds of graph entities the two systems are built to 
 | `TESTS` / test metadata | Yes | Yes for the verified shared Python fixture slice | `Near parity` | Yes | The parity fixture now locks shared `TESTS` and `TESTS_FILE` rows plus file-level `is_test` metadata for the exercised Python naming rules. |
 | `FILE_CHANGES_WITH` | Yes | Yes | `Near parity` | Yes | Zig git-history pass creates `FILE_CHANGES_WITH` edges with `co_changes` and `coupling_score` properties via subprocess `git log`. |
 | Shared `USES_TYPE` contract | Yes | Yes for the verified shared fixture slice | `Near parity` | Yes | Phase 3 now compares the overlapping `USES_TYPE` queries directly for the exercised Python, TypeScript, and Rust cases instead of treating them as implicit approximations. |
-| Richer long-tail edge families | Yes | Limited beyond the verified shared slice | `Partial` | No | Zig now matches the shared `USES_TYPE` overlap, but the original still has a broader long-tail edge vocabulary outside the completed parity surface. |
+| `WRITES` / `THROWS` / `RAISES` | Yes | Yes for the verified shared fixture slice | `Near parity` | Yes | Zig now extracts WRITES edges from assignments (all target languages) and THROWS/RAISES edges from throw statements (JS/TS/TSX). Verified end-to-end on the edge-parity fixture. |
+| Remaining long-tail edge families | Yes (broader vocabulary) | Limited to verified slices | `Partial` | No | The remaining original-only edges are `OVERRIDE` (Go-only), `READS` (not extracted in C either), and `HANDLES`/`DATA_FLOWS` (deferred route-graph). `CONTAINS_PACKAGE` was never implemented in C. |
 
 ## 5. Language Support
 
