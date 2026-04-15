@@ -1881,6 +1881,42 @@
       }
     },
     {
+      "id": "graph-model-async",
+      "path": "testdata/interop/graph-model/async",
+      "project": "async",
+      "language": "python",
+      "scope_tools": ["index_repository", "query_graph", "list_projects"],
+      "assertions": {
+        "index_repository": {
+          "expect": { "nodes_min": 5, "edges_min": 4 }
+        },
+        "query_graph": [
+          {
+            "args": {
+              "query": "MATCH (n) WHERE n.qualified_name = '__route__celery__users.refresh' RETURN n.name ORDER BY n.name ASC",
+              "project": "async",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["n.name"],
+              "required_rows": [["users.refresh"]]
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:ASYNC_CALLS]->(b) WHERE a.name = 'enqueue_users' RETURN a.name, b.name ORDER BY a.name, b.name",
+              "project": "async",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["a.name", "b.name"],
+              "required_rows": [["enqueue_users", "users.refresh"]]
+            }
+          }
+        ]
+      }
+    },
+    {
       "id": "graph-enrichment-config-deps",
       "path": "testdata/interop/graph-enrichment/config-deps",
       "project": "graph-enrichment-config-deps",

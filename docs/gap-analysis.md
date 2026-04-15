@@ -117,7 +117,7 @@ Complete slices:
 
 Deferred or optional future slices:
 - Public surface expansion:
-  - trace breadth now covers modes, risk labels, and multi-edge-type filtering (Plan 03 complete); `HTTP_CALLS` and `ASYNC_CALLS` edges are now produced via service-pattern call reclassification, decorator-backed `HANDLES` edges are verified on the graph-model route fixture, and route-linked `DATA_FLOWS` now has a strict shared C/Zig fixture row
+  - trace breadth now covers modes, risk labels, and multi-edge-type filtering (Plan 03 complete); `HTTP_CALLS` and `ASYNC_CALLS` edges are now produced via service-pattern call reclassification, decorator-backed `HANDLES` edges are verified on the graph-model route fixture, route-linked `DATA_FLOWS` now has a strict shared C/Zig fixture row, and async topic routes now have a strict shared fixture row
 - Query/runtime expansion:
   - full Cypher lexer/parser/executor parity beyond the verified shared read-only floor
   - broader traversal and query-analysis parity beyond the current shared `detect_changes` contract
@@ -126,7 +126,7 @@ Deferred or optional future slices:
 - Metadata and enrichment:
   - git-history coupling — now implemented (subprocess `git log`, `FILE_CHANGES_WITH` edges)
   - long-tail edges — now implemented: `THROWS`/`RAISES` (JS/TS/TSX throw statements), decorator-backed `HANDLES`, and route-linked `DATA_FLOWS`; remaining or out-of-scope gaps: `OVERRIDE` (Go-only), `WRITES`/`READS` (not proven original-overlap by the current C reference fixture)
-  - route nodes — partially implemented (stub and concrete URL/path `Route` nodes, verified decorator-backed `Route`/`HANDLES`, and strict shared route-linked `DATA_FLOWS`; broader framework coverage still open)
+  - route nodes — partially implemented (stub and concrete URL/path/topic `Route` nodes, verified decorator-backed `Route`/`HANDLES`, strict shared route-linked `DATA_FLOWS`, and strict shared `ASYNC_CALLS`; broader framework coverage still open)
   - config-linking — partially implemented (Strategy 1 key-symbol + Strategy 2 dependency-import; full config normalization surface not yet ported)
   - richer decorator/enrichment promotion
   - current entrypoint: [graph-model-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/graph-model-parity-plan.md)

@@ -30,12 +30,21 @@
   - Updated Zig service-call classification so a resolved local stub can still use the original dotted callee text, allowing the Zig graph to emit the same `GET` route edge for `requests.get("/api/users")`.
   - Added a filtered strict manifest assertion for `fetch_users -> list_users` `DATA_FLOWS` and regenerated the `graph-model-routes` golden.
 
+### Phase 3b: Add Async Route Caller Coverage
+- **Status:** complete for the first shared async route caller slice
+- Actions:
+  - Added async broker-name extraction in `src/service_patterns.zig` so topic route QNs can preserve broker names such as `celery`.
+  - Updated `src/pipeline.zig` so `ASYNC_CALLS` service calls accept non-URL topics such as `users.refresh`.
+  - Added `testdata/interop/graph-model/async/` with a local `celery.py` stub and `worker.py` producer.
+  - Added strict manifest assertions for `__route__celery__users.refresh` and `enqueue_users -> users.refresh` over `ASYNC_CALLS`.
+  - Regenerated `graph-model-async` golden coverage.
+
 ### Verification
 - `zig build` -> passed
 - `zig build test` -> passed
-- `bash scripts/run_interop_alignment.sh --update-golden` -> passed, 20/20 golden snapshots updated
-- `bash scripts/run_interop_alignment.sh --zig-only` -> passed, 20/20 golden comparison
-- `bash scripts/run_interop_alignment.sh` -> passed with 20 fixtures, 158 comparisons, 89 strict matches, 20 diagnostic-only comparisons, 10 known mismatches, and `cli_progress: match`
+- `bash scripts/run_interop_alignment.sh --update-golden` -> passed, 21/21 golden snapshots updated
+- `bash scripts/run_interop_alignment.sh --zig-only` -> passed, 21/21 golden comparison
+- `bash scripts/run_interop_alignment.sh` -> passed with 21 fixtures, 165 comparisons, 92 strict matches, 21 diagnostic-only comparisons, 10 known mismatches, and `cli_progress: match`
 
 ## Errors
 | Timestamp | Error | Attempt | Resolution |
@@ -47,3 +56,4 @@
 | 2026-04-16 | The decorator route emitter kept a graph node pointer across a `Route` upsert, which could reallocate the node array and crash while formatting handler properties. | Focused CLI indexing of the route fixture hit an integer-overflow panic in `std.fmt.allocPrint`. | Copied the handler id and qualified name before upserting the route, then re-ran build, tests, and focused CLI query successfully. |
 | 2026-04-16 | Adding a strict manifest assertion for the new `DATA_FLOWS` row increased the full C/Zig mismatch count because the current C binary did not emit that row for the public fixture. | Ran full interop and inspected per-implementation `graph-model-routes` query rows. | Removed the `DATA_FLOWS` row from the strict shared manifest while keeping Zig unit/focused coverage and documenting the shared-fixture blocker. |
 | 2026-04-16 | The first strict `DATA_FLOWS` fixture attempt used `@app.route`, which creates an `ANY` handler route in C while `requests.get` creates a `GET` caller route, so the bridge could not form. | Queried C route qualified names and saw separate `__route__ANY__/api/users` and `__route__GET__/api/users` nodes. | Switched the fixture to `@app.get`, kept the assertion filtered to `fetch_users`, and patched Zig resolved-call service classification so both implementations share the `GET` route row. |
+| 2026-04-16 | Zig classified `celery.delay` as async but only treated URL-like arguments as service route targets, so a topic argument produced an `ASYNC delay` route instead of a topic route. | Ran a focused temp fixture with `celery.delay("users.refresh")` against both binaries. | Accepted non-URL topics for `ASYNC_CALLS`, preserved broker names, and added the strict `graph-model-async` fixture. |

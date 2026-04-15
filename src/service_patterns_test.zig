@@ -20,6 +20,13 @@ test "classify async broker" {
     try std.testing.expectEqual(PatternKind.async_broker, service_patterns.classify("myproject:SQS.sendMessage").?);
 }
 
+test "asyncBroker extraction" {
+    try std.testing.expectEqualStrings("celery", service_patterns.asyncBroker("myproject:celery.delay").?);
+    try std.testing.expectEqualStrings("pubsub", service_patterns.asyncBroker("infra:pubsub.publish").?);
+    try std.testing.expectEqualStrings("kafka", service_patterns.asyncBroker("infra:kafka.Producer.send").?);
+    try std.testing.expectEqual(@as(?[]const u8, null), service_patterns.asyncBroker("myproject:utils.formatDate"));
+}
+
 test "classify route registration" {
     try std.testing.expectEqual(PatternKind.route_registration, service_patterns.classify("myproject:flask.route").?);
     try std.testing.expectEqual(PatternKind.route_registration, service_patterns.classify("myproject:gin.GET").?);

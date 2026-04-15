@@ -155,6 +155,48 @@ const async_broker_patterns: []const []const u8 = &.{
     "inngest.create_function",
 };
 
+const BrokerPattern = struct {
+    pattern: []const u8,
+    broker: []const u8,
+};
+
+const async_broker_names: []const BrokerPattern = &.{
+    .{ .pattern = "cloudtasks", .broker = "cloud_tasks" },
+    .{ .pattern = "cloud.tasks", .broker = "cloud_tasks" },
+    .{ .pattern = "pubsub", .broker = "pubsub" },
+    .{ .pattern = "PubSub", .broker = "pubsub" },
+    .{ .pattern = "pub_sub", .broker = "pubsub" },
+    .{ .pattern = "sqs", .broker = "sqs" },
+    .{ .pattern = "SQS", .broker = "sqs" },
+    .{ .pattern = "sns", .broker = "sns" },
+    .{ .pattern = "SNS", .broker = "sns" },
+    .{ .pattern = "eventbridge", .broker = "eventbridge" },
+    .{ .pattern = "EventBridge", .broker = "eventbridge" },
+    .{ .pattern = "kafka", .broker = "kafka" },
+    .{ .pattern = "Kafka", .broker = "kafka" },
+    .{ .pattern = "rabbitmq", .broker = "rabbitmq" },
+    .{ .pattern = "RabbitMQ", .broker = "rabbitmq" },
+    .{ .pattern = "amqp", .broker = "rabbitmq" },
+    .{ .pattern = "AMQP", .broker = "rabbitmq" },
+    .{ .pattern = "nats", .broker = "nats" },
+    .{ .pattern = "NATS", .broker = "nats" },
+    .{ .pattern = "redis", .broker = "redis" },
+    .{ .pattern = "celery", .broker = "celery" },
+    .{ .pattern = "Celery", .broker = "celery" },
+    .{ .pattern = "dramatiq", .broker = "dramatiq" },
+    .{ .pattern = "huey", .broker = "huey" },
+    .{ .pattern = "rq.", .broker = "rq" },
+    .{ .pattern = "bullmq", .broker = "bullmq" },
+    .{ .pattern = "BullMQ", .broker = "bullmq" },
+    .{ .pattern = "bull.Queue", .broker = "bull" },
+    .{ .pattern = "sidekiq", .broker = "sidekiq" },
+    .{ .pattern = "Sidekiq", .broker = "sidekiq" },
+    .{ .pattern = "resque", .broker = "resque" },
+    .{ .pattern = "Resque", .broker = "resque" },
+    .{ .pattern = "temporal", .broker = "temporal" },
+    .{ .pattern = "inngest", .broker = "inngest" },
+};
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -206,6 +248,15 @@ pub fn httpMethod(qualified_name: []const u8) ?[]const u8 {
             if (std.mem.endsWith(u8, qualified_name, suffix))
                 return m.canonical;
         }
+    }
+    return null;
+}
+
+/// Return a stable broker name for an async dispatch target.
+pub fn asyncBroker(qualified_name: []const u8) ?[]const u8 {
+    for (async_broker_names) |entry| {
+        if (std.mem.indexOf(u8, qualified_name, entry.pattern) != null)
+            return entry.broker;
     }
     return null;
 }

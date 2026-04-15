@@ -1464,14 +1464,16 @@ fn emitServiceRouteCall(
     edge_type: []const u8,
     resolved_qn: []const u8,
 ) PipelineError!bool {
-    if (!isServiceRouteArg(call.first_string_arg)) return false;
+    if (!isServiceRouteArg(edge_type, call.first_string_arg)) return false;
 
     const method_or_broker = if (std.mem.eql(u8, edge_type, "HTTP_CALLS"))
         (service_patterns.httpMethod(if (call.full_callee_name.len > 0) call.full_callee_name else resolved_qn) orelse
             service_patterns.httpMethod(resolved_qn) orelse
             "ANY")
     else
-        "async";
+        (service_patterns.asyncBroker(if (call.full_callee_name.len > 0) call.full_callee_name else resolved_qn) orelse
+            service_patterns.asyncBroker(resolved_qn) orelse
+            "async");
 
     const route_qn = std.fmt.allocPrint(
         gb.allocator,
@@ -1522,8 +1524,10 @@ fn emitServiceRouteCall(
     return true;
 }
 
-fn isServiceRouteArg(arg: []const u8) bool {
+fn isServiceRouteArg(edge_type: []const u8, arg: []const u8) bool {
     if (arg.len == 0) return false;
+    if (std.mem.eql(u8, edge_type, "ASYNC_CALLS"))
+        return arg[0] == '/' or std.mem.indexOf(u8, arg, "://") != null or arg.len > 2;
     return arg[0] == '/' or std.mem.indexOf(u8, arg, "://") != null;
 }
 
@@ -1608,6 +1612,27 @@ test "service route call emits HTTP_CALLS to concrete Route" {
     const route = gb.findNodeByQualifiedName("__route__GET__/api/users") orelse return error.TestUnexpectedResult;
     try std.testing.expectEqualStrings("Route", route.label);
     try std.testing.expect(hasEdge(&gb, caller_id, route.id, "HTTP_CALLS"));
+}
+
+test "async service route call emits ASYNC_CALLS to broker topic Route" {
+    const allocator = std.testing.allocator;
+
+    var gb = GraphBuffer.init(allocator, "async");
+    defer gb.deinit();
+
+    const caller_id = try gb.upsertNode("Function", "enqueue_users", "async:worker.py:enqueue_users", "worker.py", 1, 3);
+    const emitted = try emitServiceRouteCall(&gb, .{
+        .caller_id = caller_id,
+        .callee_name = "delay",
+        .full_callee_name = "celery.delay",
+        .file_path = "worker.py",
+        .first_string_arg = "users.refresh",
+    }, "ASYNC_CALLS", "async:celery.py:delay");
+
+    try std.testing.expect(emitted);
+    const route = gb.findNodeByQualifiedName("__route__celery__users.refresh") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("Route", route.label);
+    try std.testing.expect(hasEdge(&gb, caller_id, route.id, "ASYNC_CALLS"));
 }
 
 test "argument URL call emits ANY HTTP_CALLS route edge" {

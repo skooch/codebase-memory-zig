@@ -7,11 +7,13 @@ route-linked data flow, decorator route detection, and the broader config-link
 normalization surface.
 
 ## Current Phase
-Phase 3 route-linked data flow is complete for the first shared public fixture:
+Phase 3 route-linked data flow is complete for the first shared public fixture,
+and the first shared async route caller fixture is now locked:
 decorator route extraction creates `Route` nodes and `HANDLES` edges,
 route-registration calls preserve enough call metadata to emit `HANDLES` when
 the handler reference resolves, and the shared Python route fixture now proves a
-strict C/Zig `DATA_FLOWS` row through a `GET` route.
+strict C/Zig `DATA_FLOWS` row through a `GET` route. The async fixture proves a
+broker-specific `Route` and `ASYNC_CALLS` row for a local `celery.delay` topic.
 
 ## Current Codebase State
 - Complete and verified: advanced trace modes, risk labels, include-tests
@@ -31,11 +33,14 @@ strict C/Zig `DATA_FLOWS` row through a `GET` route.
   `DATA_FLOWS`. The `graph-model-routes` fixture now uses a method-specific
   `@app.get` handler plus a local `requests` stub so both C and Zig expose the
   strict `fetch_users -> list_users` `DATA_FLOWS` row.
-- Still missing for graph-model parity: broader framework route coverage,
-  async route coverage, and the full config normalization/linking surface beyond
-  the current key-symbol and dependency-import strategies.
+- Newly implemented for async route coverage: Zig accepts async broker topics,
+  preserves broker names for route QNs/properties, and the `graph-model-async`
+  fixture proves the shared `enqueue_users -> users.refresh` `ASYNC_CALLS` row.
+- Still missing for graph-model parity: broader framework route coverage and
+  the full config normalization/linking surface beyond the current key-symbol
+  and dependency-import strategies.
 - Current full Zig-vs-C harness baseline after this route slice:
-  `158` comparisons, `89` strict matches, `20` diagnostic-only comparisons,
+  `165` comparisons, `92` strict matches, `21` diagnostic-only comparisons,
   `10` mismatches, and `cli_progress: match`. The graph-model-related
   mismatches still include the existing `graph-enrichment-config-deps` and
   `graph-enrichment-http-calls` query rows.
@@ -71,7 +76,8 @@ strict C/Zig `DATA_FLOWS` row through a `GET` route.
 - [x] Define fixture-backed acceptance rules for decorator-backed `Route` and `HANDLES` facts.
 - [x] Define fixture-backed acceptance rules for first-slice `HTTP_CALLS` route callers and route-linked `DATA_FLOWS` in Zig.
 - [x] Define fixture-backed acceptance rules for strict shared C/Zig `DATA_FLOWS`.
-- [ ] Define fixture-backed acceptance rules for `ASYNC_CALLS` and config normalization/linking.
+- [x] Define fixture-backed acceptance rules for strict shared C/Zig `ASYNC_CALLS`.
+- [ ] Define fixture-backed acceptance rules for config normalization/linking.
 - [x] Add a minimal Python route fixture under `testdata/interop/graph-model/routes/`.
 - [ ] Add minimal JavaScript/TypeScript route fixtures once the shared C/Zig public behavior is established for those registrations.
 - **Status:** partially complete
@@ -90,6 +96,12 @@ strict C/Zig `DATA_FLOWS` row through a `GET` route.
 - [x] Add regression coverage that proves data-flow edges are present only when supported route facts exist underneath them.
 - [x] Find or construct a strict shared C/Zig public fixture for `DATA_FLOWS`.
 - **Status:** complete for the first route-linked data-flow slice
+
+### Phase 3b: Add Async Route Caller Coverage
+- [x] Preserve async broker names when service-pattern calls emit topic route nodes.
+- [x] Accept non-URL async topics such as `users.refresh` as route rendezvous targets.
+- [x] Add a strict shared C/Zig fixture for `ASYNC_CALLS`.
+- **Status:** complete for the first async route caller slice
 
 ### Phase 4: Finish Config-Link Normalization
 - [ ] Extend config-key extraction and matching only for original-overlap config patterns with fixture evidence.

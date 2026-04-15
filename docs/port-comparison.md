@@ -133,7 +133,7 @@ It is intentionally not a wish list. It describes:
 | Test tagging pass | Yes | Yes for the verified shared Python fixture slice | `Near parity` | Yes | Zig now derives `TESTS` and `TESTS_FILE` from shared filename and call-edge rules on the parity fixture without reopening broader language-specific enrichment work. |
 | Git history coupling | Yes | Implemented | `Near parity` | Yes | Zig pass uses subprocess `git log` (no libgit2); creates `FILE_CHANGES_WITH` edges with `co_changes` and `coupling_score` properties. |
 | Config linking / config normalization | Yes | Partial | `Partial` | No | Zig now implements Strategy 1 (key-symbol) and Strategy 2 (dependency-import matching) but not the full config normalization surface. |
-| Route-node creation / cross-service graph | Yes | Partial | `Partial` | No | Zig now classifies call edges as `HTTP_CALLS`/`ASYNC_CALLS`, creates stub and concrete URL/path `Route` nodes, emits verified decorator-backed `HANDLES`, and has a strict shared route-linked `DATA_FLOWS` fixture row. Broader framework and async-route coverage remain open. |
+| Route-node creation / cross-service graph | Yes | Partial | `Partial` | No | Zig now classifies call edges as `HTTP_CALLS`/`ASYNC_CALLS`, creates stub and concrete URL/path/topic `Route` nodes, emits verified decorator-backed `HANDLES`, and has strict shared route-linked `DATA_FLOWS` plus async topic fixtures. Broader framework coverage remains open. |
 | Infra scanning (`Docker`, `K8s`, Terraform, etc.) | Yes in the original codebase | Not ported | `Cut` | No | Zig intentionally excludes the infra-scan family from the current port target. |
 | OTLP traces | Stubbed | Not ported | `N/A` | No | Not a meaningful implemented-vs-implemented gap. |
 
@@ -148,7 +148,7 @@ This section compares what kinds of graph entities the two systems are built to 
 | `SIMILAR_TO` | Yes | Yes | `Near parity` | Yes | Landed in Zig Phase 6. |
 | Shared `CONFIGURES` contract | Yes | Yes for the verified shared fixture slice | `Near parity` | Yes | The parity fixtures now compare the overlapping `CONFIGURES` row directly; broader config-link systems remain deferred elsewhere. |
 | Internal serving architecture | Graph-centric serving path | Hybrid internal serving path: SQLite graph core, FTS5 lexical index, optional SCIP sidecar overlay, and query router | `Near parity` | Yes | This is an internal implementation improvement in the Zig port; it deliberately preserves the interoperable MCP surface rather than creating a new client contract. |
-| Route graph (`Route`, `HTTP_CALLS`, `ASYNC_CALLS`, `HANDLES`, route-linked data flows) | Yes | Partial | `Partial` | No | Zig now creates `HTTP_CALLS` and `ASYNC_CALLS` edges, concrete URL/path `Route` nodes, verified decorator-backed `HANDLES`, and strict shared route-linked `DATA_FLOWS`. Broader framework and async-route coverage remain open. |
+| Route graph (`Route`, `HTTP_CALLS`, `ASYNC_CALLS`, `HANDLES`, route-linked data flows) | Yes | Partial | `Partial` | No | Zig now creates `HTTP_CALLS` and `ASYNC_CALLS` edges, concrete URL/path/topic `Route` nodes, verified decorator-backed `HANDLES`, strict shared route-linked `DATA_FLOWS`, and strict shared async topic caller rows. Broader framework coverage remains open. |
 | Resource / infra graph (`Resource`, K8s/Kustomize entities) | Yes | Not shipped | `Cut` | No | Intentionally outside the Zig scope. |
 | `TESTS` / test metadata | Yes | Yes for the verified shared Python fixture slice | `Near parity` | Yes | The parity fixture now locks shared `TESTS` and `TESTS_FILE` rows plus file-level `is_test` metadata for the exercised Python naming rules. |
 | `FILE_CHANGES_WITH` | Yes | Yes | `Near parity` | Yes | Zig git-history pass creates `FILE_CHANGES_WITH` edges with `co_changes` and `coupling_score` properties via subprocess `git log`. |
@@ -224,9 +224,9 @@ If someone asks “what still separates the Zig port from the original?”, the 
 | Difference | Why it matters |
 |-----------|----------------|
 | No full Cypher parity | Some advanced graph query patterns remain C-only. |
-| Partial route / cross-service graph stack | Zig now emits verified decorator-backed `HANDLES` and strict shared route-linked `DATA_FLOWS`, but broader framework and async-route coverage remain open. |
+| Partial route / cross-service graph stack | Zig now emits verified decorator-backed `HANDLES`, strict shared route-linked `DATA_FLOWS`, and strict shared async topic caller rows, but broader framework coverage remains open. |
 | No LSP-assisted hybrid resolution | Some higher-fidelity call/type resolution paths remain original-only. |
-| No async route fixture or full config normalization | Git-history coupling is implemented, config linking has dependency-import matching, decorator-backed `HANDLES` is verified, and strict shared route-linked `DATA_FLOWS` is covered. The remaining graph-model gap is broader framework route coverage, async route coverage, and the full config normalization surface. |
+| No full config normalization | Git-history coupling is implemented, config linking has dependency-import matching, decorator-backed `HANDLES` is verified, strict shared route-linked `DATA_FLOWS` is covered, and the first async topic route fixture is covered. The remaining graph-model gap is broader framework route coverage and the full config normalization surface. |
 | No UI subsystem | The original can run a graph visualization UI; the Zig port intentionally cannot. |
 | Much narrower installer ecosystem | The original configures 10 agents plus hooks/instructions; Zig currently configures 2 agents and only MCP entries. |
 
