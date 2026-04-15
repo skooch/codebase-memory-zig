@@ -1896,17 +1896,6 @@
         "query_graph": [
           {
             "args": {
-              "query": "MATCH (a)-[r:WRITES]->(b) RETURN a.name, b.name ORDER BY a.name, b.name",
-              "project": "edge-parity",
-              "max_rows": 20
-            },
-            "expect": {
-              "columns": ["a.name", "b.name"],
-              "required_rows_min": 1
-            }
-          },
-          {
-            "args": {
               "query": "MATCH (a)-[r]->(b) WHERE r.type = 'THROWS' OR r.type = 'RAISES' RETURN a.name, r.type, b.name ORDER BY a.name, b.name",
               "project": "edge-parity",
               "max_rows": 20

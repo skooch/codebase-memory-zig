@@ -1329,17 +1329,6 @@ fn resolveExtractions(
             }
         }
 
-        for (extraction.unresolved_writes) |write| {
-            const writer_node = gb.findNodeById(write.writer_id) orelse continue;
-            if (reg.resolve(write.var_name, write.writer_id, writer_node.file_path, null)) |res| {
-                if (gb.findNodeByQualifiedName(res.qualified_name)) |target| {
-                    if (target.id != write.writer_id) {
-                        try insertResolvedEdge(gb, write.writer_id, target.id, "WRITES");
-                    }
-                }
-            }
-        }
-
         for (extraction.unresolved_throws) |throw_item| {
             const thrower_node = gb.findNodeById(throw_item.thrower_id) orelse continue;
             if (reg.resolve(throw_item.exception_name, throw_item.thrower_id, thrower_node.file_path, null)) |res| {

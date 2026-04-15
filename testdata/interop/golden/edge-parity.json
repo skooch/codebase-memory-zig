@@ -1,0 +1,85 @@
+{
+  "delete_project": [],
+  "detect_changes_count": 0,
+  "fixture_id": "edge-parity",
+  "get_architecture": [],
+  "get_code_snippet": [],
+  "get_graph_schema": [],
+  "index_repository": {
+    "edges_actual": 20,
+    "edges_min": 15,
+    "nodes_actual": 14,
+    "nodes_min": 10
+  },
+  "index_status": [],
+  "list_projects": [
+    "edge-parity"
+  ],
+  "manage_adr": [],
+  "query_graph": [
+    {
+      "columns": [
+        "a.name",
+        "r.type",
+        "b.name"
+      ],
+      "rows": [
+        [
+          "validate",
+          "RAISES",
+          "ValidationError"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "n.name"
+      ],
+      "rows": [
+        [
+          "build_config"
+        ],
+        [
+          "process"
+        ],
+        [
+          "update_config"
+        ],
+        [
+          "validate"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "n.name"
+      ],
+      "rows": [
+        [
+          "Config"
+        ],
+        [
+          "ValidationError"
+        ]
+      ]
+    }
+  ],
+  "search_code": [],
+  "search_graph": [],
+  "tools_list": [
+    "delete_project",
+    "detect_changes",
+    "get_architecture",
+    "get_code_snippet",
+    "get_graph_schema",
+    "index_repository",
+    "index_status",
+    "list_projects",
+    "manage_adr",
+    "query_graph",
+    "search_code",
+    "search_graph",
+    "trace_call_path"
+  ],
+  "trace_call_path": []
+}

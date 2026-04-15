@@ -22,7 +22,7 @@
   - No active implementation phase remains in this plan; future work is now optional follow-on backlog rather than in-plan required work.
 
 ### Phase 2: Core Graph and Query Substrate
-- **Status:** in progress
+- **Status:** complete
 - Actions:
   - Re-read the current `Store`, `GraphBuffer`, `Registry`, `Pipeline`, and MCP tool handlers to compare the planned substrate backlog against what the repository already implements.
   - Confirmed that basic project/node/edge CRUD, schema summaries, graph-buffer deduplication, and registry-backed resolution are already present, so the first substrate slice should target reusable traversal behavior rather than redoing existing primitives.

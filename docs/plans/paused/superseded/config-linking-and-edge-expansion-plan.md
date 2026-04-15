@@ -1,14 +1,20 @@
 # Plan: Config Linking And Edge Expansion
 
+## Status
+Paused on 2026-04-15. This narrower config/edge plan is superseded by
+`docs/plans/new/graph-model-parity-plan.md`, which keeps config normalization,
+route graph completion, and remaining graph-model edge families in one
+fixture-backed execution order.
+
 ## Goal
 Expand the Zig graph beyond the completed shared `CONFIGURES`, `WRITES`, and `USES_TYPE` slice into the original's broader config-linking and long-tail edge vocabulary.
 
 ## Current Phase
-Phase 1
+Paused / superseded
 
 ## File Map
-- Modify: `docs/plans/new/config-linking-and-edge-expansion-plan.md`
-- Create: `docs/plans/new/config-linking-and-edge-expansion-progress.md`
+- Modify: `docs/plans/paused/superseded/config-linking-and-edge-expansion-plan.md`
+- Create: `docs/plans/paused/superseded/config-linking-and-edge-expansion-progress.md`
 - Modify: `docs/port-comparison.md`
 - Modify: `docs/gap-analysis.md`
 - Modify: `src/extractor.zig`
@@ -25,7 +31,7 @@ Phase 1
 ### Phase 1: Lock the Long-Tail Edge Contract
 - [ ] Re-read the original config-linking and richer-edge passes and capture the still-missing edge families in `docs/gap-analysis.md`.
 - [ ] Add local config and code fixtures in `testdata/interop/config-linking/` that exercise the next unported config-link and edge cases.
-- [ ] Record the targeted Cypher queries and verification commands in `docs/plans/new/config-linking-and-edge-expansion-progress.md`.
+- [ ] Record the targeted Cypher queries and verification commands in `docs/plans/paused/superseded/config-linking-and-edge-expansion-progress.md`.
 - **Status:** pending
 
 ### Phase 2: Implement Broader Edge Extraction
@@ -37,7 +43,7 @@ Phase 1
 ### Phase 3: Verify and Reclassify
 - [ ] Run `zig build`, `zig build test`, and the expanded interop harness until the newly targeted edge rows are stable.
 - [ ] Update `docs/port-comparison.md` so the richer-edge rows move only as far as the new explicit evidence justifies.
-- [ ] Record the remaining long-tail edge backlog after the completed tranche in `docs/plans/new/config-linking-and-edge-expansion-progress.md`.
+- [ ] Record the remaining long-tail edge backlog after the completed tranche in `docs/plans/paused/superseded/config-linking-and-edge-expansion-progress.md`.
 - **Status:** pending
 
 ## Decisions

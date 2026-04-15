@@ -1,7 +1,7 @@
 # A15: CI Interop Testing Gaps
 
 **Origin:** Architecture review issue A15 + interop testing review (2026-04-12)
-**Status:** New
+**Status:** Complete
 **Size:** L (7 phases, individually S-M)
 **Source:** `docs/interop-testing-review.md`
 
@@ -34,7 +34,7 @@ The interop harness infrastructure is well-architected (three-mode design, canon
 
 ---
 
-## Phase 1: Quick wins [S] — status: pending
+## Phase 1: Quick wins [S] — status: completed
 
 No functional risk. Independent changes.
 
@@ -42,12 +42,12 @@ No functional risk. Independent changes.
 
 In `.github/workflows/interop-nightly.yml`, remove `continue-on-error: true` from lines 51 and 57 (the "Run full interop comparison" and "Run full CLI parity comparison" steps).
 
-- [ ] Remove `continue-on-error: true` from interop comparison step (line 51)
-- [ ] Remove `continue-on-error: true` from CLI parity step (line 57)
+- [x] Remove `continue-on-error: true` from interop comparison step (line 51)
+- [x] Remove `continue-on-error: true` from CLI parity step (line 57)
 
 ### 1b. Fix cli_parity.sh permissions (I13)
 
-- [ ] `chmod +x scripts/run_cli_parity.sh`
+- [x] `chmod +x scripts/run_cli_parity.sh`
 
 ### 1c. Update SHARED_PROGRESS_PHASES (I5)
 
@@ -56,17 +56,17 @@ In `scripts/run_interop_alignment.sh`, update the `SHARED_PROGRESS_PHASES` tuple
 Current phases checked: [1/9], [2/9], [3/9], [4/9], [9/9]
 Missing phases emitted by Zig (`src/main.zig:364-366`): [5/9] "Detecting tests", [7/9] "Analyzing git history", [8/9] "Linking config files". No [6/9] exists.
 
-- [ ] Add `"[5/9] Detecting tests"`, `"[7/9] Analyzing git history"`, `"[8/9] Linking config files"` to `SHARED_PROGRESS_PHASES`
-- [ ] Update `canonical_progress_lines` to also match `[5/9]`, `[7/9]`, `[8/9]` prefixes
-- [ ] Add comment documenting that [6/9] is intentionally absent
+- [x] Add `"[5/9] Detecting tests"`, `"[7/9] Analyzing git history"`, `"[8/9] Linking config files"` to `SHARED_PROGRESS_PHASES`
+- [x] Update `canonical_progress_lines` to also match `[5/9]`, `[7/9]`, `[8/9]` prefixes
+- [x] Add comment documenting that [6/9] is intentionally absent
 
 ### 1d. Document search_graph parameter translation (I8)
 
-- [ ] Add a comment in `build_requests` (line 641) explaining that `label` is translated to `label_pattern` for Zig because the APIs differ, and that this means comparison is assertion-level, not output-level, for `search_graph`
+- [x] Add a comment in `build_requests` (line 641) explaining that `label` is translated to `label_pattern` for Zig because the APIs differ, and that this means comparison is assertion-level, not output-level, for `search_graph`
 
 ---
 
-## Phase 2: Tighten existing assertions [S] — status: pending
+## Phase 2: Tighten existing assertions [S] — status: completed
 
 Manifest-only changes. No harness code changes needed.
 
@@ -87,10 +87,10 @@ becomes:
 
 Same change for **javascript-parity** (line ~1012) and **typescript-parity** (line ~1264) and **rust-parity** (line ~1571).
 
-- [ ] python-parity: add `"changed_count": 0` to detect_changes expect
-- [ ] javascript-parity: add `"changed_count": 0` to detect_changes expect
-- [ ] typescript-parity: add `"changed_count": 0` to detect_changes expect
-- [ ] rust-parity: add `"changed_count": 0` to detect_changes expect
+- [x] python-parity: add `"changed_count": 0` to detect_changes expect
+- [x] javascript-parity: add `"changed_count": 0` to detect_changes expect
+- [x] typescript-parity: add `"changed_count": 0` to detect_changes expect
+- [x] rust-parity: add `"changed_count": 0` to detect_changes expect
 
 ### 2b. Add required_rows_min to query_graph assertions (I7)
 
@@ -132,21 +132,21 @@ Leave untouched: [3] IMPLEMENTS, [4] WRITES, [5] USES_TYPE, [6] Variable names (
 
 Leave untouched: [5] USES_TYPE (empty)
 
-- [ ] python-parity: add required_rows_min to 7 query_graph assertions
-- [ ] javascript-parity: add required_rows_min to 3 query_graph assertions
-- [ ] typescript-parity: add required_rows_min to 3 query_graph assertions
-- [ ] rust-parity: add required_rows_min to 7 query_graph assertions
+- [x] python-parity: add required_rows_min to 7 query_graph assertions
+- [x] javascript-parity: add required_rows_min to 3 query_graph assertions
+- [x] typescript-parity: add required_rows_min to 3 query_graph assertions
+- [x] rust-parity: add required_rows_min to 7 query_graph assertions
 
 ### 2c. Regenerate golden snapshots
 
 After manifest changes, golden snapshots must be regenerated since detect_changes assertion behavior doesn't affect golden content, but we should verify nothing breaks.
 
-- [ ] Run `bash scripts/run_interop_alignment.sh --zig-only` and confirm all 11 fixtures pass
-- [ ] If any fail, investigate before proceeding
+- [x] Run `bash scripts/run_interop_alignment.sh --zig-only` and confirm all 11 fixtures pass
+- [x] If any fail, investigate before proceeding
 
 ---
 
-## Phase 3: Add 4 uncovered tools to harness + manifest [M] — status: pending
+## Phase 3: Add 4 uncovered tools to harness + manifest [M] — status: completed
 
 This is the highest-impact phase. Requires both harness code changes and manifest entries. The 4 uncovered tools are: `get_code_snippet`, `get_graph_schema`, `index_status`, `delete_project`.
 
@@ -166,16 +166,16 @@ For each tool, add:
 
 **delete_project**: Stateful. Must be called LAST in the request sequence (after `list_projects`). Assert return status, then optionally verify `list_projects` no longer contains the project. Add as the final request in `build_requests`.
 
-- [ ] Add `canonical_graph_schema` function (sort labels and edge types)
-- [ ] Add `canonical_code_snippet` function (normalize paths in response)
-- [ ] Add `build_requests` loop for `get_graph_schema` assertions
-- [ ] Add `build_requests` loop for `get_code_snippet` assertions
-- [ ] Add `build_requests` loop for `index_status` assertions (after index_repository)
-- [ ] Add `build_requests` entry for `delete_project` (after list_projects, at end of sequence)
-- [ ] Add `check_assertions` handlers for all 4 tools
-- [ ] Add `build_golden_snapshot` entries for all 4 tools
-- [ ] Add `compare_golden_snapshot` entries with diff detail for all 4 tools
-- [ ] Add compare-mode comparison blocks for all 4 tools in `run_compare_mode`
+- [x] Add `canonical_graph_schema` function (sort labels and edge types)
+- [x] Add `canonical_code_snippet` function (normalize paths in response)
+- [x] Add `build_requests` loop for `get_graph_schema` assertions
+- [x] Add `build_requests` loop for `get_code_snippet` assertions
+- [x] Add `build_requests` loop for `index_status` assertions (after index_repository)
+- [x] Add `build_requests` entry for `delete_project` (after list_projects, at end of sequence)
+- [x] Add `check_assertions` handlers for all 4 tools
+- [x] Add `build_golden_snapshot` entries for all 4 tools
+- [x] Add `compare_golden_snapshot` entries with diff detail for all 4 tools
+- [x] Add compare-mode comparison blocks for all 4 tools in `run_compare_mode`
 
 ### 3b. Manifest assertions in python-parity
 
@@ -225,21 +225,21 @@ Add assertions to the `python-parity` fixture (most comprehensive, best candidat
 }]
 ```
 
-- [ ] Add `get_graph_schema` assertion to python-parity in manifest
-- [ ] Add `get_code_snippet` assertion to python-parity in manifest
-- [ ] Add `index_status` assertion to python-parity in manifest
-- [ ] Add `delete_project` assertion to python-parity in manifest
-- [ ] Add `get_graph_schema`, `get_code_snippet`, `index_status`, `delete_project` to python-parity `scope_tools`
+- [x] Add `get_graph_schema` assertion to python-parity in manifest
+- [x] Add `get_code_snippet` assertion to python-parity in manifest
+- [x] Add `index_status` assertion to python-parity in manifest
+- [x] Add `delete_project` assertion to python-parity in manifest
+- [x] Add `get_graph_schema`, `get_code_snippet`, `index_status`, `delete_project` to python-parity `scope_tools`
 
 ### 3c. Verify and regenerate golden snapshots
 
-- [ ] Run `bash scripts/run_interop_alignment.sh --update-golden`
-- [ ] Run `bash scripts/run_interop_alignment.sh --zig-only` and confirm all fixtures pass
-- [ ] Verify the new python-parity golden snapshot contains entries for the 4 new tools
+- [x] Run `bash scripts/run_interop_alignment.sh --update-golden`
+- [x] Run `bash scripts/run_interop_alignment.sh --zig-only` and confirm all fixtures pass
+- [x] Verify the new python-parity golden snapshot contains entries for the 4 new tools
 
 ---
 
-## Phase 4: Wire SCIP fixture [S] — status: pending
+## Phase 4: Wire SCIP fixture [S] — status: completed
 
 The fixture directory `testdata/interop/scip/` already exists with `src/main.ts` and `.codebase-memory/scip.json` (defines `renderMessage` and `run` symbols via SCIP overlay).
 
@@ -275,13 +275,13 @@ The fixture directory `testdata/interop/scip/` already exists with `src/main.ts`
 }
 ```
 
-- [ ] Add scip fixture entry to manifest.json
-- [ ] Run `bash scripts/run_interop_alignment.sh --update-golden` to generate `testdata/interop/golden/scip.json`
-- [ ] Run `bash scripts/run_interop_alignment.sh --zig-only` and confirm scip passes
+- [x] Add scip fixture entry to manifest.json
+- [x] Run `bash scripts/run_interop_alignment.sh --update-golden` to generate `testdata/interop/golden/scip.json`
+- [x] Run `bash scripts/run_interop_alignment.sh --zig-only` and confirm scip passes
 
 ---
 
-## Phase 5: New language fixtures [M] — status: pending
+## Phase 5: New language fixtures [M] — status: completed
 
 ### 5a. Create Go fixtures
 
@@ -346,12 +346,12 @@ go 1.21
 
 Manifest assertions for each: `index_repository`, `search_graph` (Function, Class/struct, Interface), `query_graph` (CALLS, DEFINES_METHOD), `trace_call_path`, `list_projects`.
 
-- [ ] Create `testdata/interop/go-basic/main.go`
-- [ ] Create `testdata/interop/go-parity/main.go` and `go.mod`
-- [ ] Add `go-basic` fixture to manifest with assertions
-- [ ] Add `go-parity` fixture to manifest with assertions
-- [ ] Generate golden snapshots for both Go fixtures
-- [ ] Verify `--zig-only` passes for both
+- [x] Create `testdata/interop/go-basic/main.go`
+- [x] Create `testdata/interop/go-parity/main.go` and `go.mod`
+- [x] Add `go-basic` fixture to manifest with assertions
+- [x] Add `go-parity` fixture to manifest with assertions
+- [x] Generate golden snapshots for both Go fixtures
+- [x] Verify `--zig-only` passes for both
 
 ### 5b. Create zig-parity fixture
 
@@ -388,14 +388,14 @@ test "config defaults" {
 }
 ```
 
-- [ ] Create `testdata/interop/zig-parity/main.zig`
-- [ ] Add `zig-parity` fixture to manifest with assertions (search_graph for Function/Class, query_graph for DEFINES_METHOD, trace_call_path)
-- [ ] Generate golden snapshot
-- [ ] Verify `--zig-only` passes
+- [x] Create `testdata/interop/zig-parity/main.zig`
+- [x] Add `zig-parity` fixture to manifest with assertions (search_graph for Function/Class, query_graph for DEFINES_METHOD, trace_call_path)
+- [x] Generate golden snapshot
+- [x] Verify `--zig-only` passes
 
 ---
 
-## Phase 6: Golden comparison improvements [S] — status: pending
+## Phase 6: Golden comparison improvements [S] — status: completed
 
 ### 6a. Add diff detail to golden comparison (I9)
 
@@ -405,22 +405,22 @@ In `compare_golden_snapshot` (line 1009-1145 of `scripts/run_interop_alignment.s
 **trace_call_path**: Compare edge lists, show added/removed `(source, target, type)` tuples.
 **get_architecture**: Compare `node_labels` and `edge_types` lists, show added/removed.
 
-- [ ] Add diff detail to `search_code` comparison in `compare_golden_snapshot`
-- [ ] Add diff detail to `trace_call_path` comparison
-- [ ] Add diff detail to `get_architecture` comparison
-- [ ] Add diff detail to `manage_adr` comparison
+- [x] Add diff detail to `search_code` comparison in `compare_golden_snapshot`
+- [x] Add diff detail to `trace_call_path` comparison
+- [x] Add diff detail to `get_architecture` comparison
+- [x] Add diff detail to `manage_adr` comparison
 
 ### 6b. Store actual index counts in golden (I12)
 
 In `build_golden_snapshot` (line 999-1004), store actual `nodes` and `edges` counts from the Zig output alongside the manifest thresholds. In `compare_golden_snapshot`, alert if actual counts drop by more than 20% from the golden values.
 
-- [ ] Modify `build_golden_snapshot` to store `nodes_actual` and `edges_actual`
-- [ ] Modify `compare_golden_snapshot` to check actual counts against golden with 20% tolerance
-- [ ] Regenerate golden snapshots to include actual counts
+- [x] Modify `build_golden_snapshot` to store `nodes_actual` and `edges_actual`
+- [x] Modify `compare_golden_snapshot` to check actual counts against golden with 20% tolerance
+- [x] Regenerate golden snapshots to include actual counts
 
 ---
 
-## Phase 7: Error-path fixture [M] — status: pending
+## Phase 7: Error-path fixture [M] — status: completed
 
 ### 7a. Harness support for error assertions
 
@@ -432,8 +432,8 @@ The current harness only tests happy paths. Error-path testing requires:
 
 Add an `"expect_error"` field to the assertion schema. When present, `check_assertions` verifies the response contains `"error"` in the JSON-RPC envelope rather than `"result"`.
 
-- [ ] Add `expect_error` handling to `extract_tool_payload` and `check_assertions`
-- [ ] Add error response to `build_golden_snapshot` and `compare_golden_snapshot`
+- [x] Add `expect_error` handling to `extract_tool_payload` and `check_assertions`
+- [x] Add error response to `build_golden_snapshot` and `compare_golden_snapshot`
 
 ### 7b. Create error-paths fixture
 
@@ -443,10 +443,10 @@ A minimal fixture with a single source file, plus assertions that exercise error
 - `get_code_snippet` with a non-existent `qualified_name`
 - `search_graph` on a non-existent project (before indexing a different name)
 
-- [ ] Create `testdata/interop/error-paths/main.py` (minimal file)
-- [ ] Add `error-paths` fixture to manifest with error assertions
-- [ ] Generate golden snapshot
-- [ ] Verify `--zig-only` passes
+- [x] Create `testdata/interop/error-paths/main.py` (minimal file)
+- [x] Add `error-paths` fixture to manifest with error assertions
+- [x] Generate golden snapshot
+- [x] Verify `--zig-only` passes
 
 ---
 
@@ -454,7 +454,7 @@ A minimal fixture with a single source file, plus assertions that exercise error
 
 After all phases:
 
-- [ ] `bash scripts/run_interop_alignment.sh --zig-only` — all fixtures pass (including new ones)
-- [ ] `bash scripts/run_cli_parity.sh --zig-only` — passes
-- [ ] `zig build test` — unit tests still pass
-- [ ] Push to branch and verify CI passes (ci.yml)
+- [x] `bash scripts/run_interop_alignment.sh --zig-only` — all fixtures pass (including new ones)
+- [x] `bash scripts/run_cli_parity.sh --zig-only` — passes
+- [x] `zig build test` — unit tests still pass
+- [x] Push to branch and verify CI passes (ci.yml)

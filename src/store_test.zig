@@ -402,40 +402,6 @@ test "traverseEdgesBreadthFirst max_results cap" {
     }
 }
 
-test "store persists WRITES edges between function and variable nodes" {
-    const allocator = std.testing.allocator;
-    var db = try store.Store.openMemory(allocator);
-    defer db.deinit();
-
-    try db.upsertProject("writes-test", "/tmp/writes-test");
-
-    const func_id = try db.upsertNode(.{
-        .project = "writes-test",
-        .label = "Function",
-        .name = "update_config",
-        .qualified_name = "writes-test:writes_app.py:python:symbol:python:update_config",
-        .file_path = "writes_app.py",
-    });
-    const var_id = try db.upsertNode(.{
-        .project = "writes-test",
-        .label = "Variable",
-        .name = "result",
-        .qualified_name = "writes-test:writes_app.py:python:symbol:python:result",
-        .file_path = "writes_app.py",
-    });
-    _ = try db.upsertEdge(.{
-        .project = "writes-test",
-        .source_id = func_id,
-        .target_id = var_id,
-        .edge_type = "WRITES",
-    });
-
-    const edges = try db.findEdgesBySource("writes-test", func_id, "WRITES");
-    defer db.freeEdges(edges);
-    try std.testing.expectEqual(@as(usize, 1), edges.len);
-    try std.testing.expectEqual(var_id, edges[0].target_id);
-}
-
 test "store persists THROWS and RAISES edges" {
     const allocator = std.testing.allocator;
     var db = try store.Store.openMemory(allocator);

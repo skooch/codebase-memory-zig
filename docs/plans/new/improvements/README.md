@@ -13,6 +13,10 @@ This directory turns the upstream `codebase-memory-mcp` issue and PR review into
   - recurring feature-request clusters
   - large unmerged expansion PRs that reveal sustained product pressure
 
+These plans are upstream-improvement backlog, not the current parity execution
+entrypoint. The active graph-model parity planning entrypoint is
+[graph-model-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/graph-model-parity-plan.md).
+
 ## Plan Index
 
 - [parser-accuracy-and-graph-fidelity-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/parser-accuracy-and-graph-fidelity-improvements-plan.md)

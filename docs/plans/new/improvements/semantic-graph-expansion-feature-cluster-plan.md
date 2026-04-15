@@ -1,5 +1,10 @@
 # Plan: Semantic Graph Expansion Feature Cluster
 
+## Status
+Backlog improvement cluster. For the current original-project graph-model parity
+work, use `docs/plans/new/graph-model-parity-plan.md`; this plan remains as
+the broader upstream feature-pressure inventory for later semantic expansion.
+
 ## Goal
 Sequence the upstream pressure for richer graph semantics into a substrate-first Zig roadmap that grows route, protocol, trace, and higher-order analysis features only after the underlying graph facts are stable.
 

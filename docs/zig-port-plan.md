@@ -547,7 +547,7 @@ Current state: the end-to-end vertical slice is working with parser-backed defin
 
 - [ ] Port `cypher/` lexer + parser + executor
 - [x] Port `mcp/` JSON-RPC server (stdio transport)
-- [ ] Wire up all MCP tools: `search_graph`, `query_graph`, `get_code_snippet`, `trace_call_path`, etc.
+- [x] Wire up the overlapping MCP tools: `search_graph`, `query_graph`, `get_code_snippet`, `trace_call_path`, etc.
 - [x] Port `watcher/` for auto-reindex
 - [x] Exit criterion: can run as MCP server, index a repo, answer queries via Claude Code
 Current state: the broader daily-use MCP surface is now live, the runtime uses a persistent store, and watcher-backed auto-index / auto-reindex is wired into the long-running server path. Remaining M2 work is fuller Cypher parity and other long-tail follow-ons beyond the current supported subset.
@@ -564,11 +564,12 @@ Current state: the broader daily-use MCP surface is now live, the runtime uses a
 ### M4 Checklist
 
 - [x] Incremental re-indexing
-- [ ] Git history pass (change coupling)
-- [ ] Route node creation
-- [ ] Test tagging
-- [ ] Config-code linking
+- [x] Git history pass (change coupling)
+- [ ] Route node creation and handler/data-flow links (partial: stub `Route` nodes from `HTTP_CALLS` / `ASYNC_CALLS` are implemented)
+- [x] Test tagging
+- [ ] Config-code linking (partial: key-symbol and dependency-import strategies are implemented)
 - [ ] Decorator enrichment
+Current state: M4 is no longer a blank backlog. Git-history coupling, test tagging, route stubs, service-pattern call classification, partial config linking, and long-tail `THROWS` / `RAISES` edges are implemented. The active graph-model parity entrypoint is [graph-model-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/graph-model-parity-plan.md), which tracks the remaining route handler, `HANDLES`, route-linked `DATA_FLOWS`, decorator route, and config-normalization work.
 
 ## Completion Summary
 
@@ -588,7 +589,7 @@ Deferred or optional follow-on implementation slices:
 - Remaining M3:
   - memory/performance parity work
 - Remaining M4:
-  - history/enrichment features
+  - graph-model parity: route handler association, route-linked data flow, decorator route extraction, and full config normalization
 
 ## 9. Post-Readiness Execution Plan
 

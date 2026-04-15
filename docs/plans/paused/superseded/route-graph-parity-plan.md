@@ -1,14 +1,20 @@
 # Plan: Route Graph Parity
 
+## Status
+Paused on 2026-04-15. This narrower route-only plan is superseded by
+`docs/plans/new/graph-model-parity-plan.md`, which combines the remaining
+route, config-linking, route-linked data-flow, and semantic-edge work into one
+dependency-ordered graph-model parity tranche.
+
 ## Goal
 Implement the original route and cross-service graph layer so the Zig port can model `Route`, `HTTP_CALLS`, `ASYNC_CALLS`, and related handler relationships.
 
 ## Current Phase
-Phase 1
+Paused / superseded
 
 ## File Map
-- Modify: `docs/plans/new/route-graph-parity-plan.md`
-- Create: `docs/plans/new/route-graph-parity-progress.md`
+- Modify: `docs/plans/paused/superseded/route-graph-parity-plan.md`
+- Create: `docs/plans/paused/superseded/route-graph-parity-progress.md`
 - Modify: `docs/port-comparison.md`
 - Modify: `docs/gap-analysis.md`
 - Create: `src/routes.zig`
@@ -25,7 +31,7 @@ Phase 1
 ### Phase 1: Lock the Route Contract
 - [ ] Re-read the original route-node and cross-service passes and capture the overlapping route graph contract in `docs/gap-analysis.md`.
 - [ ] Add local JavaScript and Python route fixtures in `testdata/interop/routes/` so route extraction can be verified without external services.
-- [ ] Record the expected node and edge queries plus verification commands in `docs/plans/new/route-graph-parity-progress.md`.
+- [ ] Record the expected node and edge queries plus verification commands in `docs/plans/paused/superseded/route-graph-parity-progress.md`.
 - **Status:** pending
 
 ### Phase 2: Implement Route Graph Extraction
@@ -37,7 +43,7 @@ Phase 1
 ### Phase 3: Verify and Reclassify
 - [ ] Run `zig build`, `zig build test`, and route-graph fixture queries until the supported route rows are stable.
 - [ ] Update `docs/port-comparison.md` so the route-graph rows move out of `Deferred` only after the local fixtures prove them.
-- [ ] Record supported frameworks and deferred framework gaps in `docs/plans/new/route-graph-parity-progress.md`.
+- [ ] Record supported frameworks and deferred framework gaps in `docs/plans/paused/superseded/route-graph-parity-progress.md`.
 - **Status:** pending
 
 ## Decisions

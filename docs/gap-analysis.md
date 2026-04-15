@@ -80,7 +80,7 @@ Completed in Plan 03:
 - Advanced trace parity: modes (calls/data_flow/cross_service), multi-edge-type BFS, risk labels, test-file filtering, function_name alias, structured callees/callers response format.
 
 Completed in Plan 05:
-- Long-tail edge parity: `WRITES` edges from assignments (all target languages), `THROWS`/`RAISES` edges from throw statements (JS/TS/TSX). Verified end-to-end on the edge-parity fixture with WRITES resolving module-level variables and RAISES resolving custom error classes. Out-of-scope edges: `OVERRIDE` (Go-only), `CONTAINS_PACKAGE` (never implemented in C), `READS` (not extracted in C either).
+- Long-tail edge parity: `THROWS`/`RAISES` edges from throw statements (JS/TS/TSX). Verified end-to-end on the edge-parity fixture with RAISES resolving custom error classes. Out-of-scope edges: `OVERRIDE` (Go-only), `CONTAINS_PACKAGE` (never implemented in C), `WRITES` and `READS` (not proven original-overlap by the current C reference fixture).
 
 ## Shared Capability Full-Parity Follow-On
 
@@ -94,7 +94,7 @@ The remaining shared capabilities that still exist in both implementations witho
 | Call resolution | Zig misses some shared alias-heavy and suffix-heavy cases | The Zig pipeline resolves the same overlapping call edges as the original on parity fixtures with aliasing and cross-file imports | `src/registry.zig`, `src/pipeline.zig` | Pipeline tests plus interop trace/search assertions |
 | Usage / type-reference edges | Zig has useful `USAGE` output but not full shared parity | The Zig graph emits the same overlapping usage and type-reference facts as the original where both implementations already model them | `src/extractor.zig`, `src/pipeline.zig`, `src/store.zig` | Pipeline/store tests plus parity fixture graph queries |
 | Semantic edges | Zig covers a narrower semantic slice | The Zig graph emits the same overlapping `INHERITS`, `IMPLEMENTS`, and `DECORATES` facts as the original on shared target-language fixture cases | `src/extractor.zig`, `src/pipeline.zig`, `src/store.zig` | Pipeline tests plus parity fixture graph queries |
-| `CONFIGURES` / `WRITES` / `USES_TYPE` | `WRITES` now implemented for assignment-based variable access; `CONFIGURES` and `USES_TYPE` at shared-fixture parity | The Zig graph emits the same overlapping edge families, target resolution, and retained metadata as the original on parity fixtures that exercise config files, variable writes, and type references | `src/extractor.zig`, `src/pipeline.zig`, `src/graph_buffer.zig`, `src/store.zig` | Parity fixtures plus interop graph/query comparisons |
+| `CONFIGURES` / `USES_TYPE` | `CONFIGURES` and `USES_TYPE` are at shared-fixture parity; `WRITES` is not currently proven original-overlap by the C reference fixture | The Zig graph emits the same overlapping edge families, target resolution, and retained metadata as the original on parity fixtures that exercise config files and type references | `src/extractor.zig`, `src/pipeline.zig`, `src/graph_buffer.zig`, `src/store.zig` | Parity fixtures plus interop graph/query comparisons |
 | `THROWS` / `RAISES` | Zig now extracts throw/raise edges for JS/TS/TSX | The Zig graph emits `THROWS` and `RAISES` edges from throw statements with the same checked/unchecked classification heuristic as the original | `src/extractor.zig`, `src/pipeline.zig` | Edge-parity fixture plus store tests |
 | `install`, `uninstall`, `update` | Zig implements the commands with a narrower source-build workflow | The Zig CLI matches the original overlapping behavior for shared agent targets, config persistence, reporting, and reversible filesystem changes in temp-HOME tests | `src/cli.zig`, `src/main.zig` | Temp-HOME command parity checks against both CLIs |
 | Auto-detected agent integrations | Zig detects only Codex CLI and Claude Code | The Zig CLI auto-detects every shared agent target it claims to support in the same environments and reports the same selection behavior as the original | `src/cli.zig` | Temp-HOME detection matrix tests plus CLI output comparison |
@@ -125,10 +125,11 @@ Deferred or optional future slices:
   - deeper usage/type-ref extraction parity beyond the current daily-use slice
 - Metadata and enrichment:
   - git-history coupling — now implemented (subprocess `git log`, `FILE_CHANGES_WITH` edges)
-  - long-tail edges — now implemented: `WRITES` (assignment-based), `THROWS`/`RAISES` (JS/TS/TSX throw statements); remaining gaps: `OVERRIDE` (Go-only, out of scope), `READS` (not extracted in C either), `HANDLES`/`DATA_FLOWS` (deferred route-graph)
+  - long-tail edges — now implemented: `THROWS`/`RAISES` (JS/TS/TSX throw statements); remaining or out-of-scope gaps: `OVERRIDE` (Go-only), `WRITES`/`READS` (not proven original-overlap by the current C reference fixture), `HANDLES`/`DATA_FLOWS` (deferred route-graph)
   - route nodes — partially implemented (stub `Route` nodes from `HTTP_CALLS`/`ASYNC_CALLS` edges; no `HANDLES` or `DATA_FLOWS` yet)
   - config-linking — partially implemented (Strategy 1 key-symbol + Strategy 2 dependency-import; full config normalization surface not yet ported)
   - richer decorator/enrichment promotion
+  - current entrypoint: [graph-model-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/graph-model-parity-plan.md)
 - Productization beyond the current contract:
   - broader installer/self-update behavior
   - broader agent integration coverage and installer diagnostics

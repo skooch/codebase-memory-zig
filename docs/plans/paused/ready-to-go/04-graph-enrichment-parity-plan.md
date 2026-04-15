@@ -1,14 +1,20 @@
 # Plan: Graph Enrichment Parity
 
+## Status
+Paused on 2026-04-15. This bundled enrichment plan is superseded by
+`docs/plans/new/graph-model-parity-plan.md`. Its git-history slice is already
+implemented; the remaining route/config/semantic graph work is now tracked in
+the graph-model parity plan with narrower acceptance gates.
+
 ## Goal
 Close the most visible graph-model gaps after tracing by adding the shared route, config-link, and git-history-derived enrichment layers that make the original feel broader than the current Zig graph.
 
 ## Current Phase
-Phase 1
+Paused / superseded
 
 ## File Map
-- Modify: `docs/plans/new/ready-to-go/04-graph-enrichment-parity-plan.md`
-- Create: `docs/plans/new/ready-to-go/04-graph-enrichment-parity-progress.md`
+- Modify: `docs/plans/paused/ready-to-go/04-graph-enrichment-parity-plan.md`
+- Create: `docs/plans/paused/ready-to-go/04-graph-enrichment-parity-progress.md`
 - Modify: `docs/port-comparison.md`
 - Modify: `docs/gap-analysis.md`
 - Modify: `src/pipeline.zig`
@@ -23,7 +29,7 @@ Phase 1
 
 ### Phase 1: Lock the Enrichment Contract
 - [ ] Re-read the original route-node, config-link, and git-history-derived enrichment behavior and capture the overlapping graph expectations in `docs/gap-analysis.md`.
-- [ ] Define the shared route, config-link, and git-history verification workflow in `docs/plans/new/ready-to-go/04-graph-enrichment-parity-progress.md`.
+- [ ] Define the shared route, config-link, and git-history verification workflow in `docs/plans/paused/ready-to-go/04-graph-enrichment-parity-progress.md`.
 - [ ] Add local fixtures under `testdata/interop/graph-enrichment/` so enrichment behavior can be tested end to end without relying on a live external repository.
 - **Status:** pending
 
@@ -36,7 +42,7 @@ Phase 1
 ### Phase 3: Verify And Reclassify
 - [ ] Run `zig build`, `zig build test`, and the enrichment interop fixture checks until the shared route, config-link, and git-history rows are stable.
 - [ ] Update `docs/port-comparison.md` so the graph-enrichment rows move out of `Deferred` only after the shared overlap is green.
-- [ ] Record the final verification transcript and any intentionally unsupported enrichment cases in `docs/plans/new/ready-to-go/04-graph-enrichment-parity-progress.md`.
+- [ ] Record the final verification transcript and any intentionally unsupported enrichment cases in `docs/plans/paused/ready-to-go/04-graph-enrichment-parity-progress.md`.
 - **Status:** pending
 
 ## Decisions
