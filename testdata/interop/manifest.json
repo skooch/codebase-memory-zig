@@ -1834,6 +1834,42 @@
       }
     },
     {
+      "id": "graph-model-routes",
+      "path": "testdata/interop/graph-model/routes",
+      "project": "routes",
+      "language": "python",
+      "scope_tools": ["index_repository", "query_graph", "list_projects"],
+      "assertions": {
+        "index_repository": {
+          "expect": { "nodes_min": 5, "edges_min": 4 }
+        },
+        "query_graph": [
+          {
+            "args": {
+              "query": "MATCH (n) WHERE n.label = 'Route' RETURN n.name ORDER BY n.name ASC",
+              "project": "routes",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["n.name"],
+              "required_rows": [["/users"]]
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:HANDLES]->(b) RETURN a.name, b.name ORDER BY a.name, b.name",
+              "project": "routes",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["a.name", "b.name"],
+              "required_rows": [["list_users", "/users"]]
+            }
+          }
+        ]
+      }
+    },
+    {
       "id": "graph-enrichment-config-deps",
       "path": "testdata/interop/graph-enrichment/config-deps",
       "project": "graph-enrichment-config-deps",

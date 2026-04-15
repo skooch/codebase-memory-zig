@@ -2,7 +2,7 @@
 
 ## Status
 Paused on 2026-04-15. This narrower route-only plan is superseded by
-`docs/plans/new/graph-model-parity-plan.md`, which combines the remaining
+`docs/plans/in-progress/graph-model-parity-plan.md`, which combines the remaining
 route, config-linking, route-linked data-flow, and semantic-edge work into one
 dependency-ordered graph-model parity tranche.
 

@@ -209,3 +209,61 @@ pub fn httpMethod(qualified_name: []const u8) ?[]const u8 {
     }
     return null;
 }
+
+/// Infer an HTTP method from a framework route-registration call target.
+///
+/// This is for router APIs such as `app.get`, `router.post`, `mux.HandleFunc`,
+/// and framework-specific mount helpers. Bare names like `get` are left
+/// unclassified so HTTP client calls do not become route registrations.
+pub fn routeMethod(callee_name: []const u8) ?[]const u8 {
+    const Method = struct {
+        suffix: []const u8,
+        canonical: []const u8,
+    };
+
+    const methods: []const Method = &.{
+        .{ .suffix = ".GET", .canonical = "GET" },
+        .{ .suffix = ".Get", .canonical = "GET" },
+        .{ .suffix = ".get", .canonical = "GET" },
+        .{ .suffix = ".POST", .canonical = "POST" },
+        .{ .suffix = ".Post", .canonical = "POST" },
+        .{ .suffix = ".post", .canonical = "POST" },
+        .{ .suffix = ".PUT", .canonical = "PUT" },
+        .{ .suffix = ".Put", .canonical = "PUT" },
+        .{ .suffix = ".put", .canonical = "PUT" },
+        .{ .suffix = ".DELETE", .canonical = "DELETE" },
+        .{ .suffix = ".Delete", .canonical = "DELETE" },
+        .{ .suffix = ".delete", .canonical = "DELETE" },
+        .{ .suffix = ".PATCH", .canonical = "PATCH" },
+        .{ .suffix = ".Patch", .canonical = "PATCH" },
+        .{ .suffix = ".patch", .canonical = "PATCH" },
+        .{ .suffix = ".Handle", .canonical = "ANY" },
+        .{ .suffix = ".HandleFunc", .canonical = "ANY" },
+        .{ .suffix = ".handle", .canonical = "ANY" },
+        .{ .suffix = ".Route", .canonical = "ANY" },
+        .{ .suffix = ".route", .canonical = "ANY" },
+        .{ .suffix = ".include_router", .canonical = "ANY" },
+        .{ .suffix = ".mount", .canonical = "ANY" },
+        .{ .suffix = ".add_url_rule", .canonical = "ANY" },
+        .{ .suffix = ".register_blueprint", .canonical = "ANY" },
+        .{ .suffix = ".use", .canonical = "ANY" },
+        .{ .suffix = ".register", .canonical = "ANY" },
+        .{ .suffix = ".add_route", .canonical = "ANY" },
+        .{ .suffix = ".add_api_route", .canonical = "ANY" },
+        .{ .suffix = ".add_api_websocket_route", .canonical = "ANY" },
+    };
+
+    for (methods) |m| {
+        if (std.mem.endsWith(u8, callee_name, m.suffix))
+            return m.canonical;
+    }
+    return null;
+}
+
+test "routeMethod infers framework registration methods" {
+    try std.testing.expectEqualStrings("GET", routeMethod("app.get") orelse return error.TestUnexpectedResult);
+    try std.testing.expectEqualStrings("POST", routeMethod("router.POST") orelse return error.TestUnexpectedResult);
+    try std.testing.expectEqualStrings("ANY", routeMethod("mux.HandleFunc") orelse return error.TestUnexpectedResult);
+    try std.testing.expect(routeMethod("requests.get") != null);
+    try std.testing.expect(routeMethod("get") == null);
+}

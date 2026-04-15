@@ -15,7 +15,7 @@ This directory turns the upstream `codebase-memory-mcp` issue and PR review into
 
 These plans are upstream-improvement backlog, not the current parity execution
 entrypoint. The active graph-model parity planning entrypoint is
-[graph-model-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/graph-model-parity-plan.md).
+[graph-model-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/graph-model-parity-plan.md).
 
 ## Plan Index
 

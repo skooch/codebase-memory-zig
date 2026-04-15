@@ -9,6 +9,7 @@
 const std = @import("std");
 const discover = @import("discover.zig");
 const graph_buffer = @import("graph_buffer.zig");
+const service_patterns = @import("service_patterns.zig");
 const test_tagging = @import("test_tagging.zig");
 const ts = @import("tree_sitter");
 
@@ -26,6 +27,11 @@ const ParsedSymbol = struct {
     name: []const u8,
 };
 
+const PendingRouteDecorator = struct {
+    route_path: []const u8,
+    route_method: []const u8,
+};
+
 pub const ExtractedSymbol = struct {
     id: i64,
     label: []const u8,
@@ -37,7 +43,11 @@ pub const ExtractedSymbol = struct {
 pub const UnresolvedCall = struct {
     caller_id: i64,
     callee_name: []const u8,
+    full_callee_name: []const u8 = "",
     file_path: []const u8,
+    route_path: []const u8 = "",
+    route_handler_ref: []const u8 = "",
+    route_method: []const u8 = "",
 };
 
 pub const UnresolvedImport = struct {
@@ -104,6 +114,7 @@ pub fn extractFile(
     var unresolved_throws = std.ArrayList(UnresolvedThrow).empty;
     var scope_markers = std.ArrayList(TsSymbol).empty;
     var pending_decorators = std.ArrayList([]const u8).empty;
+    var pending_route_decorators = std.ArrayList(PendingRouteDecorator).empty;
     errdefer freePendingExtractedSymbols(allocator, &symbols);
     defer freePendingTsDefinitions(allocator, &tree_sitter_defs);
     errdefer freePendingUnresolvedCalls(allocator, &unresolved_calls);
@@ -112,6 +123,7 @@ pub fn extractFile(
     errdefer freePendingUnresolvedThrows(allocator, &unresolved_throws);
     errdefer freePendingSemanticHints(allocator, &semantic_hints);
     defer freePendingStringSlices(allocator, &pending_decorators);
+    defer freePendingRouteDecorators(allocator, &pending_route_decorators);
     defer scope_markers.deinit(allocator);
 
     const qn_base = try normalizePath(allocator, rel);
@@ -280,6 +292,12 @@ pub fn extractFile(
 
         if (parseDecoratorReference(clean_line)) |decorator_name| {
             try pending_decorators.append(allocator, try allocator.dupe(u8, decorator_name));
+            if (parseRouteDecoratorMetadata(clean_line)) |route| {
+                try pending_route_decorators.append(allocator, .{
+                    .route_path = try allocator.dupe(u8, route.route_path),
+                    .route_method = try allocator.dupe(u8, route.method),
+                });
+            }
             try appendUnresolvedUsageRef(allocator, module_id, decorator_name, rel, &unresolved_usages);
             continue;
         }
@@ -371,8 +389,18 @@ pub fn extractFile(
                             .relation = try allocator.dupe(u8, "DECORATES"),
                         });
                     }
+                    if (gb.findNodeById(decl_node_id)) |decl_node| {
+                        for (pending_route_decorators.items) |route| {
+                            try emitDecoratorRoute(allocator, gb, decl_node, rel, route);
+                        }
+                    }
                     for (pending_decorators.items) |decorator_name| allocator.free(decorator_name);
                     pending_decorators.clearRetainingCapacity();
+                    for (pending_route_decorators.items) |route| {
+                        allocator.free(route.route_path);
+                        allocator.free(route.route_method);
+                    }
+                    pending_route_decorators.clearRetainingCapacity();
                 }
             }
         }
@@ -430,6 +458,7 @@ pub fn extractFile(
 
         const collect_definition_calls_at_module = shouldCollectDefinitionCallsAtModuleScope(file.language, clean_line, parsed_symbol);
         const call_scope_id = if (collect_definition_calls_at_module) module_id else current_scope_id;
+        const route_metadata = parseRouteRegistrationMetadata(clean_line);
         const callee_names = collectCalls(
             allocator,
             clean_line,
@@ -446,10 +475,18 @@ pub fn extractFile(
             for (names) |callee| {
                 if (callee.len == 0) continue;
                 const caller_id = if (call_scope_id != 0) call_scope_id else module_id;
+                const route_call = if (route_metadata) |meta|
+                    std.mem.eql(u8, callee, meta.callee_leaf)
+                else
+                    false;
                 try unresolved_calls.append(allocator, .{
                     .caller_id = caller_id,
                     .callee_name = try allocator.dupe(u8, callee),
+                    .full_callee_name = try allocator.dupe(u8, if (route_call) route_metadata.?.callee_full else callee),
                     .file_path = try allocator.dupe(u8, rel),
+                    .route_path = if (route_call) try allocator.dupe(u8, route_metadata.?.route_path) else "",
+                    .route_handler_ref = if (route_call) try allocator.dupe(u8, route_metadata.?.handler_ref) else "",
+                    .route_method = if (route_call) try allocator.dupe(u8, route_metadata.?.method) else "",
                 });
             }
         }
@@ -1107,6 +1144,256 @@ fn collectCalls(
         return null;
     }
     return try names.toOwnedSlice(allocator);
+}
+
+const RouteRegistrationMetadata = struct {
+    callee_leaf: []const u8,
+    callee_full: []const u8,
+    route_path: []const u8,
+    handler_ref: []const u8,
+    method: []const u8,
+};
+
+const RouteDecoratorMetadata = struct {
+    callee_full: []const u8,
+    route_path: []const u8,
+    method: []const u8,
+};
+
+fn parseRouteRegistrationMetadata(line: []const u8) ?RouteRegistrationMetadata {
+    var search_start: usize = 0;
+    while (search_start < line.len) {
+        const paren_rel = std.mem.indexOfScalarPos(u8, line, search_start, '(') orelse return null;
+        const paren = paren_rel;
+        const callee_full = calleeBeforeParen(line, paren) orelse {
+            search_start = paren + 1;
+            continue;
+        };
+        const method = routeRegistrationMethod(callee_full) orelse {
+            search_start = paren + 1;
+            continue;
+        };
+        if (!looksLikeRouteRegistrar(callee_full)) {
+            search_start = paren + 1;
+            continue;
+        }
+        const close = matchingParen(line, paren) orelse line.len;
+        const args = line[paren + 1 .. close];
+        const route_path = firstRoutePathArg(args) orelse {
+            search_start = paren + 1;
+            continue;
+        };
+        const handler_ref = handlerRefAfterRoutePath(args, route_path) orelse {
+            search_start = paren + 1;
+            continue;
+        };
+        if (handler_ref.len == 0) {
+            search_start = paren + 1;
+            continue;
+        }
+        return .{
+            .callee_leaf = lastDottedSegment(callee_full),
+            .callee_full = callee_full,
+            .route_path = route_path,
+            .handler_ref = handler_ref,
+            .method = method,
+        };
+    }
+    return null;
+}
+
+fn parseRouteDecoratorMetadata(line: []const u8) ?RouteDecoratorMetadata {
+    const trimmed = std.mem.trim(u8, line, " \t");
+    if (!std.mem.startsWith(u8, trimmed, "@")) return null;
+    const decorator = trimmed[1..];
+    const paren = std.mem.indexOfScalar(u8, decorator, '(') orelse return null;
+    const callee_full = std.mem.trim(u8, decorator[0..paren], " \t");
+    if (callee_full.len == 0) return null;
+    const method = routeRegistrationMethod(callee_full) orelse return null;
+    if (!looksLikeRouteRegistrar(callee_full)) return null;
+    const close = matchingParen(decorator, paren) orelse decorator.len;
+    const args = decorator[paren + 1 .. close];
+    const route_path = firstRoutePathArg(args) orelse return null;
+    return .{
+        .callee_full = callee_full,
+        .route_path = route_path,
+        .method = method,
+    };
+}
+
+fn emitDecoratorRoute(
+    allocator: std.mem.Allocator,
+    gb: *graph_buffer.GraphBuffer,
+    decl_node: *const graph_buffer.BufferNode,
+    file_path: []const u8,
+    route: PendingRouteDecorator,
+) !void {
+    const route_qn = try std.fmt.allocPrint(allocator, "__route__{s}__{s}", .{ route.route_method, route.route_path });
+    defer allocator.free(route_qn);
+
+    const route_props = try std.fmt.allocPrint(
+        allocator,
+        "{{\"method\":\"{s}\",\"source\":\"decorator\"}}",
+        .{route.route_method},
+    );
+    defer allocator.free(route_props);
+
+    const route_id = try gb.upsertNodeWithProperties(
+        "Route",
+        route.route_path,
+        route_qn,
+        file_path,
+        0,
+        0,
+        route_props,
+    );
+
+    const handler_props = try std.fmt.allocPrint(
+        allocator,
+        "{{\"handler\":\"{s}\"}}",
+        .{decl_node.qualified_name},
+    );
+    defer allocator.free(handler_props);
+
+    _ = gb.insertEdgeWithProperties(decl_node.id, route_id, "HANDLES", handler_props) catch |err| switch (err) {
+        graph_buffer.GraphBufferError.DuplicateEdge => {},
+        else => return err,
+    };
+}
+
+fn calleeBeforeParen(line: []const u8, paren: usize) ?[]const u8 {
+    if (paren == 0) return null;
+    var end = paren;
+    while (end > 0 and std.ascii.isWhitespace(line[end - 1])) end -= 1;
+    var start = end;
+    while (start > 0) {
+        const ch = line[start - 1];
+        if (isIdentifierChar(ch) or ch == '.') {
+            start -= 1;
+            continue;
+        }
+        break;
+    }
+    if (start == end) return null;
+    return line[start..end];
+}
+
+fn matchingParen(line: []const u8, open: usize) ?usize {
+    var depth: usize = 0;
+    var quote: u8 = 0;
+    var escaped = false;
+    var idx = open;
+    while (idx < line.len) : (idx += 1) {
+        const ch = line[idx];
+        if (quote != 0) {
+            if (escaped) {
+                escaped = false;
+            } else if (ch == '\\') {
+                escaped = true;
+            } else if (ch == quote) {
+                quote = 0;
+            }
+            continue;
+        }
+        if (ch == '"' or ch == '\'' or ch == '`') {
+            quote = ch;
+            continue;
+        }
+        if (ch == '(') {
+            depth += 1;
+            continue;
+        }
+        if (ch == ')') {
+            if (depth == 0) return null;
+            depth -= 1;
+            if (depth == 0) return idx;
+        }
+    }
+    return null;
+}
+
+fn firstRoutePathArg(args: []const u8) ?[]const u8 {
+    var idx: usize = 0;
+    while (idx < args.len) : (idx += 1) {
+        const ch = args[idx];
+        if (ch != '"' and ch != '\'' and ch != '`') continue;
+        const quote = ch;
+        const start = idx + 1;
+        idx = start;
+        var escaped = false;
+        while (idx < args.len) : (idx += 1) {
+            if (escaped) {
+                escaped = false;
+                continue;
+            }
+            if (args[idx] == '\\') {
+                escaped = true;
+                continue;
+            }
+            if (args[idx] == quote) break;
+        }
+        if (idx <= args.len and start < idx and args[start] == '/') {
+            return args[start..idx];
+        }
+    }
+    return null;
+}
+
+fn handlerRefAfterRoutePath(args: []const u8, route_path: []const u8) ?[]const u8 {
+    const path_pos = std.mem.indexOf(u8, args, route_path) orelse return null;
+    var idx = path_pos + route_path.len;
+    while (idx < args.len and args[idx] != ',') : (idx += 1) {}
+    if (idx >= args.len) return null;
+    idx += 1;
+    while (idx < args.len and std.ascii.isWhitespace(args[idx])) : (idx += 1) {}
+    if (idx >= args.len) return null;
+    if (args[idx] == '"' or args[idx] == '\'' or args[idx] == '`' or args[idx] == '{' or args[idx] == '[') return null;
+
+    const start = idx;
+    while (idx < args.len and (isIdentifierChar(args[idx]) or args[idx] == '.')) : (idx += 1) {}
+    if (idx == start) return null;
+    const ref = args[start..idx];
+    if (isKeywordCandidate(ref)) return null;
+    return ref;
+}
+
+fn routeRegistrationMethod(callee_full: []const u8) ?[]const u8 {
+    return service_patterns.routeMethod(callee_full);
+}
+
+fn looksLikeRouteRegistrar(callee_full: []const u8) bool {
+    if (std.mem.indexOfScalar(u8, callee_full, '.') == null) return false;
+    const receiver = callee_full[0 .. callee_full.len - lastDottedSegment(callee_full).len];
+    const hints: []const []const u8 = &.{
+        "app",
+        "api",
+        "router",
+        "route",
+        "routes",
+        "server",
+        "express",
+        "fastify",
+        "hono",
+        "koa",
+        "hapi",
+        "flask",
+        "blueprint",
+        "mux",
+        "chi",
+        "echo",
+        "fiber",
+    };
+    for (hints) |hint| {
+        if (std.mem.indexOf(u8, receiver, hint) != null) return true;
+    }
+    return false;
+}
+
+fn lastDottedSegment(value: []const u8) []const u8 {
+    if (std.mem.lastIndexOfScalar(u8, value, '.')) |idx| {
+        return value[idx + 1 ..];
+    }
+    return value;
 }
 
 fn shouldCollectDefinitionCallsAtModuleScope(
@@ -2687,6 +2974,14 @@ fn freePendingStringSlices(allocator: std.mem.Allocator, names: *std.ArrayList([
     names.deinit(allocator);
 }
 
+fn freePendingRouteDecorators(allocator: std.mem.Allocator, routes: *std.ArrayList(PendingRouteDecorator)) void {
+    for (routes.items) |route| {
+        allocator.free(route.route_path);
+        allocator.free(route.route_method);
+    }
+    routes.deinit(allocator);
+}
+
 fn freePendingExtractedSymbols(allocator: std.mem.Allocator, symbols: *std.ArrayList(ExtractedSymbol)) void {
     for (symbols.items) |s| {
         allocator.free(s.label);
@@ -2700,7 +2995,11 @@ fn freePendingExtractedSymbols(allocator: std.mem.Allocator, symbols: *std.Array
 fn freePendingUnresolvedCalls(allocator: std.mem.Allocator, calls: *std.ArrayList(UnresolvedCall)) void {
     for (calls.items) |c| {
         allocator.free(c.callee_name);
+        if (c.full_callee_name.len > 0) allocator.free(c.full_callee_name);
         allocator.free(c.file_path);
+        if (c.route_path.len > 0) allocator.free(c.route_path);
+        if (c.route_handler_ref.len > 0) allocator.free(c.route_handler_ref);
+        if (c.route_method.len > 0) allocator.free(c.route_method);
     }
     calls.deinit(allocator);
 }
@@ -2752,7 +3051,11 @@ pub fn freeExtractedSymbols(allocator: std.mem.Allocator, symbols: []ExtractedSy
 pub fn freeUnresolvedCalls(allocator: std.mem.Allocator, calls: []UnresolvedCall) void {
     for (calls) |c| {
         allocator.free(c.callee_name);
+        if (c.full_callee_name.len > 0) allocator.free(c.full_callee_name);
         allocator.free(c.file_path);
+        if (c.route_path.len > 0) allocator.free(c.route_path);
+        if (c.route_handler_ref.len > 0) allocator.free(c.route_handler_ref);
+        if (c.route_method.len > 0) allocator.free(c.route_method);
     }
     allocator.free(calls);
 }
@@ -3295,6 +3598,32 @@ test "call collection skips declaration lines" {
         1,
         false,
     )) == null);
+}
+
+test "route registration metadata captures path handler and method" {
+    const route = parseRouteRegistrationMetadata("app.get(\"/users\", listUsers);") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("get", route.callee_leaf);
+    try std.testing.expectEqualStrings("app.get", route.callee_full);
+    try std.testing.expectEqualStrings("/users", route.route_path);
+    try std.testing.expectEqualStrings("listUsers", route.handler_ref);
+    try std.testing.expectEqualStrings("GET", route.method);
+
+    const any_route = parseRouteRegistrationMetadata("router.route('/orders', handlers.list);") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("ANY", any_route.method);
+    try std.testing.expectEqualStrings("handlers.list", any_route.handler_ref);
+
+    try std.testing.expect(parseRouteRegistrationMetadata("requests.get(\"/api/users\")") == null);
+}
+
+test "route decorator metadata captures path and method" {
+    const route = parseRouteDecoratorMetadata("@app.get(\"/users\")") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("app.get", route.callee_full);
+    try std.testing.expectEqualStrings("/users", route.route_path);
+    try std.testing.expectEqualStrings("GET", route.method);
+
+    const any_route = parseRouteDecoratorMetadata("@router.route('/orders')") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("ANY", any_route.method);
+    try std.testing.expect(parseRouteDecoratorMetadata("@trace") == null);
 }
 
 test "usage collection captures callback refs and type references without direct call noise" {

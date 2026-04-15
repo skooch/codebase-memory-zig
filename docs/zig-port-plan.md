@@ -565,11 +565,11 @@ Current state: the broader daily-use MCP surface is now live, the runtime uses a
 
 - [x] Incremental re-indexing
 - [x] Git history pass (change coupling)
-- [ ] Route node creation and handler/data-flow links (partial: stub `Route` nodes from `HTTP_CALLS` / `ASYNC_CALLS` are implemented)
+- [ ] Route node creation and handler/data-flow links (partial: stub `Route` nodes from `HTTP_CALLS` / `ASYNC_CALLS` plus verified decorator-backed `HANDLES` are implemented)
 - [x] Test tagging
 - [ ] Config-code linking (partial: key-symbol and dependency-import strategies are implemented)
 - [ ] Decorator enrichment
-Current state: M4 is no longer a blank backlog. Git-history coupling, test tagging, route stubs, service-pattern call classification, partial config linking, and long-tail `THROWS` / `RAISES` edges are implemented. The active graph-model parity entrypoint is [graph-model-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/graph-model-parity-plan.md), which tracks the remaining route handler, `HANDLES`, route-linked `DATA_FLOWS`, decorator route, and config-normalization work.
+Current state: M4 is no longer a blank backlog. Git-history coupling, test tagging, route stubs, decorator-backed `HANDLES`, service-pattern call classification, partial config linking, and long-tail `THROWS` / `RAISES` edges are implemented. The active graph-model parity entrypoint is [graph-model-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/graph-model-parity-plan.md), which tracks the remaining broader route handler coverage, route-linked `DATA_FLOWS`, and config-normalization work.
 
 ## Completion Summary
 

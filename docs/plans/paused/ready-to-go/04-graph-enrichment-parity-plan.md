@@ -2,7 +2,7 @@
 
 ## Status
 Paused on 2026-04-15. This bundled enrichment plan is superseded by
-`docs/plans/new/graph-model-parity-plan.md`. Its git-history slice is already
+`docs/plans/in-progress/graph-model-parity-plan.md`. Its git-history slice is already
 implemented; the remaining route/config/semantic graph work is now tracked in
 the graph-model parity plan with narrower acceptance gates.
 

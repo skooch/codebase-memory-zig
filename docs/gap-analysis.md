@@ -117,7 +117,7 @@ Complete slices:
 
 Deferred or optional future slices:
 - Public surface expansion:
-  - trace breadth now covers modes, risk labels, and multi-edge-type filtering (Plan 03 complete); `HTTP_CALLS` and `ASYNC_CALLS` edges are now produced via service-pattern call reclassification; remaining gap is `DATA_FLOWS` edges
+  - trace breadth now covers modes, risk labels, and multi-edge-type filtering (Plan 03 complete); `HTTP_CALLS` and `ASYNC_CALLS` edges are now produced via service-pattern call reclassification, and decorator-backed `HANDLES` edges are verified on the graph-model route fixture; remaining gap is route-linked `DATA_FLOWS` edges
 - Query/runtime expansion:
   - full Cypher lexer/parser/executor parity beyond the verified shared read-only floor
   - broader traversal and query-analysis parity beyond the current shared `detect_changes` contract
@@ -125,11 +125,11 @@ Deferred or optional future slices:
   - deeper usage/type-ref extraction parity beyond the current daily-use slice
 - Metadata and enrichment:
   - git-history coupling — now implemented (subprocess `git log`, `FILE_CHANGES_WITH` edges)
-  - long-tail edges — now implemented: `THROWS`/`RAISES` (JS/TS/TSX throw statements); remaining or out-of-scope gaps: `OVERRIDE` (Go-only), `WRITES`/`READS` (not proven original-overlap by the current C reference fixture), `HANDLES`/`DATA_FLOWS` (deferred route-graph)
-  - route nodes — partially implemented (stub `Route` nodes from `HTTP_CALLS`/`ASYNC_CALLS` edges; no `HANDLES` or `DATA_FLOWS` yet)
+  - long-tail edges — now implemented: `THROWS`/`RAISES` (JS/TS/TSX throw statements) and decorator-backed `HANDLES`; remaining or out-of-scope gaps: `OVERRIDE` (Go-only), `WRITES`/`READS` (not proven original-overlap by the current C reference fixture), route-linked `DATA_FLOWS` (deferred route-graph)
+  - route nodes — partially implemented (stub `Route` nodes from `HTTP_CALLS`/`ASYNC_CALLS` edges plus verified decorator-backed `Route`/`HANDLES`; no route-linked `DATA_FLOWS` yet)
   - config-linking — partially implemented (Strategy 1 key-symbol + Strategy 2 dependency-import; full config normalization surface not yet ported)
   - richer decorator/enrichment promotion
-  - current entrypoint: [graph-model-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/graph-model-parity-plan.md)
+  - current entrypoint: [graph-model-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/graph-model-parity-plan.md)
 - Productization beyond the current contract:
   - broader installer/self-update behavior
   - broader agent integration coverage and installer diagnostics
@@ -428,7 +428,7 @@ The Zig store has the schema (tables + indexes + pragmas) and opens in-memory DB
 | `pass_parallel` | 1,427 | MISSING | Thread pool orchestration |
 | `pass_similarity` | 505 (minhash.c) | MISSING | MinHash near-clone detection |
 | `pass_gitdiff` | ~200 | MISSING | Git diff → changed files/hunks |
-| `pass_route_nodes` | 742 | PARTIAL (stub Route nodes from `HTTP_CALLS`/`ASYNC_CALLS` edges; no `HANDLES` or `DATA_FLOWS`) | HTTP route node creation |
+| `pass_route_nodes` | 742 | PARTIAL (stub Route nodes from `HTTP_CALLS`/`ASYNC_CALLS` edges plus verified decorator-backed `Route`/`HANDLES`; no route-linked `DATA_FLOWS`) | HTTP route node creation and first handler association slice |
 | `pass_tests` | 285 | WORKS for the shared Python `TESTS` / `TESTS_FILE` slice | Test file/function tagging now verified on the local parity fixture; broader language breadth stays follow-on work |
 | `pass_enrichment` | ~200 | MISSING (deferred) | Decorator tag enrichment |
 | `pass_configlink` | ~200 | PARTIAL (Strategy 1 key-symbol + Strategy 2 dependency-import) | Config-code linking |

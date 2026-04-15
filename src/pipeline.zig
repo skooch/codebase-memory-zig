@@ -1296,6 +1296,10 @@ fn resolveExtractions(
 
         for (extraction.unresolved_calls) |call| {
             const caller_node = gb.findNodeById(call.caller_id) orelse continue;
+            if (call.route_path.len > 0 and call.route_method.len > 0) {
+                try emitRouteRegistration(gb, reg, call, caller_node);
+                continue;
+            }
             if (reg.resolve(call.callee_name, call.caller_id, caller_node.file_path, null)) |res| {
                 if (gb.findNodeByQualifiedName(res.qualified_name)) |target| {
                     if (std.mem.eql(u8, target.label, "Class") or std.mem.eql(u8, target.label, "Interface")) continue;
@@ -1345,6 +1349,58 @@ fn resolveExtractions(
     }
 }
 
+fn emitRouteRegistration(
+    gb: *GraphBuffer,
+    reg: *Registry,
+    call: extractor.UnresolvedCall,
+    caller_node: *const BufferNode,
+) PipelineError!void {
+    const route_qn = std.fmt.allocPrint(
+        gb.allocator,
+        "__route__{s}__{s}",
+        .{ call.route_method, call.route_path },
+    ) catch return PipelineError.OutOfMemory;
+    defer gb.allocator.free(route_qn);
+
+    const route_props = std.fmt.allocPrint(
+        gb.allocator,
+        "{{\"method\":\"{s}\",\"source\":\"route_registration\"}}",
+        .{call.route_method},
+    ) catch return PipelineError.OutOfMemory;
+    defer gb.allocator.free(route_props);
+
+    const route_id = gb.upsertNodeWithProperties(
+        "Route",
+        call.route_path,
+        route_qn,
+        call.file_path,
+        0,
+        0,
+        route_props,
+    ) catch return PipelineError.OutOfMemory;
+
+    const call_props = std.fmt.allocPrint(
+        gb.allocator,
+        "{{\"callee\":\"{s}\",\"url_path\":\"{s}\",\"via\":\"route_registration\"}}",
+        .{ if (call.full_callee_name.len > 0) call.full_callee_name else call.callee_name, call.route_path },
+    ) catch return PipelineError.OutOfMemory;
+    defer gb.allocator.free(call_props);
+    try insertResolvedEdgeWithProperties(gb, call.caller_id, route_id, "CALLS", call_props);
+
+    if (call.route_handler_ref.len == 0) return;
+    if (reg.resolve(call.route_handler_ref, call.caller_id, caller_node.file_path, null)) |handler_res| {
+        if (gb.findNodeByQualifiedName(handler_res.qualified_name)) |handler| {
+            const handler_props = std.fmt.allocPrint(
+                gb.allocator,
+                "{{\"handler\":\"{s}\"}}",
+                .{handler.qualified_name},
+            ) catch return PipelineError.OutOfMemory;
+            defer gb.allocator.free(handler_props);
+            try insertResolvedEdgeWithProperties(gb, handler.id, route_id, "HANDLES", handler_props);
+        }
+    }
+}
+
 fn insertResolvedEdge(
     gb: *GraphBuffer,
     source_id: i64,
@@ -1355,6 +1411,58 @@ fn insertResolvedEdge(
         GraphBufferError.DuplicateEdge => 0,
         GraphBufferError.OutOfMemory => return PipelineError.OutOfMemory,
     };
+}
+
+fn insertResolvedEdgeWithProperties(
+    gb: *GraphBuffer,
+    source_id: i64,
+    target_id: i64,
+    edge_type: []const u8,
+    properties_json: []const u8,
+) PipelineError!void {
+    _ = gb.insertEdgeWithProperties(source_id, target_id, edge_type, properties_json) catch |err| switch (err) {
+        GraphBufferError.DuplicateEdge => 0,
+        GraphBufferError.OutOfMemory => return PipelineError.OutOfMemory,
+    };
+}
+
+test "route registration emits Route and HANDLES edges" {
+    const allocator = std.testing.allocator;
+
+    var gb = GraphBuffer.init(allocator, "routes");
+    defer gb.deinit();
+
+    var reg = Registry.init(allocator);
+    defer reg.deinit();
+
+    const module_id = try gb.upsertNode("Module", "server.js", "routes:module:server.js:javascript", "server.js", 1, 1);
+    const handler_qn = "routes:server.js:javascript:symbol:javascript:listUsers";
+    const handler_id = try gb.upsertNode("Function", "listUsers", handler_qn, "server.js", 3, 5);
+    try reg.add("listUsers", handler_qn, "Function", "server.js");
+
+    const caller = gb.findNodeById(module_id) orelse return error.TestUnexpectedResult;
+    try emitRouteRegistration(&gb, &reg, .{
+        .caller_id = module_id,
+        .callee_name = "get",
+        .full_callee_name = "app.get",
+        .file_path = "server.js",
+        .route_path = "/users",
+        .route_handler_ref = "listUsers",
+        .route_method = "GET",
+    }, caller);
+
+    const route = gb.findNodeByQualifiedName("__route__GET__/users") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("Route", route.label);
+
+    try std.testing.expect(hasEdge(&gb, module_id, route.id, "CALLS"));
+    try std.testing.expect(hasEdge(&gb, handler_id, route.id, "HANDLES"));
+}
+
+fn hasEdge(gb: *const GraphBuffer, source_id: i64, target_id: i64, edge_type: []const u8) bool {
+    for (gb.edgeItems()) |edge| {
+        if (edge.source_id == source_id and edge.target_id == target_id and std.mem.eql(u8, edge.edge_type, edge_type)) return true;
+    }
+    return false;
 }
 
 test "pipeline run handles simple extraction pipeline" {

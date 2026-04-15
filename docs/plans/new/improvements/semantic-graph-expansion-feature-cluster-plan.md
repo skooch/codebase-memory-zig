@@ -2,7 +2,7 @@
 
 ## Status
 Backlog improvement cluster. For the current original-project graph-model parity
-work, use `docs/plans/new/graph-model-parity-plan.md`; this plan remains as
+work, use `docs/plans/in-progress/graph-model-parity-plan.md`; this plan remains as
 the broader upstream feature-pressure inventory for later semantic expansion.
 
 ## Goal

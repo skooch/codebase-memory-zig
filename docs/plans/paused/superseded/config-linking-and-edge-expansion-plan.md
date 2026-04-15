@@ -2,7 +2,7 @@
 
 ## Status
 Paused on 2026-04-15. This narrower config/edge plan is superseded by
-`docs/plans/new/graph-model-parity-plan.md`, which keeps config normalization,
+`docs/plans/in-progress/graph-model-parity-plan.md`, which keeps config normalization,
 route graph completion, and remaining graph-model edge families in one
 fixture-backed execution order.
 

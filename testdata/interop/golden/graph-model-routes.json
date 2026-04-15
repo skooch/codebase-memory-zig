@@ -1,0 +1,61 @@
+{
+  "delete_project": [],
+  "detect_changes_count": 0,
+  "fixture_id": "graph-model-routes",
+  "get_architecture": [],
+  "get_code_snippet": [],
+  "get_graph_schema": [],
+  "index_repository": {
+    "edges_actual": 5,
+    "edges_min": 4,
+    "nodes_actual": 6,
+    "nodes_min": 5
+  },
+  "index_status": [],
+  "list_projects": [
+    "routes"
+  ],
+  "manage_adr": [],
+  "query_graph": [
+    {
+      "columns": [
+        "n.name"
+      ],
+      "rows": [
+        [
+          "/users"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "a.name",
+        "b.name"
+      ],
+      "rows": [
+        [
+          "list_users",
+          "/users"
+        ]
+      ]
+    }
+  ],
+  "search_code": [],
+  "search_graph": [],
+  "tools_list": [
+    "delete_project",
+    "detect_changes",
+    "get_architecture",
+    "get_code_snippet",
+    "get_graph_schema",
+    "index_repository",
+    "index_status",
+    "list_projects",
+    "manage_adr",
+    "query_graph",
+    "search_code",
+    "search_graph",
+    "trace_call_path"
+  ],
+  "trace_call_path": []
+}
