@@ -1865,6 +1865,17 @@
               "columns": ["a.name", "b.name"],
               "required_rows": [["list_users", "/api/users"]]
             }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:DATA_FLOWS]->(b) WHERE a.name = 'fetch_users' RETURN a.name, b.name ORDER BY a.name, b.name",
+              "project": "routes",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["a.name", "b.name"],
+              "required_rows": [["fetch_users", "list_users"]]
+            }
           }
         ]
       }

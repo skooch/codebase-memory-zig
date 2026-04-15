@@ -1,9 +1,7 @@
 // route_nodes — Creates Route nodes from HTTP_CALLS and ASYNC_CALLS edges.
 //
-// This is a minimal first pass: it creates Route nodes as rendezvous points
-// for cross-service communication, keyed by the call target's resolved name
-// and inferred HTTP method. Future work will add HANDLES edges from decorator-
-// detected route handlers and DATA_FLOWS edges linking callers to handlers.
+// This pass creates Route nodes as rendezvous points for cross-service
+// communication and links route caller edges to HANDLES edges with DATA_FLOWS.
 
 const std = @import("std");
 const graph_buffer = @import("graph_buffer.zig");

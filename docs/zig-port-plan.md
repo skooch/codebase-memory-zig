@@ -565,11 +565,11 @@ Current state: the broader daily-use MCP surface is now live, the runtime uses a
 
 - [x] Incremental re-indexing
 - [x] Git history pass (change coupling)
-- [ ] Route node creation and handler/data-flow links (partial: stub and concrete URL/path `Route` nodes, verified decorator-backed `HANDLES`, and Zig route-linked `DATA_FLOWS` are implemented; strict shared C/Zig `DATA_FLOWS` proof remains open)
+- [ ] Route node creation and handler/data-flow links (partial: stub and concrete URL/path `Route` nodes, verified decorator-backed `HANDLES`, and strict shared route-linked `DATA_FLOWS` are implemented; broader framework and async-route coverage remain open)
 - [x] Test tagging
 - [ ] Config-code linking (partial: key-symbol and dependency-import strategies are implemented)
 - [ ] Decorator enrichment
-Current state: M4 is no longer a blank backlog. Git-history coupling, test tagging, route stubs, concrete URL/path route callers, decorator-backed `HANDLES`, Zig route-linked `DATA_FLOWS`, service-pattern call classification, partial config linking, and long-tail `THROWS` / `RAISES` edges are implemented. The active graph-model parity entrypoint is [graph-model-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/graph-model-parity-plan.md), which tracks the remaining broader route handler coverage, strict shared `DATA_FLOWS` proof, and config-normalization work.
+Current state: M4 is no longer a blank backlog. Git-history coupling, test tagging, route stubs, concrete URL/path route callers, decorator-backed `HANDLES`, strict shared route-linked `DATA_FLOWS`, service-pattern call classification, partial config linking, and long-tail `THROWS` / `RAISES` edges are implemented. The active graph-model parity entrypoint is [graph-model-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/graph-model-parity-plan.md), which tracks the remaining broader route handler coverage, async route coverage, and config-normalization work.
 
 ## Completion Summary
 

@@ -6,9 +6,9 @@
   "get_code_snippet": [],
   "get_graph_schema": [],
   "index_repository": {
-    "edges_actual": 10,
+    "edges_actual": 13,
     "edges_min": 4,
-    "nodes_actual": 8,
+    "nodes_actual": 10,
     "nodes_min": 5
   },
   "index_status": [],
@@ -36,6 +36,18 @@
         [
           "list_users",
           "/api/users"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "a.name",
+        "b.name"
+      ],
+      "rows": [
+        [
+          "fetch_users",
+          "list_users"
         ]
       ]
     }

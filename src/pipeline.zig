@@ -1303,7 +1303,7 @@ fn resolveExtractions(
             if (reg.resolve(call.callee_name, call.caller_id, caller_node.file_path, null)) |res| {
                 if (gb.findNodeByQualifiedName(res.qualified_name)) |target| {
                     if (std.mem.eql(u8, target.label, "Class") or std.mem.eql(u8, target.label, "Interface")) continue;
-                    const edge_type: []const u8 = if (service_patterns.classify(res.qualified_name)) |kind| switch (kind) {
+                    const edge_type: []const u8 = if (classifyResolvedCall(call, res.qualified_name)) |kind| switch (kind) {
                         .http_client => "HTTP_CALLS",
                         .async_broker => "ASYNC_CALLS",
                         .route_registration => "CALLS",
@@ -1416,6 +1416,12 @@ fn emitRouteRegistration(
             try insertResolvedEdgeWithProperties(gb, handler.id, route_id, "HANDLES", handler_props);
         }
     }
+}
+
+fn classifyResolvedCall(call: extractor.UnresolvedCall, resolved_qn: []const u8) ?service_patterns.PatternKind {
+    if (service_patterns.classify(resolved_qn)) |kind| return kind;
+    if (call.full_callee_name.len > 0) return service_patterns.classify(call.full_callee_name);
+    return null;
 }
 
 fn emitArgUrlRouteCall(

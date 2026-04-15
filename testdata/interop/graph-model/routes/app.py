@@ -1,16 +1,13 @@
 from flask import Flask
+import requests
 
 app = Flask(__name__)
 
 
-@app.route("/api/users")
+@app.get("/api/users")
 def list_users():
     return []
 
 
-def send(path):
-    return path
-
-
 def fetch_users():
-    return send("/api/users")
+    return requests.get("/api/users")

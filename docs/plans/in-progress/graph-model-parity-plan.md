@@ -7,10 +7,11 @@ route-linked data flow, decorator route detection, and the broader config-link
 normalization surface.
 
 ## Current Phase
-Phase 2 route handler modeling is in progress. The first slice has landed:
-decorator route extraction now creates `Route` nodes and `HANDLES` edges, and
+Phase 3 route-linked data flow is complete for the first shared public fixture:
+decorator route extraction creates `Route` nodes and `HANDLES` edges,
 route-registration calls preserve enough call metadata to emit `HANDLES` when
-the handler reference resolves.
+the handler reference resolves, and the shared Python route fixture now proves a
+strict C/Zig `DATA_FLOWS` row through a `GET` route.
 
 ## Current Codebase State
 - Complete and verified: advanced trace modes, risk labels, include-tests
@@ -27,13 +28,12 @@ the handler reference resolves.
 - Newly implemented after the first route slice: Zig now emits concrete
   URL/path `Route` caller edges from supported HTTP service calls and resolved
   URL-argument calls, and bridges route callers to `HANDLES` targets with
-  `DATA_FLOWS`. The current C reference binary did not expose the matching
-  `DATA_FLOWS` row on the shared fixture, so that row remains Zig-regression
-  coverage rather than a strict C/Zig manifest comparison.
+  `DATA_FLOWS`. The `graph-model-routes` fixture now uses a method-specific
+  `@app.get` handler plus a local `requests` stub so both C and Zig expose the
+  strict `fetch_users -> list_users` `DATA_FLOWS` row.
 - Still missing for graph-model parity: broader framework route coverage,
-  strict shared C/Zig `DATA_FLOWS` fixture proof, async route coverage, and the
-  full config normalization/linking surface beyond the current key-symbol and
-  dependency-import strategies.
+  async route coverage, and the full config normalization/linking surface beyond
+  the current key-symbol and dependency-import strategies.
 - Current full Zig-vs-C harness baseline after this route slice:
   `158` comparisons, `89` strict matches, `20` diagnostic-only comparisons,
   `10` mismatches, and `cli_progress: match`. The graph-model-related
@@ -70,7 +70,8 @@ the handler reference resolves.
 - [x] Re-read the original route, config-linking, and semantic-edge passes and record only the overlapping behavior still missing from the Zig port.
 - [x] Define fixture-backed acceptance rules for decorator-backed `Route` and `HANDLES` facts.
 - [x] Define fixture-backed acceptance rules for first-slice `HTTP_CALLS` route callers and route-linked `DATA_FLOWS` in Zig.
-- [ ] Define fixture-backed acceptance rules for strict shared C/Zig `DATA_FLOWS`, `ASYNC_CALLS`, and config normalization/linking.
+- [x] Define fixture-backed acceptance rules for strict shared C/Zig `DATA_FLOWS`.
+- [ ] Define fixture-backed acceptance rules for `ASYNC_CALLS` and config normalization/linking.
 - [x] Add a minimal Python route fixture under `testdata/interop/graph-model/routes/`.
 - [ ] Add minimal JavaScript/TypeScript route fixtures once the shared C/Zig public behavior is established for those registrations.
 - **Status:** partially complete
@@ -87,8 +88,8 @@ the handler reference resolves.
 - [x] Define the first accepted `DATA_FLOWS` route-link contract from route caller edges through `HANDLES` targets without pretending to solve full local data-flow analysis.
 - [x] Persist route-linked `DATA_FLOWS` edges and make `query_graph` able to traverse them through the existing edge-type filtering paths.
 - [x] Add regression coverage that proves data-flow edges are present only when supported route facts exist underneath them.
-- [ ] Find or construct a strict shared C/Zig public fixture for `DATA_FLOWS`; the current C reference binary does not emit the row on `graph-model-routes`.
-- **Status:** partially complete
+- [x] Find or construct a strict shared C/Zig public fixture for `DATA_FLOWS`.
+- **Status:** complete for the first route-linked data-flow slice
 
 ### Phase 4: Finish Config-Link Normalization
 - [ ] Extend config-key extraction and matching only for original-overlap config patterns with fixture evidence.
