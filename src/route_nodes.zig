@@ -28,6 +28,7 @@ pub fn runPass(
         if (!is_http and !is_async) continue;
 
         const target = gb.findNodeById(edge.target_id) orelse continue;
+        if (std.mem.eql(u8, target.label, "Route")) continue;
 
         // Infer HTTP method from the target QN, or default.
         const method: []const u8 = if (is_http)
@@ -76,7 +77,60 @@ pub fn runPass(
         }
     }
 
+    _ = try createRouteDataFlows(allocator, gb);
     return routes_created;
+}
+
+fn createRouteDataFlows(
+    allocator: std.mem.Allocator,
+    gb: *graph_buffer.GraphBuffer,
+) error{OutOfMemory}!usize {
+    var flows_created: usize = 0;
+    const edge_count = gb.edgeItems().len;
+
+    for (gb.nodes()) |route| {
+        if (!std.mem.eql(u8, route.label, "Route")) continue;
+
+        var caller_index: usize = 0;
+        while (caller_index < edge_count) : (caller_index += 1) {
+            const caller_edge = gb.edgeItems()[caller_index];
+            if (caller_edge.target_id != route.id) continue;
+            const is_http = std.mem.eql(u8, caller_edge.edge_type, "HTTP_CALLS");
+            const is_async = std.mem.eql(u8, caller_edge.edge_type, "ASYNC_CALLS");
+            if (!is_http and !is_async) continue;
+
+            var handler_index: usize = 0;
+            while (handler_index < edge_count) : (handler_index += 1) {
+                const handler_edge = gb.edgeItems()[handler_index];
+                if (handler_edge.target_id != route.id) continue;
+                if (!std.mem.eql(u8, handler_edge.edge_type, "HANDLES")) continue;
+                if (caller_edge.source_id == handler_edge.source_id) continue;
+                if (hasDirectCall(gb, caller_edge.source_id, handler_edge.source_id)) continue;
+
+                const props = std.fmt.allocPrint(
+                    allocator,
+                    "{{\"via\":\"{s}\",\"route\":\"{s}\",\"edge_type\":\"{s}\"}}",
+                    .{ route.name, route.qualified_name, caller_edge.edge_type },
+                ) catch return error.OutOfMemory;
+                defer allocator.free(props);
+
+                _ = gb.insertEdgeWithProperties(caller_edge.source_id, handler_edge.source_id, "DATA_FLOWS", props) catch |err| switch (err) {
+                    GraphBufferError.DuplicateEdge => 0,
+                    GraphBufferError.OutOfMemory => return error.OutOfMemory,
+                };
+                flows_created += 1;
+            }
+        }
+    }
+
+    return flows_created;
+}
+
+fn hasDirectCall(gb: *const graph_buffer.GraphBuffer, caller_id: i64, handler_id: i64) bool {
+    for (gb.edgeItems()) |edge| {
+        if (edge.source_id == caller_id and edge.target_id == handler_id and std.mem.eql(u8, edge.edge_type, "CALLS")) return true;
+    }
+    return false;
 }
 
 test "runPass creates Route nodes from HTTP_CALLS edges" {
@@ -152,4 +206,48 @@ test "runPass ignores regular CALLS edges" {
 
     const routes = try runPass(allocator, &gb);
     try std.testing.expectEqual(@as(usize, 0), routes);
+}
+
+test "runPass creates DATA_FLOWS from route callers to handlers" {
+    const allocator = std.testing.allocator;
+
+    var gb = graph_buffer.GraphBuffer.init(allocator, "test-project");
+    defer gb.deinit();
+
+    const caller = try gb.upsertNode("Function", "fetch_users", "test:client.py:fetch_users", "client.py", 1, 5);
+    const handler = try gb.upsertNode("Function", "list_users", "test:app.py:list_users", "app.py", 1, 5);
+    const route = try gb.upsertNodeWithProperties("Route", "/api/users", "__route__GET__/api/users", "app.py", 0, 0, "{\"method\":\"GET\"}");
+
+    _ = try gb.insertEdge(caller, route, "HTTP_CALLS");
+    _ = try gb.insertEdge(handler, route, "HANDLES");
+
+    _ = try runPass(allocator, &gb);
+
+    try std.testing.expect(hasEdge(&gb, caller, handler, "DATA_FLOWS"));
+}
+
+test "runPass skips DATA_FLOWS when caller already directly calls handler" {
+    const allocator = std.testing.allocator;
+
+    var gb = graph_buffer.GraphBuffer.init(allocator, "test-project");
+    defer gb.deinit();
+
+    const caller = try gb.upsertNode("Function", "fetch_users", "test:client.py:fetch_users", "client.py", 1, 5);
+    const handler = try gb.upsertNode("Function", "list_users", "test:app.py:list_users", "app.py", 1, 5);
+    const route = try gb.upsertNodeWithProperties("Route", "/api/users", "__route__GET__/api/users", "app.py", 0, 0, "{\"method\":\"GET\"}");
+
+    _ = try gb.insertEdge(caller, route, "HTTP_CALLS");
+    _ = try gb.insertEdge(handler, route, "HANDLES");
+    _ = try gb.insertEdge(caller, handler, "CALLS");
+
+    _ = try runPass(allocator, &gb);
+
+    try std.testing.expect(!hasEdge(&gb, caller, handler, "DATA_FLOWS"));
+}
+
+fn hasEdge(gb: *const graph_buffer.GraphBuffer, source_id: i64, target_id: i64, edge_type: []const u8) bool {
+    for (gb.edgeItems()) |edge| {
+        if (edge.source_id == source_id and edge.target_id == target_id and std.mem.eql(u8, edge.edge_type, edge_type)) return true;
+    }
+    return false;
 }

@@ -1308,7 +1308,24 @@ fn resolveExtractions(
                         .async_broker => "ASYNC_CALLS",
                         .route_registration => "CALLS",
                     } else "CALLS";
+                    if ((std.mem.eql(u8, edge_type, "HTTP_CALLS") or std.mem.eql(u8, edge_type, "ASYNC_CALLS")) and call.first_string_arg.len > 0) {
+                        if (try emitServiceRouteCall(gb, call, edge_type, res.qualified_name)) {
+                            continue;
+                        }
+                    }
                     try insertResolvedEdge(gb, call.caller_id, target.id, edge_type);
+                    if (std.mem.eql(u8, edge_type, "CALLS")) {
+                        _ = try emitArgUrlRouteCall(gb, call);
+                    }
+                }
+            } else if (service_patterns.classify(call.full_callee_name)) |kind| {
+                const edge_type: []const u8 = switch (kind) {
+                    .http_client => "HTTP_CALLS",
+                    .async_broker => "ASYNC_CALLS",
+                    .route_registration => "CALLS",
+                };
+                if (std.mem.eql(u8, edge_type, "HTTP_CALLS") or std.mem.eql(u8, edge_type, "ASYNC_CALLS")) {
+                    _ = try emitServiceRouteCall(gb, call, edge_type, call.full_callee_name);
                 }
             }
         }
@@ -1401,6 +1418,114 @@ fn emitRouteRegistration(
     }
 }
 
+fn emitArgUrlRouteCall(
+    gb: *GraphBuffer,
+    call: extractor.UnresolvedCall,
+) PipelineError!bool {
+    if (!isPathRouteArg(call.first_string_arg)) return false;
+
+    const route_qn = std.fmt.allocPrint(
+        gb.allocator,
+        "__route__ANY__{s}",
+        .{call.first_string_arg},
+    ) catch return PipelineError.OutOfMemory;
+    defer gb.allocator.free(route_qn);
+
+    const route_id = gb.upsertNodeWithProperties(
+        "Route",
+        call.first_string_arg,
+        route_qn,
+        call.file_path,
+        0,
+        0,
+        "{\"source\":\"arg_url\"}",
+    ) catch return PipelineError.OutOfMemory;
+
+    const props = std.fmt.allocPrint(
+        gb.allocator,
+        "{{\"callee\":\"{s}\",\"url_path\":\"{s}\",\"via\":\"arg_url\"}}",
+        .{ if (call.full_callee_name.len > 0) call.full_callee_name else call.callee_name, call.first_string_arg },
+    ) catch return PipelineError.OutOfMemory;
+    defer gb.allocator.free(props);
+
+    try insertResolvedEdgeWithProperties(gb, call.caller_id, route_id, "HTTP_CALLS", props);
+    return true;
+}
+
+fn emitServiceRouteCall(
+    gb: *GraphBuffer,
+    call: extractor.UnresolvedCall,
+    edge_type: []const u8,
+    resolved_qn: []const u8,
+) PipelineError!bool {
+    if (!isServiceRouteArg(call.first_string_arg)) return false;
+
+    const method_or_broker = if (std.mem.eql(u8, edge_type, "HTTP_CALLS"))
+        (service_patterns.httpMethod(if (call.full_callee_name.len > 0) call.full_callee_name else resolved_qn) orelse
+            service_patterns.httpMethod(resolved_qn) orelse
+            "ANY")
+    else
+        "async";
+
+    const route_qn = std.fmt.allocPrint(
+        gb.allocator,
+        "__route__{s}__{s}",
+        .{ method_or_broker, call.first_string_arg },
+    ) catch return PipelineError.OutOfMemory;
+    defer gb.allocator.free(route_qn);
+
+    const route_props = if (std.mem.eql(u8, edge_type, "HTTP_CALLS"))
+        std.fmt.allocPrint(
+            gb.allocator,
+            "{{\"method\":\"{s}\"}}",
+            .{method_or_broker},
+        ) catch return PipelineError.OutOfMemory
+    else
+        std.fmt.allocPrint(
+            gb.allocator,
+            "{{\"broker\":\"{s}\"}}",
+            .{method_or_broker},
+        ) catch return PipelineError.OutOfMemory;
+    defer gb.allocator.free(route_props);
+
+    const route_id = gb.upsertNodeWithProperties(
+        "Route",
+        call.first_string_arg,
+        route_qn,
+        call.file_path,
+        0,
+        0,
+        route_props,
+    ) catch return PipelineError.OutOfMemory;
+
+    const call_props = if (std.mem.eql(u8, edge_type, "HTTP_CALLS"))
+        std.fmt.allocPrint(
+            gb.allocator,
+            "{{\"callee\":\"{s}\",\"url_path\":\"{s}\",\"method\":\"{s}\"}}",
+            .{ if (call.full_callee_name.len > 0) call.full_callee_name else call.callee_name, call.first_string_arg, method_or_broker },
+        ) catch return PipelineError.OutOfMemory
+    else
+        std.fmt.allocPrint(
+            gb.allocator,
+            "{{\"callee\":\"{s}\",\"url_path\":\"{s}\",\"broker\":\"{s}\"}}",
+            .{ if (call.full_callee_name.len > 0) call.full_callee_name else call.callee_name, call.first_string_arg, method_or_broker },
+        ) catch return PipelineError.OutOfMemory;
+    defer gb.allocator.free(call_props);
+
+    try insertResolvedEdgeWithProperties(gb, call.caller_id, route_id, edge_type, call_props);
+    return true;
+}
+
+fn isServiceRouteArg(arg: []const u8) bool {
+    if (arg.len == 0) return false;
+    return arg[0] == '/' or std.mem.indexOf(u8, arg, "://") != null;
+}
+
+fn isPathRouteArg(arg: []const u8) bool {
+    if (arg.len < 4 or arg[0] != '/') return false;
+    return std.mem.indexOfScalarPos(u8, arg, 1, '/') != null;
+}
+
 fn insertResolvedEdge(
     gb: *GraphBuffer,
     source_id: i64,
@@ -1456,6 +1581,48 @@ test "route registration emits Route and HANDLES edges" {
 
     try std.testing.expect(hasEdge(&gb, module_id, route.id, "CALLS"));
     try std.testing.expect(hasEdge(&gb, handler_id, route.id, "HANDLES"));
+}
+
+test "service route call emits HTTP_CALLS to concrete Route" {
+    const allocator = std.testing.allocator;
+
+    var gb = GraphBuffer.init(allocator, "routes");
+    defer gb.deinit();
+
+    const caller_id = try gb.upsertNode("Function", "fetchUsers", "routes:client.js:fetchUsers", "client.js", 1, 3);
+    const emitted = try emitServiceRouteCall(&gb, .{
+        .caller_id = caller_id,
+        .callee_name = "get",
+        .full_callee_name = "requests.get",
+        .file_path = "client.py",
+        .first_string_arg = "/api/users",
+    }, "HTTP_CALLS", "requests.get");
+
+    try std.testing.expect(emitted);
+    const route = gb.findNodeByQualifiedName("__route__GET__/api/users") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("Route", route.label);
+    try std.testing.expect(hasEdge(&gb, caller_id, route.id, "HTTP_CALLS"));
+}
+
+test "argument URL call emits ANY HTTP_CALLS route edge" {
+    const allocator = std.testing.allocator;
+
+    var gb = GraphBuffer.init(allocator, "routes");
+    defer gb.deinit();
+
+    const caller_id = try gb.upsertNode("Function", "fetch_users", "routes:app.py:fetch_users", "app.py", 1, 3);
+    const emitted = try emitArgUrlRouteCall(&gb, .{
+        .caller_id = caller_id,
+        .callee_name = "send",
+        .full_callee_name = "send",
+        .file_path = "app.py",
+        .first_string_arg = "/api/users",
+    });
+
+    try std.testing.expect(emitted);
+    const route = gb.findNodeByQualifiedName("__route__ANY__/api/users") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("Route", route.label);
+    try std.testing.expect(hasEdge(&gb, caller_id, route.id, "HTTP_CALLS"));
 }
 
 fn hasEdge(gb: *const GraphBuffer, source_id: i64, target_id: i64, edge_type: []const u8) bool {

@@ -24,10 +24,16 @@ the handler reference resolves.
   `Route` nodes and `HANDLES` edges; framework route-registration calls such as
   `app.get("/path", handler)` now carry route metadata and emit `Route`,
   `CALLS`, and `HANDLES` facts when the handler resolves.
-- Still missing for graph-model parity: route-linked `DATA_FLOWS`, broader
-  framework route coverage, HTTP/async calls routed through concrete URL route
-  nodes, and the full config normalization/linking surface beyond the current
-  key-symbol and dependency-import strategies.
+- Newly implemented after the first route slice: Zig now emits concrete
+  URL/path `Route` caller edges from supported HTTP service calls and resolved
+  URL-argument calls, and bridges route callers to `HANDLES` targets with
+  `DATA_FLOWS`. The current C reference binary did not expose the matching
+  `DATA_FLOWS` row on the shared fixture, so that row remains Zig-regression
+  coverage rather than a strict C/Zig manifest comparison.
+- Still missing for graph-model parity: broader framework route coverage,
+  strict shared C/Zig `DATA_FLOWS` fixture proof, async route coverage, and the
+  full config normalization/linking surface beyond the current key-symbol and
+  dependency-import strategies.
 - Current full Zig-vs-C harness baseline after this route slice:
   `158` comparisons, `89` strict matches, `20` diagnostic-only comparisons,
   `10` mismatches, and `cli_progress: match`. The graph-model-related
@@ -63,7 +69,8 @@ the handler reference resolves.
 ### Phase 1: Lock the Remaining Graph Contract
 - [x] Re-read the original route, config-linking, and semantic-edge passes and record only the overlapping behavior still missing from the Zig port.
 - [x] Define fixture-backed acceptance rules for decorator-backed `Route` and `HANDLES` facts.
-- [ ] Define fixture-backed acceptance rules for `HTTP_CALLS`, `ASYNC_CALLS`, route-linked `DATA_FLOWS`, and config normalization/linking.
+- [x] Define fixture-backed acceptance rules for first-slice `HTTP_CALLS` route callers and route-linked `DATA_FLOWS` in Zig.
+- [ ] Define fixture-backed acceptance rules for strict shared C/Zig `DATA_FLOWS`, `ASYNC_CALLS`, and config normalization/linking.
 - [x] Add a minimal Python route fixture under `testdata/interop/graph-model/routes/`.
 - [ ] Add minimal JavaScript/TypeScript route fixtures once the shared C/Zig public behavior is established for those registrations.
 - **Status:** partially complete
@@ -77,10 +84,11 @@ the handler reference resolves.
 - **Status:** in progress
 
 ### Phase 3: Add Route-Linked Data Flow
-- [ ] Define the first accepted `DATA_FLOWS` route-link contract from request entry points through handler calls without pretending to solve full local data-flow analysis.
-- [ ] Persist route-linked `DATA_FLOWS` edges and make `trace_call_path` / `query_graph` able to traverse them through the existing edge-type filtering paths.
-- [ ] Add interop assertions that prove data-flow edges are present only when supported route facts exist underneath them.
-- **Status:** pending approval
+- [x] Define the first accepted `DATA_FLOWS` route-link contract from route caller edges through `HANDLES` targets without pretending to solve full local data-flow analysis.
+- [x] Persist route-linked `DATA_FLOWS` edges and make `query_graph` able to traverse them through the existing edge-type filtering paths.
+- [x] Add regression coverage that proves data-flow edges are present only when supported route facts exist underneath them.
+- [ ] Find or construct a strict shared C/Zig public fixture for `DATA_FLOWS`; the current C reference binary does not emit the row on `graph-model-routes`.
+- **Status:** partially complete
 
 ### Phase 4: Finish Config-Link Normalization
 - [ ] Extend config-key extraction and matching only for original-overlap config patterns with fixture evidence.

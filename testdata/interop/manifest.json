@@ -1852,7 +1852,7 @@
             },
             "expect": {
               "columns": ["n.name"],
-              "required_rows": [["/users"]]
+              "required_rows": [["/api/users"]]
             }
           },
           {
@@ -1863,7 +1863,7 @@
             },
             "expect": {
               "columns": ["a.name", "b.name"],
-              "required_rows": [["list_users", "/users"]]
+              "required_rows": [["list_users", "/api/users"]]
             }
           }
         ]

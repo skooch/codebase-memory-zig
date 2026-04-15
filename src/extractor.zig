@@ -45,6 +45,7 @@ pub const UnresolvedCall = struct {
     callee_name: []const u8,
     full_callee_name: []const u8 = "",
     file_path: []const u8,
+    first_string_arg: []const u8 = "",
     route_path: []const u8 = "",
     route_handler_ref: []const u8 = "",
     route_method: []const u8 = "",
@@ -479,11 +480,18 @@ pub fn extractFile(
                     std.mem.eql(u8, callee, meta.callee_leaf)
                 else
                     false;
+                const call_metadata = parseCallLineMetadataForLeaf(clean_line, callee);
                 try unresolved_calls.append(allocator, .{
                     .caller_id = caller_id,
                     .callee_name = try allocator.dupe(u8, callee),
-                    .full_callee_name = try allocator.dupe(u8, if (route_call) route_metadata.?.callee_full else callee),
+                    .full_callee_name = try allocator.dupe(u8, if (route_call)
+                        route_metadata.?.callee_full
+                    else if (call_metadata) |meta|
+                        meta.callee_full
+                    else
+                        callee),
                     .file_path = try allocator.dupe(u8, rel),
+                    .first_string_arg = if (call_metadata) |meta| try allocator.dupe(u8, meta.first_string_arg) else "",
                     .route_path = if (route_call) try allocator.dupe(u8, route_metadata.?.route_path) else "",
                     .route_handler_ref = if (route_call) try allocator.dupe(u8, route_metadata.?.handler_ref) else "",
                     .route_method = if (route_call) try allocator.dupe(u8, route_metadata.?.method) else "",
@@ -1160,6 +1168,33 @@ const RouteDecoratorMetadata = struct {
     method: []const u8,
 };
 
+const CallLineMetadata = struct {
+    callee_full: []const u8,
+    first_string_arg: []const u8,
+};
+
+fn parseCallLineMetadataForLeaf(line: []const u8, callee_leaf: []const u8) ?CallLineMetadata {
+    var search_start: usize = 0;
+    while (search_start < line.len) {
+        const paren = std.mem.indexOfScalarPos(u8, line, search_start, '(') orelse return null;
+        const callee_full = calleeBeforeParen(line, paren) orelse {
+            search_start = paren + 1;
+            continue;
+        };
+        if (!std.mem.eql(u8, lastDottedSegment(callee_full), callee_leaf)) {
+            search_start = paren + 1;
+            continue;
+        }
+        const close = matchingParen(line, paren) orelse line.len;
+        const args = line[paren + 1 .. close];
+        return .{
+            .callee_full = callee_full,
+            .first_string_arg = firstStringArg(args) orelse "",
+        };
+    }
+    return null;
+}
+
 fn parseRouteRegistrationMetadata(line: []const u8) ?RouteRegistrationMetadata {
     var search_start: usize = 0;
     while (search_start < line.len) {
@@ -1228,6 +1263,10 @@ fn emitDecoratorRoute(
     file_path: []const u8,
     route: PendingRouteDecorator,
 ) !void {
+    const handler_id = decl_node.id;
+    const handler_qn = try allocator.dupe(u8, decl_node.qualified_name);
+    defer allocator.free(handler_qn);
+
     const route_qn = try std.fmt.allocPrint(allocator, "__route__{s}__{s}", .{ route.route_method, route.route_path });
     defer allocator.free(route_qn);
 
@@ -1251,11 +1290,11 @@ fn emitDecoratorRoute(
     const handler_props = try std.fmt.allocPrint(
         allocator,
         "{{\"handler\":\"{s}\"}}",
-        .{decl_node.qualified_name},
+        .{handler_qn},
     );
     defer allocator.free(handler_props);
 
-    _ = gb.insertEdgeWithProperties(decl_node.id, route_id, "HANDLES", handler_props) catch |err| switch (err) {
+    _ = gb.insertEdgeWithProperties(handler_id, route_id, "HANDLES", handler_props) catch |err| switch (err) {
         graph_buffer.GraphBufferError.DuplicateEdge => {},
         else => return err,
     };
@@ -1313,6 +1352,12 @@ fn matchingParen(line: []const u8, open: usize) ?usize {
 }
 
 fn firstRoutePathArg(args: []const u8) ?[]const u8 {
+    const first = firstStringArg(args) orelse return null;
+    if (first.len > 0 and first[0] == '/') return first;
+    return null;
+}
+
+fn firstStringArg(args: []const u8) ?[]const u8 {
     var idx: usize = 0;
     while (idx < args.len) : (idx += 1) {
         const ch = args[idx];
@@ -1332,7 +1377,7 @@ fn firstRoutePathArg(args: []const u8) ?[]const u8 {
             }
             if (args[idx] == quote) break;
         }
-        if (idx <= args.len and start < idx and args[start] == '/') {
+        if (idx <= args.len and start < idx) {
             return args[start..idx];
         }
     }
@@ -2997,6 +3042,7 @@ fn freePendingUnresolvedCalls(allocator: std.mem.Allocator, calls: *std.ArrayLis
         allocator.free(c.callee_name);
         if (c.full_callee_name.len > 0) allocator.free(c.full_callee_name);
         allocator.free(c.file_path);
+        if (c.first_string_arg.len > 0) allocator.free(c.first_string_arg);
         if (c.route_path.len > 0) allocator.free(c.route_path);
         if (c.route_handler_ref.len > 0) allocator.free(c.route_handler_ref);
         if (c.route_method.len > 0) allocator.free(c.route_method);
@@ -3053,6 +3099,7 @@ pub fn freeUnresolvedCalls(allocator: std.mem.Allocator, calls: []UnresolvedCall
         allocator.free(c.callee_name);
         if (c.full_callee_name.len > 0) allocator.free(c.full_callee_name);
         allocator.free(c.file_path);
+        if (c.first_string_arg.len > 0) allocator.free(c.first_string_arg);
         if (c.route_path.len > 0) allocator.free(c.route_path);
         if (c.route_handler_ref.len > 0) allocator.free(c.route_handler_ref);
         if (c.route_method.len > 0) allocator.free(c.route_method);
@@ -3613,6 +3660,16 @@ test "route registration metadata captures path handler and method" {
     try std.testing.expectEqualStrings("handlers.list", any_route.handler_ref);
 
     try std.testing.expect(parseRouteRegistrationMetadata("requests.get(\"/api/users\")") == null);
+}
+
+test "call metadata captures dotted callee and first string arg" {
+    const get_meta = parseCallLineMetadataForLeaf("response = requests.get(\"/api/users\")", "get") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("requests.get", get_meta.callee_full);
+    try std.testing.expectEqualStrings("/api/users", get_meta.first_string_arg);
+
+    const json_meta = parseCallLineMetadataForLeaf("return response.json()", "json") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("response.json", json_meta.callee_full);
+    try std.testing.expectEqualStrings("", json_meta.first_string_arg);
 }
 
 test "route decorator metadata captures path and method" {
