@@ -58,7 +58,7 @@ It is intentionally not a wish list. It describes:
 | Core indexing pipeline | Broad multi-pass pipeline including routes, tests, config links, infra scans, git history, similarity | Strong core pipeline for structure, definitions, imports, calls, usages, semantics, incremental, parallel, similarity, plus embedded FTS5 refresh and optional SCIP sidecar import | `Partial` | No |
 | Runtime lifecycle | Watcher, auto-index, update notifications, UI-capable runtime | Watcher, auto-index, incremental, transactional indexing, persistent runtime DB | `Near parity` | Yes |
 | CLI/productization | Rich install/update/config for 10 agents plus hooks/instructions | Source-build-friendly install/update/config for Codex CLI and Claude Code | `Partial` | No |
-| Optional/long-tail systems | UI, route graph, infra/resource indexing, git history, config linking | Git history coupling now implemented; config linking and route nodes partially implemented; UI and infra scanning remain deferred or cut | `Partial` / `Cut` | No |
+| Optional/long-tail systems | UI, route graph, infra/resource indexing, git history, config linking | Git history coupling implemented; graph-model parity fixture contract completed for route nodes and config linking; UI and infra scanning remain deferred or cut | `Partial` / `Cut` | No |
 
 ## 1. Project Scope and Product Shape
 
@@ -132,8 +132,8 @@ It is intentionally not a wish list. It describes:
 | LSP hybrid type resolution | Present for Go/C/C++ in original | Not implemented | `Deferred` | No | The original README explicitly calls out LSP-style hybrid type resolution; Zig does not ship that layer. |
 | Test tagging pass | Yes | Yes for the verified shared Python fixture slice | `Near parity` | Yes | Zig now derives `TESTS` and `TESTS_FILE` from shared filename and call-edge rules on the parity fixture without reopening broader language-specific enrichment work. |
 | Git history coupling | Yes | Implemented | `Near parity` | Yes | Zig pass uses subprocess `git log` (no libgit2); creates `FILE_CHANGES_WITH` edges with `co_changes` and `coupling_score` properties. |
-| Config linking / config normalization | Yes | Partial | `Partial` | No | Zig now implements Strategy 1 (key-symbol) and Strategy 2 (dependency-import matching); the first strict shared key-symbol normalization fixture locks raw-key query visibility and `maxConnections -> max-connections`, but dependency-import fixture coverage and broader normalization coverage remain open. |
-| Route-node creation / cross-service graph | Yes | Partial | `Partial` | No | Zig now classifies call edges as `HTTP_CALLS`/`ASYNC_CALLS`, creates stub and concrete URL/path/topic `Route` nodes, emits verified decorator-backed `HANDLES`, and has strict shared route-linked `DATA_FLOWS` plus async topic fixtures. Broader framework coverage remains open. |
+| Config linking / config normalization | Yes | Implemented for the graph-model parity fixture contract | `Near parity` | Yes | Zig implements Strategy 1 (key-symbol) and Strategy 2 (dependency-import matching); the strict shared key-symbol normalization fixture locks raw-key query visibility and `maxConnections -> max-connections`, and Zig now has dependency-import deduplication coverage. Broader config-language expansion remains optional future work. |
+| Route-node creation / cross-service graph | Yes | Implemented for the graph-model parity fixture contract | `Near parity` | Yes | Zig classifies call edges as `HTTP_CALLS`/`ASYNC_CALLS`, creates stub and concrete URL/path/topic `Route` nodes, emits verified decorator-backed `HANDLES`, has strict shared route-linked `DATA_FLOWS` plus async topic fixtures, and covers route summary exposure. Broader framework expansion remains optional future work. |
 | Infra scanning (`Docker`, `K8s`, Terraform, etc.) | Yes in the original codebase | Not ported | `Cut` | No | Zig intentionally excludes the infra-scan family from the current port target. |
 | OTLP traces | Stubbed | Not ported | `N/A` | No | Not a meaningful implemented-vs-implemented gap. |
 
@@ -224,9 +224,9 @@ If someone asks “what still separates the Zig port from the original?”, the 
 | Difference | Why it matters |
 |-----------|----------------|
 | No full Cypher parity | Some advanced graph query patterns remain C-only. |
-| Partial route / cross-service graph stack | Zig now emits verified decorator-backed `HANDLES`, strict shared route-linked `DATA_FLOWS`, and strict shared async topic caller rows, but broader framework coverage remains open. |
+| Broader route / cross-service framework expansion | Zig now emits verified decorator-backed `HANDLES`, strict shared route-linked `DATA_FLOWS`, strict shared async topic caller rows, and route summaries. Additional framework-specific route registrations beyond the verified contract remain optional future work. |
 | No LSP-assisted hybrid resolution | Some higher-fidelity call/type resolution paths remain original-only. |
-| No full config normalization | Git-history coupling is implemented, config linking has dependency-import matching and a strict shared key-symbol normalization fixture, decorator-backed `HANDLES` is verified, strict shared route-linked `DATA_FLOWS` is covered, and the first async topic route fixture is covered. The remaining graph-model gap is broader framework route coverage plus dependency-import fixture coverage and broader config-normalization closure. |
+| Broader config normalization expansion | Git-history coupling is implemented, config linking has dependency-import matching and deduplication coverage plus a strict shared key-symbol normalization fixture. Additional config-language/key-shape expansion remains optional future work beyond the completed graph-model parity fixture contract. |
 | No UI subsystem | The original can run a graph visualization UI; the Zig port intentionally cannot. |
 | Much narrower installer ecosystem | The original configures 10 agents plus hooks/instructions; Zig currently configures 2 agents and only MCP entries. |
 
@@ -248,6 +248,6 @@ That means the Zig port is already strong where this repo has chosen to compete:
 The remaining gap is no longer “the basics do not work.” The remaining gap is the long tail:
 
 - richer query parity
-- richer graph-model parity
+- optional graph-model expansion beyond the verified route/config fixture contract
 - broader installer/product surface
 - optional subsystems that this repo has explicitly deferred or cut

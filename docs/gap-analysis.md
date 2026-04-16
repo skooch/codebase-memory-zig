@@ -72,7 +72,7 @@ Intentionally deferred after Phase 7:
 - The remaining MCP work outside the completed daily-use slice, especially fuller Cypher parity.
 - Full Cypher parity beyond the broader day-to-day query subset now supporting node/edge reads, filtering, sorting, and counts.
 - Deeper usage/type-reference extraction parity and broader cross-language semantics beyond the current target daily-use slice.
-- Richer decorator/enrichment follow-ons, broader route detection, and broader config normalization/linking surface. (Git-history coupling is now implemented; route nodes and config-linking both have strict shared graph-model fixture slices.)
+- Richer decorator/enrichment follow-ons and broader route/config expansion beyond the implemented graph-model parity fixture contract. (Git-history coupling is implemented; route nodes and config-linking both have strict shared graph-model fixture slices.)
 - Broader installer/self-update behavior beyond the current source-build-friendly Codex CLI / Claude Code support.
 - Idle-store and session-lifecycle extras beyond the current persistent-store + watcher runtime model.
 
@@ -126,10 +126,10 @@ Deferred or optional future slices:
 - Metadata and enrichment:
   - git-history coupling — now implemented (subprocess `git log`, `FILE_CHANGES_WITH` edges)
   - long-tail edges — now implemented: `THROWS`/`RAISES` (JS/TS/TSX throw statements), decorator-backed `HANDLES`, and route-linked `DATA_FLOWS`; remaining or out-of-scope gaps: `OVERRIDE` (Go-only), `WRITES`/`READS` (not proven original-overlap by the current C reference fixture)
-  - route nodes — partially implemented (stub and concrete URL/path/topic `Route` nodes, verified decorator-backed `Route`/`HANDLES`, strict shared route-linked `DATA_FLOWS`, and strict shared `ASYNC_CALLS`; broader framework coverage still open)
-  - config-linking — partially implemented (Strategy 1 key-symbol + Strategy 2 dependency-import; the first strict shared key-symbol normalization fixture now proves raw-key preservation and `CONFIGURES` query visibility, while dependency-import fixture coverage remains open)
+  - route nodes — implemented for the graph-model parity fixture contract (stub and concrete URL/path/topic `Route` nodes, verified decorator-backed `Route`/`HANDLES`, strict shared route-linked `DATA_FLOWS`, strict shared `ASYNC_CALLS`, and route summary exposure; broader framework expansion remains optional)
+  - config-linking — implemented for the graph-model parity fixture contract (Strategy 1 key-symbol + Strategy 2 dependency-import, strict shared key-symbol normalization fixture, raw-key preservation, `CONFIGURES` query visibility, and Zig dependency-import deduplication coverage)
   - richer decorator/enrichment promotion
-  - current entrypoint: [graph-model-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/graph-model-parity-plan.md)
+  - completed entrypoint: [graph-model-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/graph-model-parity-plan.md)
 - Productization beyond the current contract:
   - broader installer/self-update behavior
   - broader agent integration coverage and installer diagnostics
@@ -428,10 +428,10 @@ The Zig store has the schema (tables + indexes + pragmas) and opens in-memory DB
 | `pass_parallel` | 1,427 | MISSING | Thread pool orchestration |
 | `pass_similarity` | 505 (minhash.c) | MISSING | MinHash near-clone detection |
 | `pass_gitdiff` | ~200 | MISSING | Git diff → changed files/hunks |
-| `pass_route_nodes` | 742 | PARTIAL (stub and concrete URL/path/topic Route nodes, verified decorator-backed `Route`/`HANDLES`, strict shared route-linked `DATA_FLOWS`, and strict shared `ASYNC_CALLS`) | HTTP/async route node creation, first handler association slice, and first data-flow bridge |
+| `pass_route_nodes` | 742 | WORKS for graph-model parity fixture contract (stub and concrete URL/path/topic Route nodes, verified decorator-backed `Route`/`HANDLES`, strict shared route-linked `DATA_FLOWS`, strict shared `ASYNC_CALLS`, and route summary exposure) | HTTP/async route node creation, first handler association slice, and first data-flow bridge |
 | `pass_tests` | 285 | WORKS for the shared Python `TESTS` / `TESTS_FILE` slice | Test file/function tagging now verified on the local parity fixture; broader language breadth stays follow-on work |
 | `pass_enrichment` | ~200 | MISSING (deferred) | Decorator tag enrichment |
-| `pass_configlink` | ~200 | PARTIAL (Strategy 1 key-symbol + Strategy 2 dependency-import; first strict shared key-symbol fixture is locked) | Config-code linking |
+| `pass_configlink` | ~200 | WORKS for graph-model parity fixture contract (Strategy 1 key-symbol + Strategy 2 dependency-import; strict shared key-symbol fixture and Zig dependency-import deduplication coverage are locked) | Config-code linking |
 | `pass_githistory` | 514 | WORKS | Change coupling from git log |
 | `pipeline_incremental` | ~400 | MISSING (deferred) | Incremental re-indexing |
 

@@ -2937,6 +2937,77 @@ test "pipeline links matching config keys to code symbols" {
     try std.testing.expect(edgeTargetsContain(configures, config_id));
 }
 
+test "pipeline links manifest dependencies to resolved imports once" {
+    const allocator = std.testing.allocator;
+
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(
+        allocator,
+        "/tmp/cbm-pipeline-dep-import-{x}",
+        .{project_id},
+    );
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    {
+        var dir = try std.fs.cwd().openDir(project_dir, .{});
+        defer dir.close();
+
+        try dir.makePath("src");
+
+        var cargo = try dir.createFile("Cargo.toml", .{});
+        defer cargo.close();
+        try cargo.writeAll(
+            \\[package]
+            \\name = "dep-import"
+            \\version = "0.1.0"
+            \\
+            \\[dependencies]
+            \\serde = "1"
+            \\
+        );
+
+        var lib = try dir.createFile("src/lib.rs", .{});
+        defer lib.close();
+        try lib.writeAll(
+            \\use serde::Serialize;
+            \\use serde::Serialize;
+            \\
+            \\pub fn encode(value: Serialize) -> Serialize {
+            \\    value
+            \\}
+            \\
+        );
+
+        var serde = try dir.createFile("src/serde.rs", .{});
+        defer serde.close();
+        try serde.writeAll(
+            \\pub struct Serialize;
+            \\
+        );
+    }
+
+    var db = try store.Store.openMemory(allocator);
+    defer db.deinit();
+
+    var pipeline = Pipeline.init(allocator, project_dir, .full);
+    defer pipeline.deinit();
+    try pipeline.run(&db);
+
+    const project_name = std.fs.path.basename(project_dir);
+    const lib_id = try findExactFileNodeByPath(&db, project_name, "src/lib.rs");
+    const serde_dep_id = try findSingleNodeByNameInFile(&db, project_name, "Variable", "serde", "Cargo.toml");
+    const configures = try db.findEdgesBySource(project_name, lib_id, "CONFIGURES");
+    defer db.freeEdges(configures);
+
+    var matches: usize = 0;
+    for (configures) |edge| {
+        if (edge.target_id == serde_dep_id) matches += 1;
+    }
+    try std.testing.expectEqual(@as(usize, 1), matches);
+}
+
 test "pipeline emits similarity edges and fingerprints for near-duplicate functions" {
     const allocator = std.testing.allocator;
 

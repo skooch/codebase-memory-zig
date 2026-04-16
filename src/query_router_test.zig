@@ -46,6 +46,58 @@ fn setupIndexedProject(allocator: std.mem.Allocator, db: *store.Store) ![]const 
     return project_dir;
 }
 
+fn setupIndexedRouteProject(allocator: std.mem.Allocator, db: *store.Store) ![]const u8 {
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(
+        allocator,
+        "/tmp/cbm-qr-route-test-{x}",
+        .{project_id},
+    );
+    errdefer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+
+    {
+        var dir = try std.fs.cwd().openDir(project_dir, .{});
+        defer dir.close();
+
+        var app = try dir.createFile("app.py", .{});
+        defer app.close();
+        try app.writeAll(
+            \\import requests
+            \\
+            \\class App:
+            \\    def get(self, path):
+            \\        def wrapper(fn):
+            \\            return fn
+            \\        return wrapper
+            \\
+            \\app = App()
+            \\
+            \\@app.get("/api/users")
+            \\def list_users():
+            \\    return []
+            \\
+            \\def fetch_users():
+            \\    return requests.get("/api/users")
+            \\
+        );
+
+        var requests = try dir.createFile("requests.py", .{});
+        defer requests.close();
+        try requests.writeAll(
+            \\def get(path):
+            \\    return path
+            \\
+        );
+    }
+
+    var p = pipeline.Pipeline.init(allocator, project_dir, .full);
+    defer p.deinit();
+    try p.run(db);
+
+    return project_dir;
+}
+
 test "searchCodePayload returns matching results" {
     const allocator = std.testing.allocator;
 
@@ -136,6 +188,31 @@ test "getArchitecturePayload returns project structure" {
     // Default flags include structure (node_labels) and dependencies (edge_types).
     try std.testing.expect(std.mem.indexOf(u8, payload, "\"node_labels\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, payload, "\"edge_types\"") != null);
+}
+
+test "getArchitecturePayload includes route summaries" {
+    const allocator = std.testing.allocator;
+
+    var db = try store.Store.openMemory(allocator);
+    defer db.deinit();
+
+    const project_dir = try setupIndexedRouteProject(allocator, &db);
+    defer allocator.free(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    const project_name = std.fs.path.basename(project_dir);
+
+    var router = QueryRouter.init(allocator, &db);
+    const payload = try router.getArchitecturePayload(.{
+        .project = project_name,
+        .include_routes = true,
+    });
+    defer allocator.free(payload);
+
+    try std.testing.expect(payload.len > 0 and payload[0] == '{');
+    try std.testing.expect(std.mem.indexOf(u8, payload, "\"routes\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, payload, "/api/users") != null);
+    try std.testing.expect(std.mem.indexOf(u8, payload, "HTTP_CALLS") != null);
 }
 
 test "detectChangesPayload handles non-git gracefully" {

@@ -3,7 +3,7 @@
 ## Session: 2026-04-16
 
 ### Phase 1: Lock the Remaining Graph Contract
-- **Status:** partially complete
+- **Status:** complete
 - Actions:
   - Moved `docs/plans/new/graph-model-parity-plan.md` to `docs/plans/in-progress/graph-model-parity-plan.md` before implementation.
   - Starting from current main baseline: full Zig-vs-C harness reports 151 comparisons, 86 strict matches, 19 diagnostic-only comparisons, and 10 known mismatches.
@@ -11,7 +11,7 @@
   - Added `testdata/interop/graph-model/routes/app.py` and manifest assertions for `Route` and `HANDLES` query rows.
 
 ### Phase 2: Complete Route Handler Modeling
-- **Status:** in progress
+- **Status:** complete
 - Actions:
   - Extended extractor state so route decorators create `Route` nodes plus `HANDLES` edges during extraction.
   - Added route-registration call metadata for framework calls such as `app.get("/path", handler)` and pipeline emission for `Route`, `CALLS`, and `HANDLES` when the handler resolves.
@@ -40,13 +40,24 @@
   - Regenerated `graph-model-async` golden coverage.
 
 ### Phase 4: Finish Config-Link Normalization
-- **Status:** in progress for the first shared key-symbol slice
+- **Status:** complete for the graph-model parity plan
 - Actions:
   - Re-read the original C `pass_configlink` behavior and compared it with Zig's `runConfigLinkPass` and `normalizeConfigName`.
   - Probed a focused YAML/Python fixture against both implementations and confirmed the shared public rows before adding repo fixtures.
   - Added `testdata/interop/graph-model/config/` with `maxConnections`, `max_connections`, `max-connections`, and `short`.
   - Added strict manifest assertions that prove the raw `max-connections` config key, the normalized `maxConnections -> max-connections` `CONFIGURES` row, and no false `CONFIGURES` row for `short`.
   - Regenerated `graph-model-config` golden coverage.
+  - Probed Cargo/TOML dependency-import fixture candidates against both implementations; the current C reference did not emit the matching `CONFIGURES` rows, so this was not added as a shared fixture.
+  - Added Zig regression coverage for dependency-import matching and deduplication when a manifest dependency resolves through an import edge.
+  - Probed JSON config-key extraction against both implementations and avoided adding a non-shared fixture because the current C reference did not expose the JSON config row in that scenario.
+
+### Phase 5: Verify and Reclassify
+- **Status:** complete
+- Actions:
+  - Added route summary exposure coverage through `getArchitecturePayload` with a route fixture that emits route and `HTTP_CALLS` data.
+  - Probed JavaScript/TypeScript route registration candidates against the current C reference; no shared public fixture rows were available, so Zig coverage remains in service-pattern, extractor, and pipeline tests.
+  - Removed graph-model fixture mismatches from the full harness by tightening the shared `config-deps` and `http-calls` fixture contracts to rows both implementations expose.
+  - Reclassified remaining graph-model work as optional future parity expansion beyond this plan's verified shared contracts.
 
 ### Verification
 - `zig build` -> passed

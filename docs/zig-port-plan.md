@@ -55,7 +55,7 @@ Intentionally deferred after Phase 7:
 - Remaining MCP surface beyond the current daily-use slice, especially fuller Cypher parity and richer trace breadth.
 - Full Cypher parity beyond the broader day-to-day query subset now used by `query_graph`, `get_architecture`, and `detect_changes`.
 - Deeper usage/type-ref parity and broader extraction semantics beyond the current daily-use slice for Python, JS/TS/TSX, Rust, and Zig.
-- Git-history coupling, route nodes, test tagging, config-linking, and richer decorator/enrichment follow-ons.
+- Richer decorator/enrichment follow-ons and optional graph-model expansion beyond the implemented route/config fixture contract.
 - Broader installer or self-update behavior beyond the current source-build-friendly CLI contract.
 
 ### Follow-On Shared Parity Plan
@@ -565,11 +565,11 @@ Current state: the broader daily-use MCP surface is now live, the runtime uses a
 
 - [x] Incremental re-indexing
 - [x] Git history pass (change coupling)
-- [ ] Route node creation and handler/data-flow links (partial: stub and concrete URL/path/topic `Route` nodes, verified decorator-backed `HANDLES`, strict shared route-linked `DATA_FLOWS`, and strict shared `ASYNC_CALLS` are implemented; broader framework coverage remains open)
+- [x] Route node creation and handler/data-flow links (stub and concrete URL/path/topic `Route` nodes, verified decorator-backed `HANDLES`, strict shared route-linked `DATA_FLOWS`, strict shared `ASYNC_CALLS`, and route summary exposure are implemented for the graph-model parity fixture contract)
 - [x] Test tagging
-- [ ] Config-code linking (partial: key-symbol and dependency-import strategies are implemented; first strict shared key-symbol normalization fixture is locked)
+- [x] Config-code linking (key-symbol and dependency-import strategies are implemented; strict shared key-symbol normalization fixture and Zig dependency-import deduplication coverage are locked)
 - [ ] Decorator enrichment
-Current state: M4 is no longer a blank backlog. Git-history coupling, test tagging, route stubs, concrete URL/path/topic route callers, decorator-backed `HANDLES`, strict shared route-linked `DATA_FLOWS`, strict shared `ASYNC_CALLS`, service-pattern call classification, partial config linking with a strict shared key-symbol normalization fixture, and long-tail `THROWS` / `RAISES` edges are implemented. The active graph-model parity entrypoint is [graph-model-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/graph-model-parity-plan.md), which tracks the remaining broader route handler coverage and dependency-import/config-normalization work.
+Current state: M4 is no longer a blank backlog. Git-history coupling, test tagging, route stubs, concrete URL/path/topic route callers, decorator-backed `HANDLES`, strict shared route-linked `DATA_FLOWS`, strict shared `ASYNC_CALLS`, service-pattern call classification, config linking with strict shared key-symbol normalization and dependency-import deduplication coverage, and long-tail `THROWS` / `RAISES` edges are implemented. The completed graph-model parity entrypoint is [graph-model-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/graph-model-parity-plan.md).
 
 ## Completion Summary
 
@@ -589,7 +589,7 @@ Deferred or optional follow-on implementation slices:
 - Remaining M3:
   - memory/performance parity work
 - Remaining M4:
-  - graph-model parity: route handler association, route-linked data flow, decorator route extraction, and full config normalization
+  - optional graph-model expansion beyond the verified route/config fixture contract
 
 ## 9. Post-Readiness Execution Plan
 
