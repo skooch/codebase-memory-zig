@@ -21,7 +21,17 @@
       "columns": [
         "n.name"
       ],
-      "rows": []
+      "rows": [
+        [
+          "create_user"
+        ],
+        [
+          "fetch_users"
+        ],
+        [
+          "health_check"
+        ]
+      ]
     }
   ],
   "search_code": [],

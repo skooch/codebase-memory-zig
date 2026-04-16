@@ -48,10 +48,11 @@ short one-token config key.
   broader config-link coverage beyond the first strict key-symbol fixture,
   especially dependency-import fixture coverage.
 - Current full Zig-vs-C harness baseline after this config slice:
-  `172` comparisons, `97` strict matches, `22` diagnostic-only comparisons,
-  `9` mismatches, and `cli_progress: match`. The remaining
-  graph-model-related mismatch is the existing `graph-enrichment-http-calls`
-  query row.
+  `172` comparisons, `99` strict matches, `22` diagnostic-only comparisons,
+  `8` mismatches, and `cli_progress: match`. No remaining full-harness
+  mismatches are graph-model fixture rows; the remaining graph-model work is
+  positive coverage for broader route/config behavior, not current fixture
+  mismatch repair.
 
 ## Superseded Plans
 - `docs/plans/paused/ready-to-go/04-graph-enrichment-parity-plan.md`
@@ -122,6 +123,7 @@ short one-token config key.
 - [x] Run `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh --zig-only`, and focused graph-model fixture queries.
 - [x] Run the full Zig-vs-C interop harness if the C reference binary is available locally.
 - [x] Update `docs/port-comparison.md`, `docs/gap-analysis.md`, and `docs/zig-port-plan.md` only for rows backed by the new fixtures.
+- [x] Remove graph-model fixture mismatches from the full harness by tightening shared C/Zig query contracts for config-deps and HTTP function inventory fixtures.
 - [ ] Move this plan and its progress log to `docs/plans/implemented/` only after all required verification passes.
 - **Status:** in progress
 
