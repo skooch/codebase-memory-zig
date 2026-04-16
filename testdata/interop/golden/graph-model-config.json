@@ -1,0 +1,68 @@
+{
+  "delete_project": [],
+  "detect_changes_count": 0,
+  "fixture_id": "graph-model-config",
+  "get_architecture": [],
+  "get_code_snippet": [],
+  "get_graph_schema": [],
+  "index_repository": {
+    "edges_actual": 10,
+    "edges_min": 2,
+    "nodes_actual": 9,
+    "nodes_min": 4
+  },
+  "index_status": [],
+  "list_projects": [
+    "config"
+  ],
+  "manage_adr": [],
+  "query_graph": [
+    {
+      "columns": [
+        "n.name"
+      ],
+      "rows": [
+        [
+          "max-connections"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "a.name",
+        "b.name"
+      ],
+      "rows": [
+        [
+          "maxConnections",
+          "max-connections"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "a.name",
+        "b.name"
+      ],
+      "rows": []
+    }
+  ],
+  "search_code": [],
+  "search_graph": [],
+  "tools_list": [
+    "delete_project",
+    "detect_changes",
+    "get_architecture",
+    "get_code_snippet",
+    "get_graph_schema",
+    "index_repository",
+    "index_status",
+    "list_projects",
+    "manage_adr",
+    "query_graph",
+    "search_code",
+    "search_graph",
+    "trace_call_path"
+  ],
+  "trace_call_path": []
+}

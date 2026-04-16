@@ -1917,6 +1917,52 @@
       }
     },
     {
+      "id": "graph-model-config",
+      "path": "testdata/interop/graph-model/config",
+      "project": "config",
+      "language": "mixed",
+      "scope_tools": ["index_repository", "query_graph", "list_projects"],
+      "assertions": {
+        "index_repository": {
+          "expect": { "nodes_min": 4, "edges_min": 2 }
+        },
+        "query_graph": [
+          {
+            "args": {
+              "query": "MATCH (n) WHERE n.name = 'max-connections' RETURN n.name ORDER BY n.name ASC",
+              "project": "config",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["n.name"],
+              "required_rows": [["max-connections"]]
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:CONFIGURES]->(b) WHERE a.name = 'maxConnections' RETURN a.name, b.name ORDER BY a.name, b.name",
+              "project": "config",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["a.name", "b.name"],
+              "required_rows": [["maxConnections", "max-connections"]]
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:CONFIGURES]->(b) WHERE b.name = 'short' RETURN a.name, b.name ORDER BY a.name, b.name",
+              "project": "config",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["a.name", "b.name"]
+            }
+          }
+        ]
+      }
+    },
+    {
       "id": "graph-enrichment-config-deps",
       "path": "testdata/interop/graph-enrichment/config-deps",
       "project": "graph-enrichment-config-deps",

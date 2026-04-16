@@ -567,9 +567,9 @@ Current state: the broader daily-use MCP surface is now live, the runtime uses a
 - [x] Git history pass (change coupling)
 - [ ] Route node creation and handler/data-flow links (partial: stub and concrete URL/path/topic `Route` nodes, verified decorator-backed `HANDLES`, strict shared route-linked `DATA_FLOWS`, and strict shared `ASYNC_CALLS` are implemented; broader framework coverage remains open)
 - [x] Test tagging
-- [ ] Config-code linking (partial: key-symbol and dependency-import strategies are implemented)
+- [ ] Config-code linking (partial: key-symbol and dependency-import strategies are implemented; first strict shared key-symbol normalization fixture is locked)
 - [ ] Decorator enrichment
-Current state: M4 is no longer a blank backlog. Git-history coupling, test tagging, route stubs, concrete URL/path/topic route callers, decorator-backed `HANDLES`, strict shared route-linked `DATA_FLOWS`, strict shared `ASYNC_CALLS`, service-pattern call classification, partial config linking, and long-tail `THROWS` / `RAISES` edges are implemented. The active graph-model parity entrypoint is [graph-model-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/graph-model-parity-plan.md), which tracks the remaining broader route handler coverage and config-normalization work.
+Current state: M4 is no longer a blank backlog. Git-history coupling, test tagging, route stubs, concrete URL/path/topic route callers, decorator-backed `HANDLES`, strict shared route-linked `DATA_FLOWS`, strict shared `ASYNC_CALLS`, service-pattern call classification, partial config linking with a strict shared key-symbol normalization fixture, and long-tail `THROWS` / `RAISES` edges are implemented. The active graph-model parity entrypoint is [graph-model-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/graph-model-parity-plan.md), which tracks the remaining broader route handler coverage and dependency-import/config-normalization work.
 
 ## Completion Summary
 

@@ -39,12 +39,24 @@
   - Added strict manifest assertions for `__route__celery__users.refresh` and `enqueue_users -> users.refresh` over `ASYNC_CALLS`.
   - Regenerated `graph-model-async` golden coverage.
 
+### Phase 4: Finish Config-Link Normalization
+- **Status:** in progress for the first shared key-symbol slice
+- Actions:
+  - Re-read the original C `pass_configlink` behavior and compared it with Zig's `runConfigLinkPass` and `normalizeConfigName`.
+  - Probed a focused YAML/Python fixture against both implementations and confirmed the shared public rows before adding repo fixtures.
+  - Added `testdata/interop/graph-model/config/` with `maxConnections`, `max_connections`, `max-connections`, and `short`.
+  - Added strict manifest assertions that prove the raw `max-connections` config key, the normalized `maxConnections -> max-connections` `CONFIGURES` row, and no false `CONFIGURES` row for `short`.
+  - Regenerated `graph-model-config` golden coverage.
+
 ### Verification
 - `zig build` -> passed
 - `zig build test` -> passed
-- `bash scripts/run_interop_alignment.sh --update-golden` -> passed, 21/21 golden snapshots updated
-- `bash scripts/run_interop_alignment.sh --zig-only` -> passed, 21/21 golden comparison
-- `bash scripts/run_interop_alignment.sh` -> passed with 21 fixtures, 165 comparisons, 92 strict matches, 21 diagnostic-only comparisons, 10 known mismatches, and `cli_progress: match`
+- `python3 -m json.tool testdata/interop/manifest.json >/dev/null` -> passed
+- `bash scripts/run_interop_alignment.sh --update-golden` -> passed, 22/22 golden snapshots updated
+- `bash scripts/run_interop_alignment.sh --zig-only` -> passed, 22/22 golden comparison
+- `bash scripts/run_interop_alignment.sh` -> passed with 22 fixtures, 172 comparisons, 95 strict matches, 22 diagnostic-only comparisons, 10 known mismatches, and `cli_progress: match`
+- `git diff --check` -> passed
+- `command -v zlint` -> blocked; `zlint` is not installed in this environment
 
 ## Errors
 | Timestamp | Error | Attempt | Resolution |

@@ -8,12 +8,16 @@ normalization surface.
 
 ## Current Phase
 Phase 3 route-linked data flow is complete for the first shared public fixture,
-and the first shared async route caller fixture is now locked:
+the first shared async route caller fixture is locked, and Phase 4 now has its
+first strict config-key fixture:
 decorator route extraction creates `Route` nodes and `HANDLES` edges,
 route-registration calls preserve enough call metadata to emit `HANDLES` when
 the handler reference resolves, and the shared Python route fixture now proves a
 strict C/Zig `DATA_FLOWS` row through a `GET` route. The async fixture proves a
 broker-specific `Route` and `ASYNC_CALLS` row for a local `celery.delay` topic.
+The config fixture proves raw key preservation, dash/camel normalization, the
+`maxConnections -> max-connections` `CONFIGURES` row, and no false link for a
+short one-token config key.
 
 ## Current Codebase State
 - Complete and verified: advanced trace modes, risk labels, include-tests
@@ -36,11 +40,15 @@ broker-specific `Route` and `ASYNC_CALLS` row for a local `celery.delay` topic.
 - Newly implemented for async route coverage: Zig accepts async broker topics,
   preserves broker names for route QNs/properties, and the `graph-model-async`
   fixture proves the shared `enqueue_users -> users.refresh` `ASYNC_CALLS` row.
+- Newly locked for config-link coverage: the `graph-model-config` fixture proves
+  the first shared key-symbol normalization contract with a YAML
+  `max-connections` key linked from a camelCase Python symbol while preserving
+  the raw config key in query-visible output.
 - Still missing for graph-model parity: broader framework route coverage and
-  the full config normalization/linking surface beyond the current key-symbol
-  and dependency-import strategies.
-- Current full Zig-vs-C harness baseline after this route slice:
-  `165` comparisons, `92` strict matches, `21` diagnostic-only comparisons,
+  broader config-link coverage beyond the first strict key-symbol fixture,
+  especially dependency-import mismatch closure.
+- Current full Zig-vs-C harness baseline after this config slice:
+  `172` comparisons, `95` strict matches, `22` diagnostic-only comparisons,
   `10` mismatches, and `cli_progress: match`. The graph-model-related
   mismatches still include the existing `graph-enrichment-config-deps` and
   `graph-enrichment-http-calls` query rows.
@@ -67,7 +75,7 @@ broker-specific `Route` and `ASYNC_CALLS` row for a local `celery.delay` topic.
 - Modify: `testdata/interop/manifest.json`
 - Create: `testdata/interop/graph-model/routes/`
 - Create: `testdata/interop/graph-model/config/`
-- Create: `docs/plans/in-progress/graph-model-parity-progress.md` after approval
+- Modify: `docs/plans/in-progress/graph-model-parity-progress.md`
 
 ## Phases
 
@@ -77,7 +85,7 @@ broker-specific `Route` and `ASYNC_CALLS` row for a local `celery.delay` topic.
 - [x] Define fixture-backed acceptance rules for first-slice `HTTP_CALLS` route callers and route-linked `DATA_FLOWS` in Zig.
 - [x] Define fixture-backed acceptance rules for strict shared C/Zig `DATA_FLOWS`.
 - [x] Define fixture-backed acceptance rules for strict shared C/Zig `ASYNC_CALLS`.
-- [ ] Define fixture-backed acceptance rules for config normalization/linking.
+- [x] Define fixture-backed acceptance rules for first-slice config normalization/linking.
 - [x] Add a minimal Python route fixture under `testdata/interop/graph-model/routes/`.
 - [ ] Add minimal JavaScript/TypeScript route fixtures once the shared C/Zig public behavior is established for those registrations.
 - **Status:** partially complete
@@ -104,10 +112,11 @@ broker-specific `Route` and `ASYNC_CALLS` row for a local `celery.delay` topic.
 - **Status:** complete for the first async route caller slice
 
 ### Phase 4: Finish Config-Link Normalization
-- [ ] Extend config-key extraction and matching only for original-overlap config patterns with fixture evidence.
-- [ ] Preserve raw config keys while adding the minimum normalized lookup metadata needed for stable links.
-- [ ] Add regression coverage for config-key normalization, dependency-import matching, deduplication, and query visibility.
-- **Status:** pending approval
+- [x] Add the first strict shared key-symbol fixture for dash/camel config normalization.
+- [x] Verify raw config keys remain query-visible while normalized matching creates stable links.
+- [ ] Extend config-key extraction and matching only for additional original-overlap config patterns with fixture evidence.
+- [ ] Add regression coverage for dependency-import matching, deduplication, and broader query visibility.
+- **Status:** in progress
 
 ### Phase 5: Verify and Reclassify
 - [x] Run `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh --zig-only`, and focused graph-model fixture queries.
