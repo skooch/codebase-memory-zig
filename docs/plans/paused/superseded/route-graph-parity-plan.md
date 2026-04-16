@@ -2,9 +2,10 @@
 
 ## Status
 Paused on 2026-04-15. This narrower route-only plan is superseded by
-`docs/plans/in-progress/graph-model-parity-plan.md`, which combines the remaining
-route, config-linking, route-linked data-flow, and semantic-edge work into one
-dependency-ordered graph-model parity tranche.
+`docs/plans/implemented/graph-model-parity-plan.md`, which completed the
+verified route-node, handler, route-linked data-flow, async route, and
+route-summary fixture contract. This file is kept only as historical paused
+context; do not treat its unchecked tasks as active work.
 
 ## Goal
 Implement the original route and cross-service graph layer so the Zig port can model `Route`, `HTTP_CALLS`, `ASYNC_CALLS`, and related handler relationships.

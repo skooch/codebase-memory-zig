@@ -2,15 +2,17 @@
 
 ## Status
 Paused on 2026-04-15. This bundled enrichment plan is superseded by
-`docs/plans/in-progress/graph-model-parity-plan.md`. Its git-history slice is already
-implemented; the remaining route/config/semantic graph work is now tracked in
-the graph-model parity plan with narrower acceptance gates.
+`docs/plans/implemented/graph-model-parity-plan.md`. Its git-history,
+route/config, route-linked data-flow, async route, and route-summary slices are
+now implemented for the verified graph-model fixture contract. This file is kept
+only as historical paused context; do not treat its unchecked tasks as active
+work.
 
 ## Goal
 Close the most visible graph-model gaps after tracing by adding the shared route, config-link, and git-history-derived enrichment layers that make the original feel broader than the current Zig graph.
 
 ## Current Phase
-Paused / superseded
+Paused / superseded by implemented graph-model parity plan
 
 ## File Map
 - Modify: `docs/plans/paused/ready-to-go/04-graph-enrichment-parity-plan.md`

@@ -34,10 +34,18 @@ Completed now:
   - TSX
   - Rust
   - Zig
-- The current fixture harness baseline is:
+- The first-gate fixture harness baseline is:
   - `Strict matches: 58`
   - `Diagnostic-only comparisons: 9`
   - `Mismatches: 0`
+- The expanded full harness after graph-model parity currently reports:
+  - `Fixtures: 22`
+  - `Comparisons: 172`
+  - `Strict matches: 99`
+  - `Diagnostic-only comparisons: 22`
+  - `Known mismatches: 8`
+  - `cli_progress: match`
+  - no remaining graph-model fixture mismatches
 
 Completed after the readiness gate:
 - Runtime lifecycle and scale baseline:
@@ -82,11 +90,11 @@ Completed in Plan 03:
 Completed in Plan 05:
 - Long-tail edge parity: `THROWS`/`RAISES` edges from throw statements (JS/TS/TSX). Verified end-to-end on the edge-parity fixture with RAISES resolving custom error classes. Out-of-scope edges: `OVERRIDE` (Go-only), `CONTAINS_PACKAGE` (never implemented in C), `WRITES` and `READS` (not proven original-overlap by the current C reference fixture).
 
-## Shared Capability Full-Parity Follow-On
+## Completed Shared Capability Full-Parity Follow-On
 
 Phase 2 of the follow-on parity plan is now complete: `cli --progress`, `query_graph`, `get_architecture`, `search_code`, and `detect_changes` are now backed by green shared-capability evidence and can be marked `Interoperable? Yes` in [port-comparison.md](/Users/skooch/projects/codebase-memory-zig/docs/port-comparison.md).
 
-The remaining shared capabilities that still exist in both implementations without full parity are below. These are the rows the next phases must close before the remaining `Interoperable? No` entries can flip.
+The historical rows below describe the acceptance targets used by completed shared-capability work or optional deferred follow-ons. Do not read this table as the active plan inventory; the active backlog lives under `docs/plans/new/`, while the completed graph-model parity entrypoint lives under `docs/plans/implemented/`.
 
 | Capability row | Current gap | Full-parity acceptance rule | Primary Zig files | Verification target |
 |----------------|-------------|-----------------------------|-------------------|---------------------|
@@ -99,7 +107,7 @@ The remaining shared capabilities that still exist in both implementations witho
 | `install`, `uninstall`, `update` | Zig implements the commands with a narrower source-build workflow | The Zig CLI matches the original overlapping behavior for shared agent targets, config persistence, reporting, and reversible filesystem changes in temp-HOME tests | `src/cli.zig`, `src/main.zig` | Temp-HOME command parity checks against both CLIs |
 | Auto-detected agent integrations | Zig detects only Codex CLI and Claude Code | The Zig CLI auto-detects every shared agent target it claims to support in the same environments and reports the same selection behavior as the original | `src/cli.zig` | Temp-HOME detection matrix tests plus CLI output comparison |
 
-Review-validated notes for the remaining graph-fidelity rows:
+Review-validated notes for graph-fidelity follow-ons:
 - Self-call suppression and silent relation-insertion failure handling were correctness bugs and have been fixed in the relation layer.
 - Python module-vs-function `USAGE` ownership drift is not currently treated as a bug fix target; it remains contract-design work until the repo defines a sharper ownership rule for `USAGE` and any future `USES_TYPE` split.
 - Broader TypeScript and Rust type-reference drift is likewise deferred as graph-contract work rather than something to “correct” toward the original implementation’s narrower output.
@@ -175,11 +183,15 @@ For the current complete-vs-deferred split, use:
 - [port-comparison.md](/Users/skooch/projects/codebase-memory-zig/docs/port-comparison.md)
 - `docs/plans/implemented/shared-capability-parity-plan.md` for the completed shared-surface full-parity execution plan
 
+The rows below intentionally preserve the original audit wording, including
+many `STUB` / `MISSING` labels that are no longer current after later
+implementation phases.
+
 ---
 
-## Readiness Alignment Scope (Current Gate)
+## Archived Initial Readiness Alignment Scope
 
-For the first interoperability pass, we evaluate only this subset:
+For the first interoperability pass, this subset was evaluated:
 
 - `index_repository`
 - `search_graph`
@@ -253,7 +265,8 @@ The Zig stub has the 14 tool names as an enum but zero handler implementations.
 | `manage_adr` | Full (get/update/sections modes, section parsing/rendering, validation) | WORKS for the shared `get` / `update` / `sections` contract; deeper validation helpers remain follow-on work | Medium |
 | `ingest_traces` | Stub in C too ("not yet implemented") | STUB | N/A — cut feature |
 
-**Gap: 13 tool handlers to implement** (excluding ingest_traces which was cut).
+**Historical initial gap:** 13 tool handlers to implement (excluding
+`ingest_traces`, which was cut).
 
 ### MCP Protocol Layer
 
@@ -417,7 +430,7 @@ The Zig store has the schema (tables + indexes + pragmas) and opens in-memory DB
 | Project name derivation from path | Full (`cbm_project_name_from_path`) | MISSING |
 | Pipeline lock (global mutex) | Full | MISSING |
 
-### Pipeline Passes — Must Port
+### Pipeline Passes — Historical Initial Audit
 
 | Pass | C LOC | Zig Status | Purpose |
 |------|-------|------------|---------|

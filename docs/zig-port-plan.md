@@ -27,10 +27,18 @@ Completed now:
   - TSX
   - Rust
   - Zig
-- The committed fixture corpus and harness currently report:
+- The first-gate fixture corpus and harness report:
   - `Strict matches: 58`
   - `Diagnostic-only comparisons: 9`
   - `Mismatches: 0`
+- The expanded full harness after graph-model parity currently reports:
+  - `Fixtures: 22`
+  - `Comparisons: 172`
+  - `Strict matches: 99`
+  - `Diagnostic-only comparisons: 22`
+  - `Known mismatches: 8`
+  - `cli_progress: match`
+  - no remaining graph-model fixture mismatches
 - Runtime lifecycle and scale are implemented for the current target contract:
   - watcher-driven auto-index and auto-reindex
   - incremental indexing
@@ -52,7 +60,7 @@ Completed now:
   - current evidence: `Comparisons: 67`, `Strict matches: 58`, `Diagnostic-only comparisons: 9`, `Mismatches: 0`, `cli_progress: match`
 
 Intentionally deferred after Phase 7:
-- Remaining MCP surface beyond the current daily-use slice, especially fuller Cypher parity and richer trace breadth.
+- Remaining MCP surface beyond the current daily-use slice, especially fuller Cypher parity.
 - Full Cypher parity beyond the broader day-to-day query subset now used by `query_graph`, `get_architecture`, and `detect_changes`.
 - Deeper usage/type-ref parity and broader extraction semantics beyond the current daily-use slice for Python, JS/TS/TSX, Rust, and Zig.
 - Richer decorator/enrichment follow-ons and optional graph-model expansion beyond the implemented route/config fixture contract.
@@ -77,7 +85,7 @@ That completed work is archived in:
 
 This follow-on stayed intentionally narrower than a full “port every remaining subsystem” effort:
 - it closed the shared-surface full-parity rows
-- it did not reopen intentionally missing subsystems such as UI or route graphs
+- it did not reopen intentionally missing subsystems such as UI, infra scanning, or exhaustive route-framework coverage
 
 ### Recommended Execution Order
 

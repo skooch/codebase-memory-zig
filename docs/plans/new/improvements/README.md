@@ -14,8 +14,8 @@ This directory turns the upstream `codebase-memory-mcp` issue and PR review into
   - large unmerged expansion PRs that reveal sustained product pressure
 
 These plans are upstream-improvement backlog, not the current parity execution
-entrypoint. The active graph-model parity planning entrypoint is
-[graph-model-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/graph-model-parity-plan.md).
+entrypoint. The graph-model parity plan is complete and archived at
+[graph-model-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/graph-model-parity-plan.md).
 
 ## Plan Index
 

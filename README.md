@@ -33,9 +33,9 @@ The Zig port covers the daily-use MCP surface and core indexing pipeline. It is 
 | Similarity detection (`SIMILAR_TO`) | Near parity | MinHash/LSH with tuned thresholds |
 | Watcher / auto-reindex / runtime lifecycle | Near parity | Adaptive polling, persistent runtime DB, signal-driven shutdown |
 | CLI install/uninstall/update (Codex CLI, Claude Code) | Near parity | 2 of the original's 10 agent targets |
-| Route / cross-service graph | Deferred | C models HTTP/async route relationships |
+| Route / cross-service graph | Partial | Verified graph-model fixture contract covers HTTP/async route callers, route nodes, handlers, route-linked data flow, and route summaries; broader framework expansion remains optional |
 | LSP hybrid type resolution | Deferred | C has Go/C/C++ LSP-assisted paths |
-| Git history / config linking passes | Deferred | C has deeper metadata and impact analysis |
+| Git history / config linking passes | Near parity | Git change-coupling and verified config-link fixture slices are implemented; broader config-language/key-shape expansion remains optional |
 | Graph UI | Cut | C ships an optional visualization server |
 | Infra scanning (Docker, K8s, Terraform) | Cut | Outside project scope |
 

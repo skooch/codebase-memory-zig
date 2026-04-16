@@ -2,9 +2,10 @@
 
 ## Status
 Paused on 2026-04-15. This narrower config/edge plan is superseded by
-`docs/plans/in-progress/graph-model-parity-plan.md`, which keeps config normalization,
-route graph completion, and remaining graph-model edge families in one
-fixture-backed execution order.
+`docs/plans/implemented/graph-model-parity-plan.md`, which completed the
+verified config normalization, route graph, route-linked data-flow, async route,
+and graph-model fixture contract. This file is kept only as historical paused
+context; do not treat its unchecked tasks as active work.
 
 ## Goal
 Expand the Zig graph beyond the completed shared `CONFIGURES`, `WRITES`, and `USES_TYPE` slice into the original's broader config-linking and long-tail edge vocabulary.

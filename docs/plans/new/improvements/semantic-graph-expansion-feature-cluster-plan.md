@@ -1,9 +1,10 @@
 # Plan: Semantic Graph Expansion Feature Cluster
 
 ## Status
-Backlog improvement cluster. For the current original-project graph-model parity
-work, use `docs/plans/in-progress/graph-model-parity-plan.md`; this plan remains as
-the broader upstream feature-pressure inventory for later semantic expansion.
+Backlog improvement cluster. The original-project graph-model parity plan is
+complete at `docs/plans/implemented/graph-model-parity-plan.md`; this plan
+remains as the broader upstream feature-pressure inventory for later semantic
+expansion.
 
 ## Goal
 Sequence the upstream pressure for richer graph semantics into a substrate-first Zig roadmap that grows route, protocol, trace, and higher-order analysis features only after the underlying graph facts are stable.
@@ -13,7 +14,7 @@ Sequence the upstream pressure for richer graph semantics into a substrate-first
 Upstream requests and gaps captured in this plan:
 - Dynamic or indirect call surfaces: `#29`, `#55`, `#56`
 - Higher-order graph analysis quality: `#57`, `#179`
-- Existing deferred Zig rows that align with the upstream demand: routes, config-linking, richer trace breadth, and decorator enrichment
+- Existing Zig rows that align with the upstream demand: optional route/config expansion beyond the verified graph-model fixture contract, richer trace-derived analysis views, and decorator enrichment
 
 Upstream PRs that show the likely implementation shape:
 - Event and async graph expansion: `#25`
