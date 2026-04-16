@@ -54,7 +54,7 @@
 - `python3 -m json.tool testdata/interop/manifest.json >/dev/null` -> passed
 - `bash scripts/run_interop_alignment.sh --update-golden` -> passed, 22/22 golden snapshots updated
 - `bash scripts/run_interop_alignment.sh --zig-only` -> passed, 22/22 golden comparison
-- `bash scripts/run_interop_alignment.sh` -> passed with 22 fixtures, 172 comparisons, 95 strict matches, 22 diagnostic-only comparisons, 10 known mismatches, and `cli_progress: match`
+- `bash scripts/run_interop_alignment.sh` -> passed with 22 fixtures, 172 comparisons, 97 strict matches, 22 diagnostic-only comparisons, 9 known mismatches, and `cli_progress: match`
 - `git diff --check` -> passed
 - `command -v zlint` -> blocked; `zlint` is not installed in this environment
 
@@ -69,3 +69,4 @@
 | 2026-04-16 | Adding a strict manifest assertion for the new `DATA_FLOWS` row increased the full C/Zig mismatch count because the current C binary did not emit that row for the public fixture. | Ran full interop and inspected per-implementation `graph-model-routes` query rows. | Removed the `DATA_FLOWS` row from the strict shared manifest while keeping Zig unit/focused coverage and documenting the shared-fixture blocker. |
 | 2026-04-16 | The first strict `DATA_FLOWS` fixture attempt used `@app.route`, which creates an `ANY` handler route in C while `requests.get` creates a `GET` caller route, so the bridge could not form. | Queried C route qualified names and saw separate `__route__ANY__/api/users` and `__route__GET__/api/users` nodes. | Switched the fixture to `@app.get`, kept the assertion filtered to `fetch_users`, and patched Zig resolved-call service classification so both implementations share the `GET` route row. |
 | 2026-04-16 | Zig classified `celery.delay` as async but only treated URL-like arguments as service route targets, so a topic argument produced an `ASYNC delay` route instead of a topic route. | Ran a focused temp fixture with `celery.delay("users.refresh")` against both binaries. | Accepted non-URL topics for `ASYNC_CALLS`, preserved broker names, and added the strict `graph-model-async` fixture. |
+| 2026-04-16 | `graph-enrichment-config-deps` used a Zig project name that did not match the indexed directory basename and queried every `Variable`, which mixed a project-name issue with a broad local-binding difference. | Ran a focused temp manifest and compared C/Zig rows for the fixture. | Changed the fixture project to `config-deps` and tightened the query to the shared `express` require-binding row, removing this mismatch from the full harness without claiming full dependency-import coverage. |

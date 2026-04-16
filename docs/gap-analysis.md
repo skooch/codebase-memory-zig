@@ -127,7 +127,7 @@ Deferred or optional future slices:
   - git-history coupling — now implemented (subprocess `git log`, `FILE_CHANGES_WITH` edges)
   - long-tail edges — now implemented: `THROWS`/`RAISES` (JS/TS/TSX throw statements), decorator-backed `HANDLES`, and route-linked `DATA_FLOWS`; remaining or out-of-scope gaps: `OVERRIDE` (Go-only), `WRITES`/`READS` (not proven original-overlap by the current C reference fixture)
   - route nodes — partially implemented (stub and concrete URL/path/topic `Route` nodes, verified decorator-backed `Route`/`HANDLES`, strict shared route-linked `DATA_FLOWS`, and strict shared `ASYNC_CALLS`; broader framework coverage still open)
-  - config-linking — partially implemented (Strategy 1 key-symbol + Strategy 2 dependency-import; the first strict shared key-symbol normalization fixture now proves raw-key preservation and `CONFIGURES` query visibility, while dependency-import closure remains open)
+  - config-linking — partially implemented (Strategy 1 key-symbol + Strategy 2 dependency-import; the first strict shared key-symbol normalization fixture now proves raw-key preservation and `CONFIGURES` query visibility, while dependency-import fixture coverage remains open)
   - richer decorator/enrichment promotion
   - current entrypoint: [graph-model-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/graph-model-parity-plan.md)
 - Productization beyond the current contract:

@@ -46,12 +46,12 @@ short one-token config key.
   the raw config key in query-visible output.
 - Still missing for graph-model parity: broader framework route coverage and
   broader config-link coverage beyond the first strict key-symbol fixture,
-  especially dependency-import mismatch closure.
+  especially dependency-import fixture coverage.
 - Current full Zig-vs-C harness baseline after this config slice:
-  `172` comparisons, `95` strict matches, `22` diagnostic-only comparisons,
-  `10` mismatches, and `cli_progress: match`. The graph-model-related
-  mismatches still include the existing `graph-enrichment-config-deps` and
-  `graph-enrichment-http-calls` query rows.
+  `172` comparisons, `97` strict matches, `22` diagnostic-only comparisons,
+  `9` mismatches, and `cli_progress: match`. The remaining
+  graph-model-related mismatch is the existing `graph-enrichment-http-calls`
+  query row.
 
 ## Superseded Plans
 - `docs/plans/paused/ready-to-go/04-graph-enrichment-parity-plan.md`
