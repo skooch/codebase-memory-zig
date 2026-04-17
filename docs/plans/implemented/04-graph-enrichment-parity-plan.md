@@ -1,7 +1,7 @@
 # Plan: Graph Enrichment Parity
 
 ## Status
-In progress as of 2026-04-16. This plan was resumed from the former paused
+Completed on 2026-04-17. This plan was resumed from the former paused
 graph-enrichment plan after the graph-model parity plan completed.
 
 The old bundled scope is no longer accurate as-is: git-history coupling,
@@ -17,17 +17,17 @@ framework coverage first, then broader config normalization and edge-expansion
 coverage where the C reference can prove an overlapping contract.
 
 ## Current Phase
-Phase 3: route follow-on complete; config / edge follow-on is now the active
-child plan.
+Complete. Both child follow-on plans are now implemented, and the remaining
+non-graph-model mismatches stay outside the completed graph-enrichment scope.
 
 ## File Map
-- Modify: `docs/plans/in-progress/ready-to-go/04-graph-enrichment-parity-plan.md`
+- Modify: `docs/plans/implemented/04-graph-enrichment-parity-plan.md`
 - Create/modify:
-  `docs/plans/in-progress/ready-to-go/04-graph-enrichment-parity-progress.md`
+  `docs/plans/implemented/04-graph-enrichment-parity-progress.md`
 - Coordinate:
   `docs/plans/implemented/route-graph-parity-plan.md`
 - Coordinate:
-  `docs/plans/in-progress/follow-ons/config-linking-and-edge-expansion-plan.md`
+  `docs/plans/implemented/config-linking-and-edge-expansion-plan.md`
 - Later status updates may touch:
   `docs/port-comparison.md`, `docs/gap-analysis.md`, `docs/zig-port-plan.md`
 
@@ -51,25 +51,23 @@ child plan.
 - **Status:** complete
 
 ### Phase 3: Execute Config / Edge Follow-On Second
-- [ ] Re-probe config and long-tail edge candidates after route work lands.
-- [ ] Promote only proven shared rows into strict interop assertions.
-- [ ] Leave unproven or C-empty rows as documented future work instead of parity
+- [x] Re-probe config and long-tail edge candidates after route work lands.
+- [x] Promote only proven shared rows into strict interop assertions.
+- [x] Leave unproven or C-empty rows as documented future work instead of parity
   claims.
-- **Status:** in progress
+- **Status:** complete
 
 ### Phase 4: Reclassify Docs
-- [ ] Update `docs/port-comparison.md`, `docs/gap-analysis.md`, and
+- [x] Update `docs/port-comparison.md`, `docs/gap-analysis.md`, and
   `docs/zig-port-plan.md` only after each child plan has green verification.
-- [ ] Move completed child plans to `docs/plans/implemented/` after required
+- [x] Move completed child plans to `docs/plans/implemented/` after required
   verification passes.
-- **Status:** pending
+- **Status:** complete
 
 ## Recommendation
-The next execution target is
-`docs/plans/in-progress/follow-ons/config-linking-and-edge-expansion-plan.md`.
-Route expansion has now landed its first strict shared follow-on fixture and
-cleared full-harness verification, so the remaining enrichment work is the
-config/edge follow-on.
+This umbrella plan is complete. The route and config child plans now live under
+`docs/plans/implemented/`, and the remaining active parity backlog is outside
+the graph-enrichment scope reconciled here.
 
 ## Decisions
 | Decision | Rationale |

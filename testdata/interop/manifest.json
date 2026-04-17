@@ -2071,6 +2071,42 @@
       }
     },
     {
+      "id": "config-expansion-env-var-python",
+      "path": "testdata/interop/config-expansion/env_var_python",
+      "project": "env_var_python",
+      "language": "python",
+      "scope_tools": ["index_repository", "query_graph"],
+      "assertions": {
+        "index_repository": {
+          "expect": { "nodes_min": 7, "edges_min": 7 }
+        },
+        "query_graph": [
+          {
+            "args": {
+              "query": "MATCH (a)-[r:CONFIGURES]->(b) WHERE a.name = 'load_database_url' RETURN a.label, a.name, b.label, b.name ORDER BY a.name, b.name",
+              "project": "env_var_python",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["a.label", "a.name", "b.label", "b.name"],
+              "required_rows": [["Function", "load_database_url", "Variable", "DATABASE_URL"]]
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (n) WHERE n.name = 'DATABASE_URL' RETURN n.label, n.name, n.file_path ORDER BY n.label, n.file_path",
+              "project": "env_var_python",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["n.label", "n.name", "n.file_path"],
+              "required_rows": [["Variable", "DATABASE_URL", "config.toml"]]
+            }
+          }
+        ]
+      }
+    },
+    {
       "id": "edge-parity",
       "path": "testdata/interop/edge-parity",
       "project": "edge-parity",

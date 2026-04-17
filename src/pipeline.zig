@@ -1075,12 +1075,28 @@ fn hasConfigExtension(path: []const u8) bool {
         std.mem.endsWith(u8, path, ".xml");
 }
 
+fn isEnvStyleConfigName(name: []const u8) bool {
+    if (name.len == 0) return false;
+
+    var saw_upper = false;
+    for (name) |ch| {
+        if (std.ascii.isUpper(ch)) {
+            saw_upper = true;
+            continue;
+        }
+        if (std.ascii.isDigit(ch) or ch == '_') continue;
+        return false;
+    }
+    return saw_upper;
+}
+
 fn normalizeConfigName(
     allocator: std.mem.Allocator,
     name: []const u8,
     require_two_long_tokens: bool,
 ) ?[]u8 {
     if (name.len == 0) return null;
+    const preserve_upper_runs = isEnvStyleConfigName(name);
     var out = std.ArrayList(u8).empty;
     defer out.deinit(allocator);
 
@@ -1100,7 +1116,7 @@ fn normalizeConfigName(
             prev_was_separator = true;
             continue;
         }
-        if (std.ascii.isUpper(ch) and !prev_was_separator and current_len > 0) {
+        if (!preserve_upper_runs and std.ascii.isUpper(ch) and !prev_was_separator and current_len > 0) {
             token_lengths.append(allocator, current_len) catch return null;
             current_len = 0;
             prev_was_separator = true;
@@ -2989,6 +3005,70 @@ test "pipeline links matching config keys to code symbols" {
     const configures = try db.findEdgesBySource(project_name, getter_id, "CONFIGURES");
     defer db.freeEdges(configures);
     try std.testing.expect(edgeTargetsContain(configures, config_id));
+}
+
+test "pipeline links env-style config keys to matching code symbols" {
+    const allocator = std.testing.allocator;
+
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(
+        allocator,
+        "/tmp/cbm-pipeline-configlink-env-{x}",
+        .{project_id},
+    );
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    {
+        var dir = try std.fs.cwd().openDir(project_dir, .{});
+        defer dir.close();
+
+        var cfg = try dir.createFile("config.toml", .{});
+        defer cfg.close();
+        try cfg.writeAll(
+            \\DATABASE_URL = "postgresql://localhost/db"
+            \\
+        );
+
+        var py = try dir.createFile("main.py", .{});
+        defer py.close();
+        try py.writeAll(
+            \\import os
+            \\
+            \\def load_database_url():
+            \\    return os.getenv("DATABASE_URL")
+            \\
+        );
+    }
+
+    var db = try store.Store.openMemory(allocator);
+    defer db.deinit();
+
+    var pipeline = Pipeline.init(allocator, project_dir, .full);
+    defer pipeline.deinit();
+    try pipeline.run(&db);
+
+    const project_name = std.fs.path.basename(project_dir);
+    const getter_id = try findSingleNodeByNameInFile(&db, project_name, "Function", "load_database_url", "main.py");
+    const config_id = try findSingleNodeByNameInFile(&db, project_name, "Variable", "DATABASE_URL", "config.toml");
+    const configures = try db.findEdgesBySource(project_name, getter_id, "CONFIGURES");
+    defer db.freeEdges(configures);
+    try std.testing.expect(edgeTargetsContain(configures, config_id));
+}
+
+test "normalizeConfigName keeps env-style uppercase runs intact" {
+    const allocator = std.testing.allocator;
+
+    const env_style = normalizeConfigName(allocator, "DATABASE_URL", true) orelse return error.TestUnexpectedResult;
+    defer allocator.free(env_style);
+    try std.testing.expectEqualStrings("database url", env_style);
+
+    const snake_case = normalizeConfigName(allocator, "database_url", true) orelse return error.TestUnexpectedResult;
+    defer allocator.free(snake_case);
+    try std.testing.expectEqualStrings("database url", snake_case);
+
+    try std.testing.expect(normalizeConfigName(allocator, "PORT", true) == null);
 }
 
 test "pipeline links manifest dependencies to resolved imports once" {

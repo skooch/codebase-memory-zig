@@ -1,7 +1,7 @@
 # Plan: Config Linking And Edge Expansion Follow-On
 
 ## Status
-In progress as of 2026-04-17. This
+Completed on 2026-04-17. This
 plan was resumed from the former paused/superseded config-linking plan and
 narrowed to the remaining config/edge work after
 `docs/plans/implemented/graph-model-parity-plan.md`.
@@ -17,14 +17,17 @@ verifiable overlap with the original C implementation. Avoid reviving broad
 fixture rows.
 
 ## Current Phase
-Phase 1 is now active. Route follow-on verification is complete, so this plan
-is the next graph-enrichment execution target.
+Complete. The config / edge follow-on now has one additional strict shared
+fixture for env-style config keys, targeted normalization coverage in
+`src/pipeline.zig`, and a full-harness confirmation that no new config-related
+mismatches were introduced. `WRITES` / `READS` remain unproven and stay outside
+strict parity claims.
 
 ## File Map
 - Modify:
-  `docs/plans/in-progress/follow-ons/config-linking-and-edge-expansion-plan.md`
+  `docs/plans/implemented/config-linking-and-edge-expansion-plan.md`
 - Create/modify:
-  `docs/plans/in-progress/follow-ons/config-linking-and-edge-expansion-progress.md`
+  `docs/plans/implemented/config-linking-and-edge-expansion-progress.md`
 - Likely modify: `src/extractor.zig`
 - Likely modify: `src/pipeline.zig`
 - Likely modify: `src/graph_buffer.zig`
@@ -36,36 +39,36 @@ is the next graph-enrichment execution target.
 ## Phases
 
 ### Phase 1: Lock The Config / Edge Contract
-- [ ] Re-probe current C and Zig behavior for config-language/key-shape
+- [x] Re-probe current C and Zig behavior for config-language/key-shape
   candidates before adding assertions.
-- [ ] Separate three buckets explicitly:
+- [x] Separate three buckets explicitly:
   verified shared rows, useful Zig-only rows, and C-empty/unproven rows.
-- [ ] Identify whether any `WRITES` / `READS` candidate can be proven as a true
+- [x] Identify whether any `WRITES` / `READS` candidate can be proven as a true
   original-overlap public fixture row.
-- [ ] Record accepted rows, rejected candidates, and exact verification commands
+- [x] Record accepted rows, rejected candidates, and exact verification commands
   in
-  `docs/plans/in-progress/follow-ons/config-linking-and-edge-expansion-progress.md`.
-- **Status:** in progress
+  `docs/plans/implemented/config-linking-and-edge-expansion-progress.md`.
+- **Status:** complete
 
 ### Phase 2: Implement Narrow Expansion
-- [ ] Extend config-key normalization or dependency-import matching only where a
+- [x] Extend config-key normalization or dependency-import matching only where a
   fixture proves the behavior is useful and query-visible.
-- [ ] Keep edge insertion deduplicated and preserve current `CONFIGURES`
+- [x] Keep edge insertion deduplicated and preserve current `CONFIGURES`
   behavior.
-- [ ] Add focused tests for any new config key shape, manifest format, or edge
+- [x] Add focused tests for any new config key shape, manifest format, or edge
   label promoted by Phase 1.
-- **Status:** pending
+- **Status:** complete
 
 ### Phase 3: Verify And Reclassify
-- [ ] Run `zig fmt` on touched Zig files.
-- [ ] Run `zig build test`.
-- [ ] Run `zig build`.
-- [ ] Run `bash scripts/run_interop_alignment.sh --zig-only`.
-- [ ] Run `bash scripts/run_interop_alignment.sh` and confirm any new strict
+- [x] Run `zig fmt` on touched Zig files.
+- [x] Run `zig build test`.
+- [x] Run `zig build`.
+- [x] Run `bash scripts/run_interop_alignment.sh --zig-only`.
+- [x] Run `bash scripts/run_interop_alignment.sh` and confirm any new strict
   config/edge assertions are green.
-- [ ] Update `docs/port-comparison.md` / `docs/gap-analysis.md` only as far as
+- [x] Update `docs/port-comparison.md` / `docs/gap-analysis.md` only as far as
   the evidence supports.
-- **Status:** pending
+- **Status:** complete
 
 ## Acceptance Rules
 - A config or edge row can become a strict interop assertion only after both

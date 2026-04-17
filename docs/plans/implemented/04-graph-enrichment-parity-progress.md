@@ -2,7 +2,7 @@
 
 ## 2026-04-16
 - Resumed the paused umbrella enrichment plan into
-  `docs/plans/in-progress/ready-to-go/04-graph-enrichment-parity-plan.md`.
+  `docs/plans/implemented/04-graph-enrichment-parity-plan.md`.
 - Moved the route and config follow-on plans into
   `docs/plans/in-progress/follow-ons/`.
 - Reconciled the old bundled scope with the completed graph-model parity plan:
@@ -50,4 +50,26 @@
   - `cli_progress: match`
   - no route-related mismatches remain
 - The next active child plan is
-  `docs/plans/in-progress/follow-ons/config-linking-and-edge-expansion-plan.md`.
+  `docs/plans/implemented/config-linking-and-edge-expansion-plan.md`.
+- Completed the config / edge follow-on child plan and moved it under
+  `docs/plans/implemented/`.
+- Promoted the first strict shared config follow-on fixture:
+  `config-expansion-env-var-python`.
+- Verified the config child plan with:
+  - `zig fmt src/pipeline.zig`
+  - `zig build test`
+  - `zig build`
+  - `bash scripts/run_interop_alignment.sh --update-golden /tmp/config-expansion-env-var-python-manifest-Cl4otU.json`
+  - `bash scripts/run_interop_alignment.sh --zig-only /tmp/config-expansion-env-var-python-manifest-Cl4otU.json`
+  - `bash scripts/run_interop_alignment.sh /tmp/config-expansion-env-var-python-manifest-Cl4otU.json`
+  - `bash scripts/run_interop_alignment.sh --zig-only`
+  - `bash scripts/run_interop_alignment.sh`
+- Current full interop baseline after both child plans:
+  - `Fixtures: 24`
+  - `Comparisons: 186`
+  - `Strict matches: 105`
+  - `Diagnostic-only comparisons: 24`
+  - `Mismatches: 8`
+  - `cli_progress: match`
+  - no new route- or config-related mismatches remain
+- Concluded the umbrella graph-enrichment plan is complete.

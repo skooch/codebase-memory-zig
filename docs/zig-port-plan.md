@@ -32,13 +32,13 @@ Completed now:
   - `Diagnostic-only comparisons: 9`
   - `Mismatches: 0`
 - The expanded full harness after graph-model parity currently reports:
-  - `Fixtures: 22`
-  - `Comparisons: 172`
-  - `Strict matches: 99`
-  - `Diagnostic-only comparisons: 22`
+  - `Fixtures: 24`
+  - `Comparisons: 186`
+  - `Strict matches: 105`
+  - `Diagnostic-only comparisons: 24`
   - `Known mismatches: 8`
   - `cli_progress: match`
-  - no remaining graph-model fixture mismatches
+  - no remaining route-, config-, or graph-model fixture mismatches
 - Runtime lifecycle and scale are implemented for the current target contract:
   - watcher-driven auto-index and auto-reindex
   - incremental indexing

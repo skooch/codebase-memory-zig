@@ -64,9 +64,9 @@ can resolve a manifest dependency to a local import target.
 ## Resumed Follow-On Plans
 The graph-model parity plan remains complete. The former paused/superseded
 plans have since been resumed as optional follow-ons for broader coverage:
-- `docs/plans/in-progress/ready-to-go/04-graph-enrichment-parity-plan.md`
+- `docs/plans/implemented/04-graph-enrichment-parity-plan.md`
 - `docs/plans/implemented/route-graph-parity-plan.md`
-- `docs/plans/in-progress/follow-ons/config-linking-and-edge-expansion-plan.md`
+- `docs/plans/implemented/config-linking-and-edge-expansion-plan.md`
 
 ## File Map
 - Modify: `docs/gap-analysis.md`

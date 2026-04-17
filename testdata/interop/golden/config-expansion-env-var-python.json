@@ -1,0 +1,69 @@
+{
+  "delete_project": [],
+  "detect_changes_count": 0,
+  "fixture_id": "config-expansion-env-var-python",
+  "get_architecture": [],
+  "get_code_snippet": [],
+  "get_graph_schema": [],
+  "index_repository": {
+    "edges_actual": 7,
+    "edges_min": 7,
+    "nodes_actual": 7,
+    "nodes_min": 7
+  },
+  "index_status": [],
+  "list_projects": [
+    "env_var_python"
+  ],
+  "manage_adr": [],
+  "query_graph": [
+    {
+      "columns": [
+        "a.label",
+        "a.name",
+        "b.label",
+        "b.name"
+      ],
+      "rows": [
+        [
+          "Function",
+          "load_database_url",
+          "Variable",
+          "DATABASE_URL"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "n.label",
+        "n.name",
+        "n.file_path"
+      ],
+      "rows": [
+        [
+          "Variable",
+          "DATABASE_URL",
+          "config.toml"
+        ]
+      ]
+    }
+  ],
+  "search_code": [],
+  "search_graph": [],
+  "tools_list": [
+    "delete_project",
+    "detect_changes",
+    "get_architecture",
+    "get_code_snippet",
+    "get_graph_schema",
+    "index_repository",
+    "index_status",
+    "list_projects",
+    "manage_adr",
+    "query_graph",
+    "search_code",
+    "search_graph",
+    "trace_call_path"
+  ],
+  "trace_call_path": []
+}
