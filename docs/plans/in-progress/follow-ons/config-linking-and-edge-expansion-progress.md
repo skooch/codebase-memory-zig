@@ -9,5 +9,10 @@
   C reference exposes matching public fixture rows.
 - Queued this plan behind the route graph follow-on.
 
+## 2026-04-17
+- The route graph follow-on reached full verification and moved to
+  `docs/plans/implemented/route-graph-parity-plan.md`.
+- This plan is now the active graph-enrichment child plan.
+
 ## Verification
 - Pending. No implementation work has started for this follow-on.

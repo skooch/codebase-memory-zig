@@ -1,7 +1,7 @@
 # Plan: Config Linking And Edge Expansion Follow-On
 
 ## Status
-In progress as of 2026-04-16, but queued behind the route graph follow-on. This
+In progress as of 2026-04-17. This
 plan was resumed from the former paused/superseded config-linking plan and
 narrowed to the remaining config/edge work after
 `docs/plans/implemented/graph-model-parity-plan.md`.
@@ -17,7 +17,8 @@ verifiable overlap with the original C implementation. Avoid reviving broad
 fixture rows.
 
 ## Current Phase
-Queued. Start after the route graph follow-on reaches verification.
+Phase 1 is now active. Route follow-on verification is complete, so this plan
+is the next graph-enrichment execution target.
 
 ## File Map
 - Modify:
@@ -44,7 +45,7 @@ Queued. Start after the route graph follow-on reaches verification.
 - [ ] Record accepted rows, rejected candidates, and exact verification commands
   in
   `docs/plans/in-progress/follow-ons/config-linking-and-edge-expansion-progress.md`.
-- **Status:** queued
+- **Status:** in progress
 
 ### Phase 2: Implement Narrow Expansion
 - [ ] Extend config-key normalization or dependency-import matching only where a
@@ -76,7 +77,7 @@ Queued. Start after the route graph follow-on reaches verification.
 ## Decisions
 | Decision | Rationale |
 |----------|-----------|
-| Queue behind route graph follow-on | Config expansion is valuable but historically easier to overclaim because several candidate C fixtures return empty rows. |
+| Start after route graph follow-on | Route expansion is now complete, and config expansion remains the next highest-value enrichment slice. Several candidate C fixtures still return empty rows, so this phase stays evidence-led. |
 | Keep `WRITES` / `READS` out until proven | The current docs already record that these rows are not proven original-overlap by the C reference fixture. |
 | Preserve existing `CONFIGURES` contract | Graph-model parity locked key-symbol normalization and dependency-import deduplication; follow-on work must not churn that baseline. |
 

@@ -1,7 +1,7 @@
 # Plan: Route Graph Parity Follow-On
 
 ## Status
-In progress as of 2026-04-16. This plan was resumed from the former
+Completed on 2026-04-17. This plan was resumed from the former
 paused/superseded route plan and narrowed to the remaining route work after
 `docs/plans/implemented/graph-model-parity-plan.md`.
 
@@ -17,14 +17,15 @@ framework route registrations and route caller behavior through local fixtures,
 then promote only C/Zig-overlapping rows into strict interop assertions.
 
 ## Current Phase
-Phase 1 complete. The first accepted shared follow-on fixture is the Python
-`httpx` caller variant with a local stub and filtered `fetch_users` queries.
+Complete. The route follow-on now has one additional strict shared fixture
+(`route-expansion-httpx`), focused duplicate-suppression regression coverage,
+and a full-harness confirmation that no route-related mismatches remain.
 
 ## File Map
 - Modify:
-  `docs/plans/in-progress/follow-ons/route-graph-parity-plan.md`
+  `docs/plans/implemented/route-graph-parity-plan.md`
 - Create/modify:
-  `docs/plans/in-progress/follow-ons/route-graph-parity-progress.md`
+  `docs/plans/implemented/route-graph-parity-progress.md`
 - Likely modify: `src/service_patterns.zig`
 - Likely modify: `src/extractor.zig`
 - Likely modify: `src/pipeline.zig`
@@ -46,31 +47,31 @@ Phase 1 complete. The first accepted shared follow-on fixture is the Python
   stub and filtered `fetch_users` queries; JavaScript route-registration and
   direct Python route-registration probes remain Zig-only.
 - [x] Record accepted rows, rejected candidates, and exact verification commands
-  in `docs/plans/in-progress/follow-ons/route-graph-parity-progress.md`.
+  in `docs/plans/implemented/route-graph-parity-progress.md`.
 - **Status:** complete
 
 ### Phase 2: Implement Missing Route Cases
-- [ ] Extend current route substrate modules instead of adding a parallel
+- [x] Extend current route substrate modules instead of adding a parallel
   `src/routes.zig` unless the implementation becomes too coupled:
   `src/service_patterns.zig`, `src/extractor.zig`, `src/pipeline.zig`, and
   `src/route_nodes.zig`.
 - [x] Preserve existing graph-model fixtures while adding broader route
   registration and caller coverage through the new `route-expansion-httpx`
   fixture.
-- [ ] Add focused regression coverage for route method inference, handler
+- [x] Add focused regression coverage for route method inference, handler
   reference resolution, duplicate route suppression, and route summary output.
-- **Status:** in progress
+- **Status:** complete
 
 ### Phase 3: Verify And Reclassify
-- [ ] Run `zig fmt` on touched Zig files.
-- [ ] Run `zig build test`.
-- [ ] Run `zig build`.
-- [ ] Run `bash scripts/run_interop_alignment.sh --zig-only`.
-- [ ] Run `bash scripts/run_interop_alignment.sh` and confirm any new strict
+- [x] Run `zig fmt` on touched Zig files.
+- [x] Run `zig build test`.
+- [x] Run `zig build`.
+- [x] Run `bash scripts/run_interop_alignment.sh --zig-only`.
+- [x] Run `bash scripts/run_interop_alignment.sh` and confirm any new strict
   route assertions are green.
-- [ ] Update `docs/port-comparison.md` / `docs/gap-analysis.md` only as far as
+- [x] Update `docs/port-comparison.md` / `docs/gap-analysis.md` only as far as
   the evidence supports.
-- **Status:** pending
+- **Status:** complete
 
 ## Acceptance Rules
 - A route row can become a strict interop assertion only after both current C and

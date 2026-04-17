@@ -28,4 +28,26 @@
 
 ## Verification
 - Route probe verification is recorded in
-  `docs/plans/in-progress/follow-ons/route-graph-parity-progress.md`.
+  `docs/plans/implemented/route-graph-parity-progress.md`.
+
+## 2026-04-17
+- Completed the route follow-on child plan and moved it under
+  `docs/plans/implemented/`.
+- Added a direct duplicate-suppression regression in `src/pipeline.zig` to keep
+  repeated route-registration emission deduplicated.
+- Verified the route child plan with:
+  - `zig fmt src/pipeline.zig`
+  - `zig build test`
+  - `zig build`
+  - `bash scripts/run_interop_alignment.sh --zig-only`
+  - `bash scripts/run_interop_alignment.sh`
+- Current full interop baseline after the route follow-on:
+  - `Fixtures: 23`
+  - `Comparisons: 179`
+  - `Strict matches: 102`
+  - `Diagnostic-only comparisons: 23`
+  - `Mismatches: 8`
+  - `cli_progress: match`
+  - no route-related mismatches remain
+- The next active child plan is
+  `docs/plans/in-progress/follow-ons/config-linking-and-edge-expansion-plan.md`.

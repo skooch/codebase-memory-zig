@@ -39,13 +39,13 @@ Completed now:
   - `Diagnostic-only comparisons: 9`
   - `Mismatches: 0`
 - The expanded full harness after graph-model parity currently reports:
-  - `Fixtures: 22`
-  - `Comparisons: 172`
-  - `Strict matches: 99`
-  - `Diagnostic-only comparisons: 22`
+  - `Fixtures: 23`
+  - `Comparisons: 179`
+  - `Strict matches: 102`
+  - `Diagnostic-only comparisons: 23`
   - `Known mismatches: 8`
   - `cli_progress: match`
-  - no remaining graph-model fixture mismatches
+  - no remaining route-related or graph-model fixture mismatches
 
 Completed after the readiness gate:
 - Runtime lifecycle and scale baseline:
@@ -134,7 +134,7 @@ Deferred or optional future slices:
 - Metadata and enrichment:
   - git-history coupling — now implemented (subprocess `git log`, `FILE_CHANGES_WITH` edges)
   - long-tail edges — now implemented: `THROWS`/`RAISES` (JS/TS/TSX throw statements), decorator-backed `HANDLES`, and route-linked `DATA_FLOWS`; remaining or out-of-scope gaps: `OVERRIDE` (Go-only), `WRITES`/`READS` (not proven original-overlap by the current C reference fixture)
-  - route nodes — implemented for the graph-model parity fixture contract (stub and concrete URL/path/topic `Route` nodes, verified decorator-backed `Route`/`HANDLES`, strict shared route-linked `DATA_FLOWS`, strict shared `ASYNC_CALLS`, and route summary exposure; broader framework expansion remains optional)
+  - route nodes — implemented for the graph-model parity fixture contract plus the completed `route-expansion-httpx` follow-on fixture (stub and concrete URL/path/topic `Route` nodes, verified decorator-backed `Route`/`HANDLES`, strict shared route-linked `DATA_FLOWS`, strict shared `ASYNC_CALLS`, route summary exposure, and one additional strict shared `httpx` caller slice; unsupported framework-registration probes remain documented future work)
   - config-linking — implemented for the graph-model parity fixture contract (Strategy 1 key-symbol + Strategy 2 dependency-import, strict shared key-symbol normalization fixture, raw-key preservation, `CONFIGURES` query visibility, and Zig dependency-import deduplication coverage)
   - richer decorator/enrichment promotion
   - completed entrypoint: [graph-model-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/graph-model-parity-plan.md)

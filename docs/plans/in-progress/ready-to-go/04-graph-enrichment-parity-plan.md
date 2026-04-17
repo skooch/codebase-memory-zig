@@ -17,14 +17,15 @@ framework coverage first, then broader config normalization and edge-expansion
 coverage where the C reference can prove an overlapping contract.
 
 ## Current Phase
-Phase 1: reconciled and ready to start the route follow-on first.
+Phase 3: route follow-on complete; config / edge follow-on is now the active
+child plan.
 
 ## File Map
 - Modify: `docs/plans/in-progress/ready-to-go/04-graph-enrichment-parity-plan.md`
 - Create/modify:
   `docs/plans/in-progress/ready-to-go/04-graph-enrichment-parity-progress.md`
 - Coordinate:
-  `docs/plans/in-progress/follow-ons/route-graph-parity-plan.md`
+  `docs/plans/implemented/route-graph-parity-plan.md`
 - Coordinate:
   `docs/plans/in-progress/follow-ons/config-linking-and-edge-expansion-plan.md`
 - Later status updates may touch:
@@ -42,19 +43,19 @@ Phase 1: reconciled and ready to start the route follow-on first.
 - **Status:** complete
 
 ### Phase 2: Execute Route Follow-On First
-- [ ] Run the route graph follow-on plan through fixture design, C/Zig probing,
+- [x] Run the route graph follow-on plan through fixture design, C/Zig probing,
   implementation, and verification.
-- [ ] Keep strict shared assertions limited to rows the C reference exposes.
-- [ ] Keep Zig-only tests for useful route behavior that the C reference does not
+- [x] Keep strict shared assertions limited to rows the C reference exposes.
+- [x] Keep Zig-only tests for useful route behavior that the C reference does not
   expose through the public harness.
-- **Status:** next
+- **Status:** complete
 
 ### Phase 3: Execute Config / Edge Follow-On Second
 - [ ] Re-probe config and long-tail edge candidates after route work lands.
 - [ ] Promote only proven shared rows into strict interop assertions.
 - [ ] Leave unproven or C-empty rows as documented future work instead of parity
   claims.
-- **Status:** queued
+- **Status:** in progress
 
 ### Phase 4: Reclassify Docs
 - [ ] Update `docs/port-comparison.md`, `docs/gap-analysis.md`, and
@@ -64,12 +65,11 @@ Phase 1: reconciled and ready to start the route follow-on first.
 - **Status:** pending
 
 ## Recommendation
-Start with `docs/plans/in-progress/follow-ons/route-graph-parity-plan.md`.
-Route expansion is the highest-leverage first step because the existing Zig
-substrate already has route nodes, `HTTP_CALLS`, `ASYNC_CALLS`, `HANDLES`,
-route-linked `DATA_FLOWS`, and route summaries. Broader route fixtures are also
-more visible in `get_architecture`, `trace_call_path`, and `query_graph` than
-additional config-key normalization, so they give faster parity signal.
+The next execution target is
+`docs/plans/in-progress/follow-ons/config-linking-and-edge-expansion-plan.md`.
+Route expansion has now landed its first strict shared follow-on fixture and
+cleared full-harness verification, so the remaining enrichment work is the
+config/edge follow-on.
 
 ## Decisions
 | Decision | Rationale |

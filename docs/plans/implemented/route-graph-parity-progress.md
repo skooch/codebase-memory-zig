@@ -2,7 +2,7 @@
 
 ## 2026-04-16
 - Resumed the old route graph parity plan from paused/superseded into
-  `docs/plans/in-progress/follow-ons/route-graph-parity-plan.md`.
+  `docs/plans/implemented/route-graph-parity-plan.md`.
 - Re-scoped the plan around work that remains after graph-model parity:
   broader route-framework and route-caller fixture coverage beyond the verified
   Python decorator, HTTP caller, async topic, route-linked data-flow, and route
@@ -49,6 +49,27 @@
 - Promoted the accepted candidate into the repo as
   `testdata/interop/route-expansion/httpx_stub/` with manifest id
   `route-expansion-httpx`.
+
+## 2026-04-17
+- Added a direct duplicate-suppression regression in `src/pipeline.zig` so
+  repeated route-registration emission keeps a single `Route`, `CALLS`, and
+  `HANDLES` edge set for the same handler/path/method combination.
+- Re-ran the route verification stack after landing the new fixture and
+  regression:
+  - `zig fmt src/pipeline.zig`
+  - `zig build test`
+  - `zig build`
+  - `bash scripts/run_interop_alignment.sh --zig-only`
+  - `bash scripts/run_interop_alignment.sh`
+- Result:
+  - full Zig-only interop harness passed `23/23` fixtures
+  - full C-vs-Zig alignment still reports only the 8 known non-route
+    mismatches
+  - route-related mismatch count is now zero across
+    `graph-model-routes`, `graph-model-async`, and `route-expansion-httpx`
+- Concluded the route follow-on is complete. The remaining active graph
+  enrichment backlog now starts with config-linking and long-tail edge
+  expansion.
 
 ## Verification
 - Controlled probe runs:

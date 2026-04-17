@@ -1656,11 +1656,65 @@ test "argument URL call emits ANY HTTP_CALLS route edge" {
     try std.testing.expect(hasEdge(&gb, caller_id, route.id, "HTTP_CALLS"));
 }
 
+test "route registration suppresses duplicate Route and HANDLES edges" {
+    const allocator = std.testing.allocator;
+
+    var gb = GraphBuffer.init(allocator, "routes");
+    defer gb.deinit();
+
+    var reg = Registry.init(allocator);
+    defer reg.deinit();
+
+    const module_id = try gb.upsertNode("Module", "server.js", "routes:module:server.js:javascript", "server.js", 1, 1);
+    const handler_qn = "routes:server.js:javascript:symbol:javascript:listUsers";
+    const handler_id = try gb.upsertNode("Function", "listUsers", handler_qn, "server.js", 3, 5);
+    try reg.add("listUsers", handler_qn, "Function", "server.js");
+
+    const caller = gb.findNodeById(module_id) orelse return error.TestUnexpectedResult;
+    const unresolved: extractor.UnresolvedCall = .{
+        .caller_id = module_id,
+        .callee_name = "get",
+        .full_callee_name = "app.get",
+        .file_path = "server.js",
+        .route_path = "/users",
+        .route_handler_ref = "listUsers",
+        .route_method = "GET",
+    };
+
+    try emitRouteRegistration(&gb, &reg, unresolved, caller);
+    try emitRouteRegistration(&gb, &reg, unresolved, caller);
+
+    const route = gb.findNodeByQualifiedName("__route__GET__/users") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(@as(usize, 1), countNodesByQualifiedName(&gb, "__route__GET__/users"));
+    try std.testing.expectEqual(@as(usize, 1), countEdges(&gb, module_id, route.id, "CALLS"));
+    try std.testing.expectEqual(@as(usize, 1), countEdges(&gb, handler_id, route.id, "HANDLES"));
+}
+
 fn hasEdge(gb: *const GraphBuffer, source_id: i64, target_id: i64, edge_type: []const u8) bool {
     for (gb.edgeItems()) |edge| {
         if (edge.source_id == source_id and edge.target_id == target_id and std.mem.eql(u8, edge.edge_type, edge_type)) return true;
     }
     return false;
+}
+
+fn countEdges(gb: *const GraphBuffer, source_id: i64, target_id: i64, edge_type: []const u8) usize {
+    var count: usize = 0;
+    for (gb.edgeItems()) |edge| {
+        if (edge.source_id == source_id and edge.target_id == target_id and std.mem.eql(u8, edge.edge_type, edge_type)) {
+            count += 1;
+        }
+    }
+    return count;
+}
+
+fn countNodesByQualifiedName(gb: *const GraphBuffer, qualified_name: []const u8) usize {
+    var count: usize = 0;
+    for (gb.nodes()) |node| {
+        if (std.mem.eql(u8, node.qualified_name, qualified_name)) {
+            count += 1;
+        }
+    }
+    return count;
 }
 
 test "pipeline run handles simple extraction pipeline" {
