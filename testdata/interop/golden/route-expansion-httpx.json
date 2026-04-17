@@ -1,0 +1,85 @@
+{
+  "delete_project": [],
+  "detect_changes_count": 0,
+  "fixture_id": "route-expansion-httpx",
+  "get_architecture": [],
+  "get_code_snippet": [],
+  "get_graph_schema": [],
+  "index_repository": {
+    "edges_actual": 12,
+    "edges_min": 8,
+    "nodes_actual": 9,
+    "nodes_min": 7
+  },
+  "index_status": [],
+  "list_projects": [
+    "httpx_stub"
+  ],
+  "manage_adr": [],
+  "query_graph": [
+    {
+      "columns": [
+        "n.name"
+      ],
+      "rows": [
+        [
+          "/api/users"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "a.name",
+        "b.name"
+      ],
+      "rows": [
+        [
+          "users_endpoint",
+          "/api/users"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "a.name",
+        "b.name"
+      ],
+      "rows": [
+        [
+          "fetch_users",
+          "/api/users"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "a.name",
+        "b.name"
+      ],
+      "rows": [
+        [
+          "fetch_users",
+          "users_endpoint"
+        ]
+      ]
+    }
+  ],
+  "search_code": [],
+  "search_graph": [],
+  "tools_list": [
+    "delete_project",
+    "detect_changes",
+    "get_architecture",
+    "get_code_snippet",
+    "get_graph_schema",
+    "index_repository",
+    "index_status",
+    "list_projects",
+    "manage_adr",
+    "query_graph",
+    "search_code",
+    "search_graph",
+    "trace_call_path"
+  ],
+  "trace_call_path": []
+}
