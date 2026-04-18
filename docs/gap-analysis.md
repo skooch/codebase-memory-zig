@@ -251,6 +251,36 @@ Phase 1 contract for this plan:
 - Treat the public overlap as release-and-reopen behavior on the shared Zig
   runtime DB; the original C runtime's per-project cached-store topology is an
   internal implementation difference rather than a contract requirement here.
+
+## In-Progress Plan: Release And Setup Packaging
+
+Current upstream packaging surface that the Zig repo still lacks:
+
+- release artifacts published as versioned archives instead of only local
+  `zig build` output
+- top-level install entrypoints:
+  - `install.sh`
+  - `install.ps1`
+- setup/bootstrap entrypoints:
+  - `scripts/setup.sh`
+  - `scripts/setup-windows.ps1`
+- release automation:
+  - `.github/workflows/release.yml`
+- end-user install documentation describing archives, checksums, and setup flow
+
+Phase 1 contract for this plan:
+
+- overlap the standard binary distribution story from the original:
+  - release archives
+  - checksums
+  - install scripts
+  - setup scripts
+  - repo-owned release workflow
+- keep the scope narrower than the original's broader release pipeline:
+  - no UI variant packaging
+  - no signing, SBOM, provenance, or VirusTotal gates in the first slice
+- keep packaging separate from the already-implemented agent config behavior,
+  which remains owned by the installer plans rather than the release plan
 - Require live-process verification of the idle close/reopen cycle before
   upgrading the runtime-extras parity claim.
 
