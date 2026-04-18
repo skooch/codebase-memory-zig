@@ -122,3 +122,88 @@ Results:
   `/Users/skooch/projects/worktrees/installer-ecosystem-parity`
   on `codex/installer-ecosystem-parity`
 - plan state corrected from `new/` to `in-progress` before implementation
+
+## Phase 2 Checkpoint: Broader Installer Matrix Harness
+
+Implementation slice on 2026-04-19:
+
+- `src/main.zig`
+  - now prints the broader detected-agent matrix in install/update/uninstall
+    output instead of only Codex CLI and Claude Code
+  - no longer treats detected-scope installs or updates as failures just
+    because only non-shipped targets were found
+- `src/cli.zig`
+  - now exposes scope-aware detected-agent helpers so the CLI success path is
+    driven by the real target matrix instead of a hard-coded shared pair
+- `scripts/run_cli_parity.sh`
+  - now seeds `testdata/cli-agent-fixtures/`
+  - now proves broader detected-scope install, update, and uninstall behavior
+    for:
+    - Codex CLI
+    - Claude Code
+    - Gemini
+    - Zed
+    - OpenCode
+    - Antigravity
+    - Aider
+    - KiloCode
+    - VS Code
+    - OpenClaw
+  - now verifies broader auxiliary side effects:
+    - Claude hooks
+    - Claude reminder script
+    - Claude consolidated skill package
+    - Codex instructions
+    - Gemini hooks and instructions
+    - OpenCode instructions
+    - Antigravity instructions
+    - Aider instructions
+    - KiloCode rules
+- `testdata/cli-agent-fixtures/`
+  - now holds the pre-existing user-config seeds that the temp-home harness
+    must preserve across install and uninstall
+
+Verification for this slice:
+
+```sh
+zig build
+zig build test
+bash scripts/run_cli_parity.sh --update-golden
+bash scripts/run_cli_parity.sh --zig-only
+bash scripts/run_cli_parity.sh
+```
+
+Results:
+
+- `zig build` passed
+- `zig build test` passed
+- `bash scripts/run_cli_parity.sh --update-golden` refreshed the installer
+  matrix golden snapshot with the new broader contract
+- `bash scripts/run_cli_parity.sh --zig-only` passed with `98` matching checks
+- `bash scripts/run_cli_parity.sh` passed with zero shared Zig/C mismatches on
+  the overlapping Codex/Claude contract
+
+## Phase 3 Checkpoint: Docs Reclassification And Residual Delta
+
+Completion pass on 2026-04-19:
+
+- `docs/installer-matrix.md`
+  - now lists the verified broader 10-agent detected-scope matrix and the
+    verified auxiliary-file roots
+- `docs/port-comparison.md`
+  - now reflects that the broader detected-scope installer matrix is real and
+    verified, while still keeping productization overall below full parity
+    because binary self-replacement and the original multi-skill Claude layout
+    are still different
+- `docs/gap-analysis.md`
+  - now records the implemented installer-ecosystem slice and narrows the
+    remaining productization backlog to:
+    - binary self-replacement parity
+    - any future side effects beyond the already-verified ten-agent matrix
+
+Residual delta after completion:
+
+- the shipped default scope remains intentionally `shipped`
+- binary self-replacement remains deferred in the Zig `update` flow
+- Claude skills are intentionally packaged as one consolidated
+  `codebase-memory` skill instead of the original multi-skill layout

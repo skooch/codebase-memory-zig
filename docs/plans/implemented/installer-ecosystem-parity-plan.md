@@ -4,7 +4,7 @@
 Expand the Zig installer from shared Codex/Claude parity into the original's broader multi-agent ecosystem, including instructions, skills, hooks, and reminder setup.
 
 ## Current Phase
-Phase 2
+Complete
 
 ## File Map
 - Modify: `docs/plans/in-progress/installer-ecosystem-parity-plan.md`
@@ -30,16 +30,16 @@ Phase 2
 - **Status:** completed
 
 ### Phase 2: Implement Broader Agent Support
-- [ ] Extend `src/main.zig` install reporting so the broader detected-agent matrix is visible instead of only the shared shipped pair.
-- [ ] Keep `src/cli.zig` aligned with the original multi-agent file layout where the broader matrix is already implemented, and only change code when the new harness exposes a real mismatch.
-- [ ] Update `scripts/run_cli_parity.sh` so broader installer targets and auxiliary file effects are checked in temp homes against fixture-seeded state.
-- **Status:** pending
+- [x] Extend `src/main.zig` install reporting so the broader detected-agent matrix is visible instead of only the shared shipped pair.
+- [x] Keep `src/cli.zig` aligned with the original multi-agent file layout where the broader matrix is already implemented, and only change code when the new harness exposes a real mismatch.
+- [x] Update `scripts/run_cli_parity.sh` so broader installer targets and auxiliary file effects are checked in temp homes against fixture-seeded state.
+- **Status:** completed
 
 ### Phase 3: Verify and Reclassify
-- [ ] Run `zig build`, `zig build test`, and the expanded CLI parity harness until the broader installer matrix is stable.
-- [ ] Add `docs/installer-matrix.md` and update `docs/port-comparison.md` so the remaining CLI-productization rows move only after the new targets are proven.
-- [ ] Record any still-unsupported agents or installer side effects in `docs/plans/in-progress/installer-ecosystem-parity-progress.md`.
-- **Status:** pending
+- [x] Run `zig build`, `zig build test`, and the expanded CLI parity harness until the broader installer matrix is stable.
+- [x] Add `docs/installer-matrix.md` and update `docs/port-comparison.md` so the remaining CLI-productization rows move only after the new targets are proven.
+- [x] Record any still-unsupported agents or installer side effects in `docs/plans/in-progress/installer-ecosystem-parity-progress.md`.
+- **Status:** completed
 
 ## Decisions
 | Decision | Rationale |

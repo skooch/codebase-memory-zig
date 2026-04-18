@@ -36,12 +36,12 @@ Everything left in `docs/plans/new/` is optional follow-on work.
   [language-support-expansion-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/language-support-expansion-feature-cluster-plan.md)
   is the broader queue and should not start first.
 - [windows-installer-and-client-integration-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/windows-installer-and-client-integration-improvements-plan.md)
-  is complete, which cleared its prerequisite role for the now-active
-  installer-ecosystem work.
+  is complete, which cleared its prerequisite role for the completed
+  installer-ecosystem plan.
 - [operational-controls-and-configurability-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/operational-controls-and-configurability-feature-cluster-plan.md)
   is complete, which clears packaging as the next active productization step.
 - [release-and-setup-packaging-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/release-and-setup-packaging-plan.md)
-  landed before the now-active installer-ecosystem plan.
+  landed before the completed installer-ecosystem plan.
 - [semantic-graph-expansion-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/semantic-graph-expansion-feature-cluster-plan.md)
   assumes the discovery/query, reliability, and language contracts are already
   firmer than they are today.

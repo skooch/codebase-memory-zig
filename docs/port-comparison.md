@@ -57,7 +57,7 @@ It is intentionally not a wish list. It describes:
 | Daily-use MCP surface | Full 14-tool surface, though `ingest_traces` is stubbed | Complete overlapping tool surface, now served through a stable MCP contract with internal hybrid routing for search/snippet/architecture/change detection | `Partial` | No |
 | Core indexing pipeline | Broad multi-pass pipeline including routes, tests, config links, infra scans, git history, similarity | Strong core pipeline for structure, definitions, imports, calls, usages, semantics, incremental, parallel, similarity, plus embedded FTS5 refresh and optional SCIP sidecar import | `Partial` | No |
 | Runtime lifecycle | Watcher, auto-index, update notifications, UI-capable runtime | Watcher, auto-index, incremental, transactional indexing, persistent runtime DB | `Near parity` | Yes |
-| CLI/productization | Rich install/update/config for 10 agents plus hooks/instructions | Source-build-friendly install/update/config for Codex CLI and Claude Code | `Partial` | No |
+| CLI/productization | Rich install/update/config for 10 agents plus hooks/instructions | Source-build-friendly install/update/config for the broader 10-agent matrix, with explicit shipped-vs-detected scope and fixture-backed extras coverage | `Partial` | No |
 | Optional/long-tail systems | UI, route graph, infra/resource indexing, git history, config linking | Git history coupling implemented; graph-model parity fixture contract completed for route nodes and config linking; UI and infra scanning remain deferred or cut | `Partial` / `Cut` | No |
 
 ## 1. Project Scope and Product Shape
@@ -192,9 +192,9 @@ This section compares what kinds of graph entities the two systems are built to 
 | Shared `update` flow (`Codex CLI` / `Claude Code`) | Yes, release-oriented updater plus config refresh | Yes, shared config refresh for the current binary path | `Near parity` | Yes | Phase 4 proves the overlapping config-refresh and reporting contract; original-only binary self-replacement remains a packaging difference rather than a shared-row failure, and the Zig CLI now keeps both scope and extras mode explicit. |
 | `config` | Yes | Yes | `Near parity` | Yes | Zig now supports persisted config for `auto_index`, `auto_index_limit`, `idle_store_timeout_ms`, `update_check_disable`, `install_scope`, `install_extras`, and `download_url`, with temp-home fixture evidence for `set`, `get`, `list`, and `reset` on the operational controls it exposes today; env-only `CBM_EXTENSION_MAP` is verified separately through the same parity harness. |
 | `cli --progress` | Yes, rich progress sink | Yes, shared phase-aware parity stream for overlapping commands | `Near parity` | Yes | Verified by the interop harness temp-HOME CLI check, which now reports `cli_progress: match`. |
-| Auto-detected shared agent integrations | 10 agents total, including Codex CLI and Claude Code | 2 shared agents: Codex CLI and Claude Code | `Near parity` | Yes | The verified shared overlap is now green for the two agent targets this repo counts as current product scope; the original's broader 10-agent ecosystem remains a separate product-surface difference. |
-| Agent instructions / skills / hooks installation | Yes | No | `Deferred` | No | Original installer configures instruction files, skills, and reminders/hooks. |
-| Manual agent config support | Yes | Yes for the two shipped agent targets | `Near parity` | Yes | Zig writes the correct config files for Codex CLI and Claude Code, and now has explicit fixture-backed Windows-layout config-writer evidence for VS Code, Zed, and KiloCode without expanding the shipped support claim beyond the two shared agent targets. |
+| Auto-detected shared agent integrations | 10 agents total, including Codex CLI and Claude Code | 10 detected-scope agent targets now covered in the temp-home installer matrix | `Near parity` | Yes | The expanded temp-home harness now proves the broader detected-scope matrix and CLI reporting for Codex CLI, Claude Code, Gemini, Zed, OpenCode, Antigravity, Aider, KiloCode, VS Code, and OpenClaw, while the shipped default scope stays intentionally narrower. |
+| Agent instructions / skills / hooks installation | Yes | Yes, with one consolidated Claude skill package instead of the original multi-skill layout | `Partial` | No | Zig now installs the broader instruction, hook, reminder, and rules side effects in the detected-scope matrix. The remaining material delta is the consolidated Claude skill packaging rather than the original four-skill layout. |
+| Manual agent config support | Yes | Yes for the broader 10-agent detected-scope matrix | `Near parity` | Yes | The expanded temp-home harness now proves config writes and removals across Codex CLI, Claude Code, Gemini, Zed, OpenCode, Antigravity, KiloCode, VS Code, and OpenClaw, with PATH-based Aider instruction handling covered separately in the same lane. |
 
 ## 8. Build, Packaging, and Repository Shape
 
@@ -229,7 +229,7 @@ If someone asks “what still separates the Zig port from the original?”, the 
 | No LSP-assisted hybrid resolution | Some higher-fidelity call/type resolution paths remain original-only. |
 | Broader config normalization expansion | Git-history coupling is implemented, config linking has dependency-import matching and deduplication coverage, a strict shared key-symbol normalization fixture, and a strict shared env-style config-key fixture. Additional config-language/key-shape expansion remains optional future work, while `WRITES` / `READS` still lack a proven shared public-harness contract. |
 | No UI subsystem | The original can run a graph visualization UI; the Zig port intentionally cannot. |
-| Much narrower installer ecosystem | The original configures 10 agents plus hooks/instructions; Zig currently configures 2 agents and only MCP entries. |
+| Installer ecosystem still differs | The Zig port now proves the broader 10-agent detected-scope matrix, hooks, reminders, and instructions, but it still keeps the shipped default scope narrower, defers binary self-replacement, and consolidates the Claude skill layout. |
 
 ## Bottom Line
 

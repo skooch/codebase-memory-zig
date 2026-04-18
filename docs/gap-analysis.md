@@ -153,10 +153,59 @@ Intentional omissions after completion:
 
 - host bind/listen controls remain absent because the shipped server mode is
   stdio-only
-- the installer surface remains intentionally narrower than the original's
-  broader multi-agent ecosystem
+- the shipped default installer scope remains intentionally narrower than the
+  broader detected-scope ecosystem, even though the detected-scope matrix is
+  now verified
 - extension remapping is explicit and verified, but remains env-only rather
   than a richer persisted policy layer
+
+## Implemented Plan: Installer Ecosystem Parity
+
+Current matrix for the completed slice:
+- broader detected-scope installer targets under fixture-backed verification
+  - Codex CLI
+  - Claude Code
+  - Gemini
+  - Zed
+  - OpenCode
+  - Antigravity
+  - Aider
+  - KiloCode
+  - VS Code
+  - OpenClaw
+- broader auxiliary side effects now verified in temp-home lanes
+  - Claude hooks, reminder script, and consolidated skill package
+  - Codex `AGENTS.md`
+  - Gemini `BeforeTool` hook and `GEMINI.md`
+  - OpenCode `AGENTS.md`
+  - Antigravity `AGENTS.md`
+  - Aider `CONVENTIONS.md`
+  - KiloCode rules file
+- command behavior under proof
+  - detected-scope `install`
+  - detected-scope `update --dry-run`
+  - detected-scope `uninstall`
+  - shared Codex/Claude compare still green against the original C binary
+
+Completion evidence:
+- `src.main.printInstallReport` now reports the broader detected-agent matrix
+  instead of only the shared shipped pair, and `install` / `update` no longer
+  falsely reject a detected-scope run that finds only non-shipped targets.
+- `scripts/run_cli_parity.sh` now seeds `testdata/cli-agent-fixtures/` and
+  verifies the broader ten-agent temp-home matrix, including config merges,
+  broader instruction/hook/rules side effects, uninstall cleanup, and
+  detected-scope update reporting.
+- `docs/installer-matrix.md` now reflects the verified broader client and
+  auxiliary-file roots instead of only the earlier shared or Windows-writer
+  subset.
+
+Intentional residual delta after completion:
+- the shipped default scope remains `shipped`, even though the broader
+  detected-scope matrix is now verified
+- binary self-replacement remains intentionally deferred in the Zig `update`
+  flow
+- Claude skill packaging remains consolidated into one `codebase-memory` skill
+  rather than the original multi-skill layout
 
 ## Implemented Plan: Windows, Installer, and Client Integration
 
@@ -359,8 +408,8 @@ The historical rows below describe the acceptance targets used by completed shar
 | Semantic edges | Zig covers a narrower semantic slice | The Zig graph emits the same overlapping `INHERITS`, `IMPLEMENTS`, and `DECORATES` facts as the original on shared target-language fixture cases | `src/extractor.zig`, `src/pipeline.zig`, `src/store.zig` | Pipeline tests plus parity fixture graph queries |
 | `CONFIGURES` / `USES_TYPE` | `CONFIGURES` and `USES_TYPE` are at shared-fixture parity; `WRITES` is not currently proven original-overlap by the C reference fixture | The Zig graph emits the same overlapping edge families, target resolution, and retained metadata as the original on parity fixtures that exercise config files and type references | `src/extractor.zig`, `src/pipeline.zig`, `src/graph_buffer.zig`, `src/store.zig` | Parity fixtures plus interop graph/query comparisons |
 | `THROWS` / `RAISES` | Zig now extracts throw/raise edges for JS/TS/TSX | The Zig graph emits `THROWS` and `RAISES` edges from throw statements with the same checked/unchecked classification heuristic as the original | `src/extractor.zig`, `src/pipeline.zig` | Edge-parity fixture plus store tests |
-| `install`, `uninstall`, `update` | Zig implements the commands with a narrower source-build workflow | The Zig CLI matches the original overlapping behavior for shared agent targets, config persistence, reporting, and reversible filesystem changes in temp-HOME tests | `src/cli.zig`, `src/main.zig` | Temp-HOME command parity checks against both CLIs |
-| Auto-detected agent integrations | Zig detects only Codex CLI and Claude Code | The Zig CLI auto-detects every shared agent target it claims to support in the same environments and reports the same selection behavior as the original | `src/cli.zig` | Temp-HOME detection matrix tests plus CLI output comparison |
+| `install`, `uninstall`, `update` | Zig now proves the broader detected-scope matrix, but still keeps binary self-replacement deferred | The Zig CLI verifies broader detected-scope config persistence, reporting, and reversible filesystem changes in temp-HOME tests while keeping the shared Codex/Claude compare green against the original | `src/cli.zig`, `src/main.zig` | Temp-HOME command parity checks, expanded zig-only installer matrix lane, and shared Zig/C command comparison |
+| Auto-detected agent integrations | Zig now detects and reports the broader 10-agent matrix it claims to support, while the shipped default scope stays narrower | The Zig CLI auto-detects every current supported target in the same environments its temp-home harness creates and reports the same broader matrix shape the original documents | `src/cli.zig`, `src/main.zig` | Temp-HOME detection matrix tests plus CLI output comparison |
 
 Review-validated notes for graph-fidelity follow-ons:
 - Self-call suppression and silent relation-insertion failure handling were correctness bugs and have been fixed in the relation layer.
@@ -394,8 +443,8 @@ Deferred or optional future slices:
   - richer decorator/enrichment promotion
   - completed entrypoint: [graph-model-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/graph-model-parity-plan.md)
 - Productization beyond the current contract:
-  - broader installer/self-update behavior
-  - broader agent integration coverage and installer diagnostics
+  - binary self-replacement parity in `update`
+  - any future installer side effects beyond the now-verified ten-agent matrix
 
 ### Recommended Sequencing
 
