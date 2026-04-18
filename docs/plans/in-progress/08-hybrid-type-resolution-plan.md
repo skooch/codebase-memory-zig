@@ -7,8 +7,8 @@ Close the original's most technically distinctive analysis gap by adding the sha
 Phase 1
 
 ## File Map
-- Modify: `docs/plans/new/ready-to-go/08-hybrid-type-resolution-plan.md`
-- Create: `docs/plans/new/ready-to-go/08-hybrid-type-resolution-progress.md`
+- Modify: `docs/plans/in-progress/08-hybrid-type-resolution-plan.md`
+- Create: `docs/plans/in-progress/08-hybrid-type-resolution-progress.md`
 - Modify: `docs/port-comparison.md`
 - Modify: `docs/gap-analysis.md`
 - Modify: `src/extractor.zig`
@@ -22,7 +22,7 @@ Phase 1
 
 ### Phase 1: Lock the Hybrid-Resolution Contract
 - [ ] Re-read the original hybrid-resolution behavior for Go, C, and C++ and capture the overlapping contract in `docs/gap-analysis.md`.
-- [ ] Define the supported external-tool assumptions, fixture set, and verification workflow in `docs/plans/new/ready-to-go/08-hybrid-type-resolution-progress.md`.
+- [ ] Define the supported external-tool assumptions, fixture set, and verification workflow in `docs/plans/in-progress/08-hybrid-type-resolution-progress.md`.
 - [ ] Keep the first slice limited to shared hybrid-resolution behavior instead of bundling it with general language expansion.
 - **Status:** pending
 
@@ -35,7 +35,7 @@ Phase 1
 ### Phase 3: Verify And Reclassify
 - [ ] Run `zig build`, `zig build test`, and the hybrid-resolution fixture checks until the accepted overlap for the targeted languages is stable.
 - [ ] Update `docs/port-comparison.md` so the hybrid-resolution rows move out of `Deferred` only after the shared hybrid contract is verified.
-- [ ] Record the final verification transcript and any intentionally unsupported resolver integrations in `docs/plans/new/ready-to-go/08-hybrid-type-resolution-progress.md`.
+- [ ] Record the final verification transcript and any intentionally unsupported resolver integrations in `docs/plans/in-progress/08-hybrid-type-resolution-progress.md`.
 - **Status:** pending
 
 ## Decisions
