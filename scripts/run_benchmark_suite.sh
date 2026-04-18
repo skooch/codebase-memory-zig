@@ -9,7 +9,6 @@ MANIFEST_PATH="${1:-$ROOT_DIR/testdata/bench/manifest.json}"
 REPORT_DIR="${2:-$ROOT_DIR/.benchmark_reports}"
 shift $(( $# > 0 ? 1 : 0 ))
 shift $(( $# > 0 ? 1 : 0 ))
-EXTRA_ARGS=("$@")
 
 C_BIN_DEFAULT="$ROOT_DIR/../codebase-memory-mcp/build/c/codebase-memory-mcp"
 if [ ! -x "$C_BIN_DEFAULT" ]; then
@@ -32,10 +31,19 @@ fi
 
 mkdir -p "$REPORT_DIR"
 
-python3 "$SCRIPT_DIR/run_benchmark_suite.py" \
-  --manifest "$MANIFEST_PATH" \
-  --root "$ROOT_DIR" \
-  --zig-bin "$ZIG_BIN" \
-  --c-bin "$C_BIN" \
-  --report-dir "$REPORT_DIR" \
-  "${EXTRA_ARGS[@]}"
+if [ "$#" -gt 0 ]; then
+  python3 "$SCRIPT_DIR/run_benchmark_suite.py" \
+    --manifest "$MANIFEST_PATH" \
+    --root "$ROOT_DIR" \
+    --zig-bin "$ZIG_BIN" \
+    --c-bin "$C_BIN" \
+    --report-dir "$REPORT_DIR" \
+    "$@"
+else
+  python3 "$SCRIPT_DIR/run_benchmark_suite.py" \
+    --manifest "$MANIFEST_PATH" \
+    --root "$ROOT_DIR" \
+    --zig-bin "$ZIG_BIN" \
+    --c-bin "$C_BIN" \
+    --report-dir "$REPORT_DIR"
+fi

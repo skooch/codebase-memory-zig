@@ -90,31 +90,35 @@ Completed in Plan 03:
 Completed in Plan 05:
 - Long-tail edge parity: `THROWS`/`RAISES` edges from throw statements (JS/TS/TSX). Verified end-to-end on the edge-parity fixture with RAISES resolving custom error classes. Out-of-scope edges: `OVERRIDE` (Go-only), `CONTAINS_PACKAGE` (never implemented in C), `WRITES` and `READS` (not proven original-overlap by the current C reference fixture).
 
-## Active In-Progress Plan: Discovery, Indexing Scope, and Query Semantics
+## Active In-Progress Plan: Large-Repo Reliability and Crash Safety
 
 Known current-state evidence from the Zig implementation:
-- `src.discover.discoverFiles` loads `.gitignore` and `.cbmignore` only at the
-  repository root before recursing, so nested ignore-file semantics are not part
-  of the current contract.
-- `src.discover.shouldIgnorePath` is an ordered matcher over the loaded rules,
-  with no separate scope metadata explaining why a path was skipped.
-- `src.query_router.collectSearchCodeHits` falls back to
-  `discoverFiles(root_path, .{ .mode = .full })` when indexed-path candidate
-  search returns no hits, which means `search_code` can currently scan files
-  outside the indexed universe.
-- `src.mcp.handleGetGraphSchema` currently returns project status plus counts for
-  node labels, edge types, and languages, but not relationship patterns,
-  property inventories, or sample structures that explain query results.
-- `src.mcp.handleListProjects` returns all stored projects with counts and root
-  paths, but it does not currently explain stale, duplicate, or skipped scope.
+- `src.pipeline.collectExtractionsParallel` allocates a `results` slot for every
+  discovered file and keeps every successful extraction resident until the join
+  phase completes, so peak memory still scales with the whole file set rather
+  than the active worker set.
+- `src.graph_buffer.dumpToStore` still walks every buffered node and edge in one
+  pass and builds an in-memory node-id remap without chunking or explicit write
+  caps before calling `upsertNode` / `upsertEdge`.
+- `src.store.beginImmediate` is a thin `BEGIN IMMEDIATE` wrapper; crash-safety
+  and oversized-write behavior still depend on the surrounding call sites rather
+  than on a stronger transaction or journal policy in the store layer itself.
+- `src.mcp.runFiles` appends every non-newline byte into a single `pending`
+  buffer with no explicit request-size ceiling, so malformed or oversized input
+  can still grow memory until EOF or a newline arrives.
+- `src.watcher.pollOnce` holds the watcher mutex while it runs `initBaseline`,
+  `checkForChanges`, the optional indexing callback, and follow-up git refresh
+  calls, so slow git commands or indexing work still block the whole watcher
+  state machine under lock.
 
 Phase 1 contract for this plan:
-- Treat root and nested ignore behavior, worktree skipping, and indexed-file
-  boundaries as explicit contract surfaces rather than incidental side effects.
-- Treat `search_code` returning hits from unindexed files as a correctness gap,
-  not a convenience fallback.
-- Treat schema and project-list payload shape as explanation surfaces that must
-  help users understand indexed scope, not just aggregate counts.
+- Treat memory growth, oversized request buffering, and bulk graph-store writes
+  as explicit stress-contract surfaces rather than incidental implementation
+  details.
+- Treat watcher and runtime lifecycle determinism under slow or failing work as
+  correctness requirements, not best-effort behavior.
+- Treat local stress fixtures and bounded verification thresholds as completion
+  gates before upgrading any large-repo stability claims.
 
 ## Active In-Progress Plan: Parser Accuracy and Graph Fidelity
 

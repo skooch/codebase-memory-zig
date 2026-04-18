@@ -26,11 +26,11 @@ Observed upstream pattern:
 - The durable upstream fixes added explicit caps, growable structures, earlier release points, and verified stress harnesses instead of relying on “average repo” assumptions.
 
 ## Current Phase
-Phase 1
+Phase 2
 
 ## File Map
-- Modify: `docs/plans/new/improvements/large-repo-reliability-and-crash-safety-improvements-plan.md`
-- Create: `docs/plans/new/improvements/large-repo-reliability-and-crash-safety-improvements-progress.md`
+- Modify: `docs/plans/in-progress/large-repo-reliability-and-crash-safety-improvements-plan.md`
+- Create: `docs/plans/in-progress/large-repo-reliability-and-crash-safety-improvements-progress.md`
 - Modify: `docs/gap-analysis.md`
 - Modify: `docs/port-comparison.md`
 - Modify: `docs/zig-port-plan.md`
@@ -48,10 +48,10 @@ Phase 1
 ## Phases
 
 ### Phase 1: Lock the Stress and Failure Matrix
-- [ ] Convert the upstream crash classes into a Zig-side reproduction matrix in `docs/gap-analysis.md`, separating memory pressure, traversal overflow, store corruption, and lifecycle hangs.
-- [ ] Add a local stress manifest and documentation under `testdata/bench/stress/` so large-repo checks are reproducible without depending on external monorepos.
-- [ ] Record target metrics, red-line thresholds, and exact verification commands in `docs/plans/new/improvements/large-repo-reliability-and-crash-safety-improvements-progress.md`.
-- **Status:** pending
+- [x] Convert the upstream crash classes into a Zig-side reproduction matrix in `docs/gap-analysis.md`, separating memory pressure, traversal overflow, store corruption, and lifecycle hangs.
+- [x] Add a local stress manifest and documentation under `testdata/bench/stress/` so large-repo checks are reproducible without depending on external monorepos.
+- [x] Record target metrics, red-line thresholds, exact verification commands, and the first baseline results in `docs/plans/in-progress/large-repo-reliability-and-crash-safety-improvements-progress.md`.
+- **Status:** complete
 
 ### Phase 2: Add Explicit Guardrails
 - [ ] Strengthen `src/pipeline.zig`, `src/graph_buffer.zig`, and `src/store.zig` with explicit size guards, early-release points, crash-safe transactional behavior, and growable traversal state where the current design still assumes moderate file or result sizes.
@@ -62,7 +62,7 @@ Phase 1
 ### Phase 3: Verify and Reclassify
 - [ ] Run `zig build`, `zig build test`, `bash scripts/run_benchmark_suite.sh`, and `bash scripts/test_runtime_lifecycle.sh` with the new stress cases until resource usage and failure handling stay bounded.
 - [ ] Update `docs/port-comparison.md` only for the rows that have explicit stress evidence rather than anecdotal “seems stable” claims.
-- [ ] Record remaining scale risks, skipped stress lanes, and next follow-on work in `docs/plans/new/improvements/large-repo-reliability-and-crash-safety-improvements-progress.md`.
+- [ ] Record remaining scale risks, skipped stress lanes, and next follow-on work in `docs/plans/in-progress/large-repo-reliability-and-crash-safety-improvements-progress.md`.
 - **Status:** pending
 
 ## Decisions
@@ -74,3 +74,4 @@ Phase 1
 ## Errors
 | Error | Attempt | Resolution |
 |-------|---------|------------|
+| `scripts/run_benchmark_suite.sh` failed before launching the Python harness | The first Phase 1 baseline run hit `EXTRA_ARGS[@]: unbound variable` under `set -u` when no trailing args were forwarded | Guard the no-extra-args path explicitly in the shell wrapper and record the failure mode in `CLAUDE.md` before rerunning the benchmark. |

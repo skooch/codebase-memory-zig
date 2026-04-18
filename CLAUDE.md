@@ -64,6 +64,7 @@ src/
 - If `git commit` or `git add` fails because `.git/index.lock` already exists, treat it as a stale lock, remove it with a non-interactive `rm -f .git/index.lock`, and retry the git command.
 - Keep `scripts/run_interop_alignment.sh` inline Python compatible with the system `python3` here (currently 3.9); avoid `X | Y` type-union syntax in that heredoc or the parity harness will fail before running comparisons.
 - From peer worktrees under `../worktrees/`, the original C repo is not at `../codebase-memory-mcp`; script defaults that compare against the C binary need a `../../codebase-memory-mcp` fallback or explicit override so interop/benchmark runs do not fail on path resolution alone.
+- `scripts/run_benchmark_suite.sh` runs with `set -u`; if you forward optional trailing args, guard the empty-array case instead of unconditionally expanding `${EXTRA_ARGS[@]}` or the script will fail before the Python harness starts.
 - Fresh worktrees may not include the untracked `vendored/grammars/` and `vendored/tree_sitter/` directories required by `zig build test`; if the build fails with missing `vendored/grammars/*/parser.c`, run `bash scripts/bootstrap_worktree.sh [primary-checkout]` or copy those vendored directories from the primary checkout into the worktree before retrying verification.
 - The agent comparison harness is intentionally `zsh`-only via `scripts/run_agent_comparison.zsh`; keep that entrypoint canonical instead of reintroducing a shell-compat wrapper.
 

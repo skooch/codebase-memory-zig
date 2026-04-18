@@ -1,0 +1,79 @@
+{
+  "schema_version": "0.1",
+  "goal": "Local-only stress benchmark lanes for large-repo reliability and crash-safety verification",
+  "repos": [
+    {
+      "id": "self-repo",
+      "path": ".",
+      "project": "codebase-memory-zig-stress",
+      "warmup_runs": 0,
+      "measured_runs": 1,
+      "notes": [
+        "Indexes the Zig repo itself as the baseline local stress lane for pipeline and query reliability."
+      ],
+      "performance_scenarios": [
+        {
+          "id": "function-search",
+          "tool": "search_graph",
+          "args": {
+            "label": "Function",
+            "limit": 25
+          }
+        },
+        {
+          "id": "runtime-snippet",
+          "tool": "get_code_snippet",
+          "args": {
+            "qualified_name_hint": "runFiles"
+          }
+        },
+        {
+          "id": "watcher-architecture",
+          "tool": "get_architecture",
+          "args": {
+            "aspects": [
+              "packages",
+              "hotspots"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "sqlite-amalgamation",
+      "path": "vendored/sqlite3",
+      "project": "sqlite3-amalgamation-stress",
+      "warmup_runs": 0,
+      "measured_runs": 1,
+      "notes": [
+        "Uses the vendored SQLite amalgamation to stress large single-file traversal and bulk write paths without external downloads."
+      ],
+      "performance_scenarios": [
+        {
+          "id": "search-sqlite-step",
+          "tool": "search_code",
+          "args": {
+            "pattern": "sqlite3_step",
+            "mode": "files",
+            "limit": 10
+          }
+        },
+        {
+          "id": "snippet-sqlite-open",
+          "tool": "get_code_snippet",
+          "args": {
+            "qualified_name_hint": "sqlite3_open"
+          }
+        },
+        {
+          "id": "search-functions",
+          "tool": "search_graph",
+          "args": {
+            "label": "Function",
+            "limit": 25
+          }
+        }
+      ]
+    }
+  ]
+}
