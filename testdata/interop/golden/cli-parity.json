@@ -1,4 +1,14 @@
 {
+  "operational_contract": {
+    "config_list_mentions_idle_timeout": true,
+    "config_list_mentions_update_check_disable": true,
+    "idle_timeout_get_matches": true,
+    "idle_timeout_reset_restores_default": true,
+    "idle_timeout_set_success": true,
+    "update_check_disable_get_matches": true,
+    "update_check_disable_reset_restores_default": true,
+    "update_check_disable_set_success": true
+  },
   "shared_contract": {
     "install_mentions_claude": true,
     "install_mentions_claude_legacy_path": true,

@@ -9,6 +9,8 @@ const codex_end_marker = "# END codebase-memory-zig";
 pub const AppConfig = struct {
     auto_index: bool = false,
     auto_index_limit: usize = 50_000,
+    idle_store_timeout_ms: usize = 60_000,
+    update_check_disable: bool = false,
     download_url: ?[]u8 = null,
 
     pub fn deinit(self: *AppConfig, allocator: std.mem.Allocator) void {
@@ -218,6 +220,18 @@ pub fn loadConfigAtPath(allocator: std.mem.Allocator, path: []const u8) !AppConf
             else => {},
         }
     }
+    if (parsed.value.object.get("idle_store_timeout_ms")) |value| {
+        switch (value) {
+            .integer => |v| {
+                if (v >= 0) config.idle_store_timeout_ms = @intCast(v);
+            },
+            .string => |v| config.idle_store_timeout_ms = std.fmt.parseUnsigned(usize, v, 10) catch config.idle_store_timeout_ms,
+            else => {},
+        }
+    }
+    if (parsed.value.object.get("update_check_disable")) |value| {
+        if (value == .bool) config.update_check_disable = value.bool;
+    }
     if (parsed.value.object.get("download_url")) |value| {
         if (value == .string and value.string.len > 0) {
             config.download_url = try allocator.dupe(u8, value.string);
@@ -241,6 +255,8 @@ pub fn saveConfigAtPath(allocator: std.mem.Allocator, path: []const u8, config: 
     try payload.appendSlice(allocator, "{\n");
     try payload.writer(allocator).print("  \"auto_index\": {s},\n", .{if (config.auto_index) "true" else "false"});
     try payload.writer(allocator).print("  \"auto_index_limit\": {d},\n", .{config.auto_index_limit});
+    try payload.writer(allocator).print("  \"idle_store_timeout_ms\": {d},\n", .{config.idle_store_timeout_ms});
+    try payload.writer(allocator).print("  \"update_check_disable\": {s},\n", .{if (config.update_check_disable) "true" else "false"});
     try payload.appendSlice(allocator, "  \"download_url\": ");
     if (config.download_url) |download_url| {
         try payload.writer(allocator).print("{f}", .{std.json.fmt(download_url, .{})});
@@ -1771,6 +1787,8 @@ test "config roundtrip preserves values" {
     var config = AppConfig{
         .auto_index = true,
         .auto_index_limit = 123,
+        .idle_store_timeout_ms = 4321,
+        .update_check_disable = true,
         .download_url = try allocator.dupe(u8, "https://example.com/cbm"),
     };
     defer config.deinit(allocator);
@@ -1780,6 +1798,8 @@ test "config roundtrip preserves values" {
     defer loaded.deinit(allocator);
     try std.testing.expect(loaded.auto_index);
     try std.testing.expectEqual(@as(usize, 123), loaded.auto_index_limit);
+    try std.testing.expectEqual(@as(usize, 4321), loaded.idle_store_timeout_ms);
+    try std.testing.expect(loaded.update_check_disable);
     try std.testing.expectEqualStrings("https://example.com/cbm", loaded.download_url.?);
 }
 

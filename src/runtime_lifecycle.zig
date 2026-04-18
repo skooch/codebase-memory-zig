@@ -19,6 +19,7 @@ pub const RuntimeLifecycle = struct {
     mutex: std.Thread.Mutex = .{},
     update_notice: ?[]u8 = null,
     update_check_started: bool = false,
+    update_check_disabled: bool = false,
     update_thread: ?std.Thread = null,
 
     pub fn init(allocator: std.mem.Allocator, current_version: []const u8) RuntimeLifecycle {
@@ -41,6 +42,10 @@ pub const RuntimeLifecycle = struct {
         }
     }
 
+    pub fn setUpdateCheckDisabled(self: *RuntimeLifecycle, disabled: bool) void {
+        self.update_check_disabled = disabled;
+    }
+
     pub fn startUpdateCheck(self: *RuntimeLifecycle) void {
         self.mutex.lock();
         if (self.update_check_started) {
@@ -50,7 +55,7 @@ pub const RuntimeLifecycle = struct {
         self.update_check_started = true;
         self.mutex.unlock();
 
-        if (envFlagEnabled("CBM_UPDATE_CHECK_DISABLE")) return;
+        if (self.update_check_disabled or envFlagEnabled("CBM_UPDATE_CHECK_DISABLE")) return;
 
         if (std.posix.getenv("CBM_UPDATE_CHECK_LATEST")) |latest| {
             self.storeNoticeIfNewer(latest) catch {};

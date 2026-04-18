@@ -116,3 +116,58 @@ Results:
 - worktree confirmed at `/Users/skooch/projects/worktrees/operational-controls`
   on `codex/operational-controls`
 - plan state corrected from `new/` to `in-progress/` for this worktree
+
+## Phase 2 Checkpoint: Persisted Runtime Controls
+
+First Phase 2 code slice on 2026-04-19:
+
+- `src/cli.zig`
+  - extended persisted config to include:
+    - `idle_store_timeout_ms`
+    - `update_check_disable`
+  - added round-trip unit coverage proving those keys survive save/load cycles
+- `src/main.zig`
+  - now loads the persisted runtime config at stdio-server startup
+  - applies `idle_store_timeout_ms` from config unless
+    `CBM_IDLE_STORE_TIMEOUT_MS` is explicitly set
+- `src/runtime_lifecycle.zig`
+  - now accepts a persisted `update_check_disable` setting while preserving the
+    existing `CBM_UPDATE_CHECK_DISABLE` env override
+- `scripts/run_cli_parity.sh`
+  - now exercises a temp-home `operational_contract` in `--zig-only` mode
+  - verifies `config set|get|list|reset` for:
+    - `idle_store_timeout_ms`
+    - `update_check_disable`
+- `docs/configuration-matrix.md`
+  - documents the currently supported operational controls, their defaults, and
+    their verification paths
+
+Verification for this slice:
+
+```sh
+bash scripts/bootstrap_worktree.sh /Users/skooch/projects/codebase-memory-zig
+zig build
+zig build test
+bash scripts/run_cli_parity.sh
+bash scripts/run_cli_parity.sh --update-golden
+bash scripts/run_cli_parity.sh --zig-only
+```
+
+Results:
+
+- `bash scripts/bootstrap_worktree.sh /Users/skooch/projects/codebase-memory-zig`
+  completed to restore the vendored grammar files required by this fresh
+  worktree
+- `zig build` passed
+- `zig build test` passed
+- `bash scripts/run_cli_parity.sh` passed with zero Zig/C shared-contract
+  mismatches
+- `bash scripts/run_cli_parity.sh --zig-only` passed with `31` total checks
+  matching the golden snapshot
+
+Remaining Phase 2 scope after this checkpoint:
+
+- broader installer-scope controls are still implicit rather than explicit
+- host bind/listen controls remain absent because the shipped server mode is
+  stdio-only
+- hook-policy and extension-mapping controls are still deferred

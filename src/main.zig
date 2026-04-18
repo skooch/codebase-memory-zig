@@ -108,6 +108,9 @@ fn runMcpServer(allocator: std.mem.Allocator) !void {
     const runtime_allocator = std.heap.c_allocator;
     runtime_lifecycle.installSignalHandlers();
 
+    var config = cli.loadConfig(runtime_allocator) catch cli.AppConfig{};
+    defer config.deinit(runtime_allocator);
+
     var runtime = RuntimeState{
         .allocator = runtime_allocator,
         .db_path = try runtimeDbPath(runtime_allocator),
@@ -115,6 +118,7 @@ fn runMcpServer(allocator: std.mem.Allocator) !void {
     defer runtime.deinit();
 
     var lifecycle = runtime_lifecycle.RuntimeLifecycle.init(runtime_allocator, build_options.version);
+    lifecycle.setUpdateCheckDisabled(config.update_check_disable);
     defer lifecycle.deinit();
 
     var db = try openStoreAtPath(runtime_allocator, runtime.db_path);
@@ -136,7 +140,11 @@ fn runMcpServer(allocator: std.mem.Allocator) !void {
     server.setIndexGuard(&runtime.index_busy);
     server.setRuntimeLifecycle(&lifecycle);
     server.setRuntimeStorePath(runtime.db_path);
-    server.setIdleStoreTimeoutMs(envUnsigned("CBM_IDLE_STORE_TIMEOUT_MS", cbm.mcp.default_idle_store_timeout_ms));
+    const idle_store_timeout_ms = if (std.posix.getenv("CBM_IDLE_STORE_TIMEOUT_MS") != null)
+        envUnsigned("CBM_IDLE_STORE_TIMEOUT_MS", config.idle_store_timeout_ms)
+    else
+        config.idle_store_timeout_ms;
+    server.setIdleStoreTimeoutMs(idle_store_timeout_ms);
     defer server.deinit();
 
     const stdin_file = std.fs.File.stdin();
@@ -418,10 +426,12 @@ fn runConfigCommand(allocator: std.mem.Allocator) !void {
     if (std.mem.eql(u8, action, "list") or std.mem.eql(u8, action, "ls")) {
         try printFile(
             stdout_file,
-            "auto_index = {s}\nauto_index_limit = {d}\ndownload_url = {s}\n",
+            "auto_index = {s}\nauto_index_limit = {d}\nidle_store_timeout_ms = {d}\nupdate_check_disable = {s}\ndownload_url = {s}\n",
             .{
                 if (config.auto_index) "true" else "false",
                 config.auto_index_limit,
+                config.idle_store_timeout_ms,
+                if (config.update_check_disable) "true" else "false",
                 config.download_url orelse "",
             },
         );
@@ -665,6 +675,14 @@ fn writeConfigValue(stdout_file: std.fs.File, key: []const u8, config: cli.AppCo
         try printFile(stdout_file, "{d}\n", .{config.auto_index_limit});
         return;
     }
+    if (std.mem.eql(u8, key, "idle_store_timeout_ms")) {
+        try printFile(stdout_file, "{d}\n", .{config.idle_store_timeout_ms});
+        return;
+    }
+    if (std.mem.eql(u8, key, "update_check_disable")) {
+        try printFile(stdout_file, "{s}\n", .{if (config.update_check_disable) "true" else "false"});
+        return;
+    }
     if (std.mem.eql(u8, key, "download_url")) {
         try printFile(stdout_file, "{s}\n", .{config.download_url orelse ""});
         return;
@@ -686,6 +704,18 @@ fn setConfigKey(allocator: std.mem.Allocator, config: *cli.AppConfig, key: []con
         };
         return;
     }
+    if (std.mem.eql(u8, key, "idle_store_timeout_ms")) {
+        config.idle_store_timeout_ms = std.fmt.parseUnsigned(usize, value, 10) catch {
+            std.process.exit(1);
+        };
+        return;
+    }
+    if (std.mem.eql(u8, key, "update_check_disable")) {
+        config.update_check_disable = parseBool(value) orelse {
+            std.process.exit(1);
+        };
+        return;
+    }
     if (std.mem.eql(u8, key, "download_url")) {
         if (config.download_url) |existing| allocator.free(existing);
         config.download_url = if (value.len == 0) null else try allocator.dupe(u8, value);
@@ -701,6 +731,14 @@ fn resetConfigKey(allocator: std.mem.Allocator, config: *cli.AppConfig, key: []c
     }
     if (std.mem.eql(u8, key, "auto_index_limit")) {
         config.auto_index_limit = 50_000;
+        return;
+    }
+    if (std.mem.eql(u8, key, "idle_store_timeout_ms")) {
+        config.idle_store_timeout_ms = 60_000;
+        return;
+    }
+    if (std.mem.eql(u8, key, "update_check_disable")) {
+        config.update_check_disable = false;
         return;
     }
     if (std.mem.eql(u8, key, "download_url")) {

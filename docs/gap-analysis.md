@@ -117,6 +117,9 @@ Current control-surface inventory from the Zig implementation:
   - `cbm config list|get|set|reset`
   - `cbm cli --progress`
   - installer action flags: `-y`, `-n`, `--dry-run`, `--force`
+- persisted runtime controls added in this worktree
+  - `idle_store_timeout_ms`
+  - `update_check_disable`
 
 Known gaps this plan is targeting:
 
@@ -136,7 +139,14 @@ Phase 1 evidence:
 - the plan is now active at
   [operational-controls-and-configurability-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/operational-controls-and-configurability-feature-cluster-plan.md)
 - the progress log and fixture placeholder now live at
+- the current branch now proves persisted `config set|get|list|reset` handling
+  for `idle_store_timeout_ms` and `update_check_disable` through the temp-home
+  `operational_contract` lane in `scripts/run_cli_parity.sh --zig-only`
+- the progress log, fixture placeholder, and current configuration matrix now
+  live at
   [operational-controls-and-configurability-feature-cluster-progress.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/operational-controls-and-configurability-feature-cluster-progress.md)
+  ,
+  [configuration-matrix.md](/Users/skooch/projects/codebase-memory-zig/docs/configuration-matrix.md),
   and
   [testdata/interop/configuration/env-overrides/README.md](/Users/skooch/projects/codebase-memory-zig/testdata/interop/configuration/env-overrides/README.md)
 

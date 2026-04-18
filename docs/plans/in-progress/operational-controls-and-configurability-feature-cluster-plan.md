@@ -23,7 +23,7 @@ Observed upstream pattern:
 - Many support issues would have been easier if the product clearly separated configuration knobs, runtime status output, and agent-specific side effects.
 
 ## Current Phase
-Phase 1
+Phase 2
 
 ## File Map
 - Modify: `docs/plans/in-progress/operational-controls-and-configurability-feature-cluster-plan.md`
@@ -43,10 +43,10 @@ Phase 1
 ## Phases
 
 ### Phase 1: Inventory the Control Surface
-- [ ] Capture every requested operational knob in `docs/gap-analysis.md`, separating installer scope, cache and path config, runtime trigger behavior, host binding, and query-default ergonomics.
-- [ ] Add a configuration fixture area under `testdata/interop/configuration/` so env-var and config-file behavior can be tested without touching a real home directory.
-- [ ] Record the exact CLI, config, and runtime verification commands in `docs/plans/in-progress/operational-controls-and-configurability-feature-cluster-progress.md`.
-- **Status:** pending
+- [x] Capture every requested operational knob in `docs/gap-analysis.md`, separating installer scope, cache and path config, runtime trigger behavior, host binding, and query-default ergonomics.
+- [x] Add a configuration fixture area under `testdata/interop/configuration/` so env-var and config-file behavior can be tested without touching a real home directory.
+- [x] Record the exact CLI, config, and runtime verification commands in `docs/plans/in-progress/operational-controls-and-configurability-feature-cluster-progress.md`.
+- **Status:** complete
 
 ### Phase 2: Make the Knobs Explicit
 - [ ] Extend `src/cli.zig`, `src/main.zig`, `src/mcp.zig`, `src/runtime_lifecycle.zig`, and `src/discover.zig` so cache location, host binding, auto-index triggers, progress output, hook behavior, and extension mappings are controlled by explicit config or env surfaces instead of hidden defaults.

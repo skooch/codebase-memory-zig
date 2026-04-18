@@ -165,6 +165,35 @@ def inspect_windows_layout(binary: Path, fixture_root: Path) -> Dict[str, Any]:
         }
 
 
+def inspect_operational_controls(binary: Path) -> Dict[str, Any]:
+    with tempfile.TemporaryDirectory(prefix="cbm-cli-config-") as tmp:
+        home = Path(tmp)
+        home.mkdir(parents=True, exist_ok=True)
+
+        set_idle = run_cmd([str(binary), "config", "set", "idle_store_timeout_ms", "1234"], home)
+        get_idle = run_cmd([str(binary), "config", "get", "idle_store_timeout_ms"], home)
+        set_update_disable = run_cmd([str(binary), "config", "set", "update_check_disable", "true"], home)
+        get_update_disable = run_cmd([str(binary), "config", "get", "update_check_disable"], home)
+        config_list = run_cmd([str(binary), "config", "list"], home)
+        reset_idle = run_cmd([str(binary), "config", "reset", "idle_store_timeout_ms"], home)
+        idle_after_reset = run_cmd([str(binary), "config", "get", "idle_store_timeout_ms"], home)
+        reset_update_disable = run_cmd([str(binary), "config", "reset", "update_check_disable"], home)
+        update_disable_after_reset = run_cmd([str(binary), "config", "get", "update_check_disable"], home)
+
+        return {
+            "operational_contract": {
+                "idle_timeout_set_success": set_idle.returncode == 0,
+                "idle_timeout_get_matches": get_idle.stdout.strip() == "1234",
+                "update_check_disable_set_success": set_update_disable.returncode == 0,
+                "update_check_disable_get_matches": get_update_disable.stdout.strip() == "true",
+                "config_list_mentions_idle_timeout": contains_ci(config_list.stdout, "idle_store_timeout_ms = 1234"),
+                "config_list_mentions_update_check_disable": contains_ci(config_list.stdout, "update_check_disable = true"),
+                "idle_timeout_reset_restores_default": idle_after_reset.stdout.strip() == "60000",
+                "update_check_disable_reset_restores_default": update_disable_after_reset.stdout.strip() == "false",
+            },
+        }
+
+
 def inspect_impl(label: str, binary: Path) -> dict:
     with tempfile.TemporaryDirectory(prefix=f"cbm-cli-{label}-") as tmp:
         home = Path(tmp)
@@ -239,6 +268,11 @@ def inspect_impl(label: str, binary: Path) -> dict:
             if label == "zig" and fixture_dir is not None and fixture_dir.exists()
             else {"windows_contract": {}}
         )
+        operational_result = (
+            inspect_operational_controls(binary)
+            if label == "zig"
+            else {"operational_contract": {}}
+        )
 
         return {
             "home": str(home),
@@ -264,6 +298,7 @@ def inspect_impl(label: str, binary: Path) -> dict:
             },
             "shared_contract": shared_contract,
             "windows_contract": windows_result["windows_contract"],
+            "operational_contract": operational_result["operational_contract"],
         }
 
 
@@ -278,6 +313,7 @@ def run_update_golden(zig_result: Dict[str, Any]) -> None:
     snapshot = {
         "shared_contract": zig_result["shared_contract"],
         "windows_contract": zig_result.get("windows_contract", {}),
+        "operational_contract": zig_result.get("operational_contract", {}),
     }
     golden_path.write_text(json.dumps(snapshot, indent=2, sort_keys=True) + "\n")
     print("updated: %s" % golden_path)
@@ -302,6 +338,10 @@ def run_zig_only(zig_result: Dict[str, Any]) -> None:
         "windows_contract": (
             golden.get("windows_contract", {}),
             zig_result.get("windows_contract", {}),
+        ),
+        "operational_contract": (
+            golden.get("operational_contract", {}),
+            zig_result.get("operational_contract", {}),
         ),
     }
     compare_keys = []
