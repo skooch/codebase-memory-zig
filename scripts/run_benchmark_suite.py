@@ -11,7 +11,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from repo_sources import resolve_repo_source
 
@@ -770,6 +770,7 @@ def filter_repos(manifest: dict[str, Any], repo_ids: list[str]) -> dict[str, Any
 
 
 def build_markdown_report(report: dict[str, Any]) -> str:
+    zig_only = bool(report.get("zig_only"))
     lines: list[str] = []
     lines.append("# Benchmark Suite Report")
     lines.append("")
@@ -779,22 +780,29 @@ def build_markdown_report(report: dict[str, Any]) -> str:
     lines.append("")
     lines.append("## Summary")
     lines.append("")
-    lines.append("| Repo | Zig Accuracy | C Accuracy | Delta | Zig Index Median (ms) | C Index Median (ms) | Faster |")
-    lines.append("|------|--------------:|-----------:|------:|----------------------:|--------------------:|--------|")
+    if zig_only:
+        lines.append("| Repo | Zig Accuracy | Zig Index Median (ms) |")
+        lines.append("|------|--------------:|----------------------:|")
+    else:
+        lines.append("| Repo | Zig Accuracy | C Accuracy | Delta | Zig Index Median (ms) | C Index Median (ms) | Faster |")
+        lines.append("|------|--------------:|-----------:|------:|----------------------:|--------------------:|--------|")
     for repo in report["repos"]:
         zig_score = repo["zig"]["accuracy"]["score"]
-        c_score = repo["c"]["accuracy"]["score"]
         zig_possible = zig_score["possible"] or 0.0
-        c_possible = c_score["possible"] or 0.0
         zig_pct = 0.0 if zig_possible == 0 else (zig_score["earned"] / zig_possible) * 100.0
-        c_pct = 0.0 if c_possible == 0 else (c_score["earned"] / c_possible) * 100.0
-        delta = zig_pct - c_pct
         zig_index = repo["zig"]["performance"]["index"]["summary"].get("median_ms", "-")
-        c_index = repo["c"]["performance"]["index"]["summary"].get("median_ms", "-")
-        faster = repo["comparison"].get("index_faster", "n/a")
-        lines.append(
-            f"| {repo['id']} | {zig_pct:.1f}% | {c_pct:.1f}% | {delta:+.1f} | {zig_index} | {c_index} | {faster} |"
-        )
+        if zig_only:
+            lines.append(f"| {repo['id']} | {zig_pct:.1f}% | {zig_index} |")
+        else:
+            c_score = repo["c"]["accuracy"]["score"]
+            c_possible = c_score["possible"] or 0.0
+            c_pct = 0.0 if c_possible == 0 else (c_score["earned"] / c_possible) * 100.0
+            delta = zig_pct - c_pct
+            c_index = repo["c"]["performance"]["index"]["summary"].get("median_ms", "-")
+            faster = repo["comparison"].get("index_faster", "n/a")
+            lines.append(
+                f"| {repo['id']} | {zig_pct:.1f}% | {c_pct:.1f}% | {delta:+.1f} | {zig_index} | {c_index} | {faster} |"
+            )
 
     for repo in report["repos"]:
         lines.append("")
@@ -806,7 +814,8 @@ def build_markdown_report(report: dict[str, Any]) -> str:
                 lines.append(f"- {note}")
             lines.append("")
 
-        for impl in ("zig", "c"):
+        impls = ("zig",) if zig_only else ("zig", "c")
+        for impl in impls:
             accuracy = repo[impl]["accuracy"]
             score = accuracy["score"]
             possible = score["possible"] or 0.0
@@ -847,22 +856,25 @@ def compare_repo_results(repo_result: dict[str, Any]) -> dict[str, Any]:
     return {"index_faster": faster}
 
 
-def run_repo_suite(repo: dict[str, Any], zig_bin: str, c_bin: str, root: Path, source_cache_dir: Path) -> dict[str, Any]:
+def run_repo_suite(repo: dict[str, Any], zig_bin: str, c_bin: Optional[str], root: Path, source_cache_dir: Path) -> dict[str, Any]:
     resolved_repo = resolve_repo_source(repo, root, source_cache_dir)
     repo_abs = Path(resolved_repo["path"])
     warmup_runs = int(repo.get("warmup_runs", 1))
     measured_runs = int(repo.get("measured_runs", 2))
 
-    result = {
+    result: dict[str, Any] = {
         "id": repo["id"],
         "path": str(repo_abs),
         "source": resolved_repo["source"],
         "notes": list(repo.get("notes", [])),
         "zig": {},
-        "c": {},
     }
 
-    for impl, bin_path in (("zig", zig_bin), ("c", c_bin)):
+    impl_bins: list[tuple[str, str]] = [("zig", zig_bin)]
+    if c_bin:
+        impl_bins.append(("c", c_bin))
+
+    for impl, bin_path in impl_bins:
         accuracy = run_accuracy_suite(bin_path, repo_abs, repo, impl)
         performance = {
             "index": run_index_benchmark(bin_path, repo_abs, repo, impl, measured_runs),
@@ -873,7 +885,8 @@ def run_repo_suite(repo: dict[str, Any], zig_bin: str, c_bin: str, root: Path, s
             "performance": performance,
         }
 
-    result["comparison"] = compare_repo_results(result)
+    if c_bin:
+        result["comparison"] = compare_repo_results(result)
     return result
 
 
@@ -882,10 +895,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--root", required=True)
     parser.add_argument("--zig-bin", required=True)
-    parser.add_argument("--c-bin", required=True)
+    parser.add_argument("--c-bin", default="")
     parser.add_argument("--report-dir", required=True)
     parser.add_argument("--source-cache-dir", default="")
     parser.add_argument("--repo-id", action="append", default=[], help="Limit the run to one or more repo ids from the manifest")
+    parser.add_argument("--zig-only", action="store_true")
     return parser.parse_args()
 
 
@@ -902,11 +916,16 @@ def main() -> int:
         "manifest": str(manifest_path),
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "host": os.uname().nodename,
+        "zig_only": bool(args.zig_only),
         "repos": [],
     }
 
+    c_bin = None if args.zig_only else str(Path(args.c_bin).resolve())
+    if not args.zig_only and not args.c_bin:
+        raise ValueError("--c-bin is required unless --zig-only is set")
+
     for repo in manifest.get("repos", []):
-        report["repos"].append(run_repo_suite(repo, args.zig_bin, args.c_bin, root, source_cache_dir))
+        report["repos"].append(run_repo_suite(repo, args.zig_bin, c_bin, root, source_cache_dir))
 
     json_path = report_dir / "benchmark_report.json"
     md_path = report_dir / "benchmark_report.md"
