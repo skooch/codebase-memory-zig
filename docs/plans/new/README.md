@@ -10,8 +10,7 @@ currently active parser-accuracy slice, which has moved into
 ## Active Now
 
 - [parser-accuracy-and-graph-fidelity-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/parser-accuracy-and-graph-fidelity-improvements-plan.md)
-  - Active in `/Users/skooch/projects/worktrees/parser-accuracy-fidelity` on
-    `codex/parser-accuracy-fidelity`.
+  - Active as the current in-progress correctness plan.
 
 ## Ordering Principles
 

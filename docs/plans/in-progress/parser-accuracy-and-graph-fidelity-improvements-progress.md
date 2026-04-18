@@ -83,7 +83,7 @@ Fixture-specific direct checks to add once the manifest rows land:
 
 ```sh
 zig build run -- cli index_repository '{"project_path":"testdata/interop/accuracy/python-framework-cases","mode":"full"}'
-zig build run -- cli search_graph '{"project":"python-framework-cases","label":"Function"}'
+zig build run -- cli search_graph '{"project":"python-framework-cases","label_pattern":"Function"}'
 zig build run -- cli query_graph '{"project":"python-framework-cases","query":"MATCH (a)-[r:HANDLES]->(b) RETURN a.name, b.name ORDER BY a.name ASC, b.name ASC","max_rows":20}'
 zig build run -- cli index_repository '{"project_path":"testdata/interop/accuracy/typescript-import-cases","mode":"full"}'
 zig build run -- cli trace_call_path '{"project":"typescript-import-cases","function_name":"run","direction":"out","depth":4}'
@@ -95,7 +95,10 @@ Controlled probe run on 2026-04-18 after bootstrapping the worktree:
 
 - Python fixture:
   - `index_repository` returned `nodes=10`, `edges=12`
-  - `HANDLES` query returned only `health_check -> /health`
+  - `search_graph(label_pattern="Function")` returned `build_router`,
+    `create_app`, `health_check`, `not_a_route`, and `read_status`
+  - `HANDLES` query returned no rows on the current baseline, which means the
+    decorator-backed route edge is still a red case instead of a green one
 - TypeScript fixture:
   - `index_repository` returned `nodes=12`, `edges=16`
   - `search_graph` returned `run`, `localOnly`, `markStart`, `parsePayload`,
@@ -104,10 +107,11 @@ Controlled probe run on 2026-04-18 after bootstrapping the worktree:
     `markStart`, `parsePayload`, and `handleRequest`
 
 What this means:
-- the first Python false-route guard and the first TypeScript alias-resolution
-  guard are green already
-- Phase 2 should now target a sharper red case around ownership drift or
-  framework-specific attachment instead of changing extraction blindly
+- the first TypeScript alias-resolution guard is green already
+- the Python fixture is useful, but still exposes missing framework-backed route
+  attachment rather than proving it solved
+- Phase 2 should target the Python route-attachment red case plus any ownership
+  drift that appears when fixture-backed assertions are added
 
 ## Phases
 
