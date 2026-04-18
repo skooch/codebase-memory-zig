@@ -36,6 +36,44 @@ const CommandOutput = struct {
     }
 };
 
+const EntrySnapshot = struct {
+    project_name: []u8,
+    root_path: []u8,
+    last_head: []u8,
+    baseline_done: bool,
+    is_git: bool,
+    interval_ms: u32,
+    next_poll_ns: i64,
+
+    fn deinit(self: EntrySnapshot, allocator: std.mem.Allocator) void {
+        allocator.free(self.project_name);
+        allocator.free(self.root_path);
+        allocator.free(self.last_head);
+    }
+};
+
+const BaselineResult = struct {
+    is_git: bool,
+    head: []u8,
+    file_count: u32,
+    interval_ms: u32,
+    next_poll_ns: i64,
+
+    fn deinit(self: BaselineResult, allocator: std.mem.Allocator) void {
+        allocator.free(self.head);
+    }
+};
+
+const ChangeProbe = struct {
+    head: []u8,
+    changed: bool,
+    file_count: u32,
+
+    fn deinit(self: ChangeProbe, allocator: std.mem.Allocator) void {
+        allocator.free(self.head);
+    }
+};
+
 pub const Watcher = struct {
     allocator: std.mem.Allocator,
     entries: std.ArrayList(WatchEntry),
@@ -111,42 +149,47 @@ pub const Watcher = struct {
     }
 
     pub fn pollOnce(self: *Watcher) !u32 {
-        self.mu.lock();
-        defer self.mu.unlock();
         var reindexed: u32 = 0;
         const now = nowNs();
+        var index: usize = 0;
 
-        for (self.entries.items) |*entry| {
-            if (!entry.baseline_done) {
-                try initBaseline(self.allocator, entry);
+        while (true) {
+            const snapshot = try self.snapshotEntryForPoll(index, now) orelse break;
+            defer snapshot.deinit(self.allocator);
+
+            if (!snapshot.baseline_done) {
+                const baseline = try computeBaseline(self.allocator, snapshot.root_path, snapshot.interval_ms);
+                defer baseline.deinit(self.allocator);
+                const live_index = try self.applyBaselineResult(snapshot.project_name, snapshot.root_path, baseline);
+                index = if (live_index) |found| found + 1 else index;
                 continue;
             }
-            if (!entry.is_git) continue;
-            if (now < entry.next_poll_ns) continue;
 
-            if (!(try checkForChanges(self.allocator, entry))) {
-                entry.next_poll_ns = now + intervalToNs(entry.interval_ms);
+            const probe = try probeEntryChange(self.allocator, snapshot.root_path, snapshot.last_head);
+            defer probe.deinit(self.allocator);
+
+            if (!probe.changed) {
+                const live_index = self.scheduleRetry(snapshot.project_name, snapshot.root_path, now);
+                index = if (live_index) |found| found + 1 else index;
                 continue;
             }
 
             if (self.index_fn) |index_fn| {
                 const index_ctx = self.index_ctx orelse {
-                    entry.next_poll_ns = now + intervalToNs(entry.interval_ms);
+                    const live_index = self.scheduleRetry(snapshot.project_name, snapshot.root_path, now);
+                    index = if (live_index) |found| found + 1 else index;
                     continue;
                 };
-                index_fn(index_ctx, entry.project_name, entry.root_path) catch {
-                    entry.next_poll_ns = now + intervalToNs(entry.interval_ms);
+                index_fn(index_ctx, snapshot.project_name, snapshot.root_path) catch {
+                    const live_index = self.scheduleRetry(snapshot.project_name, snapshot.root_path, now);
+                    index = if (live_index) |found| found + 1 else index;
                     continue;
                 };
                 reindexed += 1;
             }
 
-            const refreshed_head = try gitHead(self.allocator, entry.root_path);
-            self.allocator.free(entry.last_head);
-            entry.last_head = refreshed_head;
-            entry.file_count = try gitFileCount(self.allocator, entry.root_path);
-            entry.interval_ms = pollIntervalMs(entry.file_count);
-            entry.next_poll_ns = now + intervalToNs(entry.interval_ms);
+            const live_index = try self.applyChangeProbe(snapshot.project_name, snapshot.root_path, probe, now);
+            index = if (live_index) |found| found + 1 else index;
         }
 
         return reindexed;
@@ -171,6 +214,77 @@ pub const Watcher = struct {
         const extra = (file_count / 500) * 1000;
         return @min(base + extra, 60000);
     }
+
+    fn snapshotEntryForPoll(self: *Watcher, start_index: usize, now: i64) !?EntrySnapshot {
+        self.mu.lock();
+        defer self.mu.unlock();
+
+        var index = start_index;
+        while (index < self.entries.items.len) : (index += 1) {
+            const entry = self.entries.items[index];
+            if (!entry.baseline_done or (entry.is_git and now >= entry.next_poll_ns)) {
+                return .{
+                    .project_name = try self.allocator.dupe(u8, entry.project_name),
+                    .root_path = try self.allocator.dupe(u8, entry.root_path),
+                    .last_head = try self.allocator.dupe(u8, entry.last_head),
+                    .baseline_done = entry.baseline_done,
+                    .is_git = entry.is_git,
+                    .interval_ms = entry.interval_ms,
+                    .next_poll_ns = entry.next_poll_ns,
+                };
+            }
+        }
+        return null;
+    }
+
+    fn findEntryIndexLocked(self: *Watcher, project_name: []const u8, root_path: []const u8) ?usize {
+        for (self.entries.items, 0..) |entry, index| {
+            if (std.mem.eql(u8, entry.project_name, project_name) and std.mem.eql(u8, entry.root_path, root_path)) {
+                return index;
+            }
+        }
+        return null;
+    }
+
+    fn applyBaselineResult(self: *Watcher, project_name: []const u8, root_path: []const u8, baseline: BaselineResult) !?usize {
+        self.mu.lock();
+        defer self.mu.unlock();
+
+        const index = self.findEntryIndexLocked(project_name, root_path) orelse return null;
+        var entry = &self.entries.items[index];
+        entry.baseline_done = true;
+        entry.is_git = baseline.is_git;
+        self.allocator.free(entry.last_head);
+        entry.last_head = try self.allocator.dupe(u8, baseline.head);
+        entry.file_count = baseline.file_count;
+        entry.interval_ms = baseline.interval_ms;
+        entry.next_poll_ns = baseline.next_poll_ns;
+        return index;
+    }
+
+    fn scheduleRetry(self: *Watcher, project_name: []const u8, root_path: []const u8, now: i64) ?usize {
+        self.mu.lock();
+        defer self.mu.unlock();
+
+        const index = self.findEntryIndexLocked(project_name, root_path) orelse return null;
+        const entry = &self.entries.items[index];
+        entry.next_poll_ns = now + intervalToNs(entry.interval_ms);
+        return index;
+    }
+
+    fn applyChangeProbe(self: *Watcher, project_name: []const u8, root_path: []const u8, probe: ChangeProbe, now: i64) !?usize {
+        self.mu.lock();
+        defer self.mu.unlock();
+
+        const index = self.findEntryIndexLocked(project_name, root_path) orelse return null;
+        var entry = &self.entries.items[index];
+        self.allocator.free(entry.last_head);
+        entry.last_head = try self.allocator.dupe(u8, probe.head);
+        entry.file_count = probe.file_count;
+        entry.interval_ms = pollIntervalMs(entry.file_count);
+        entry.next_poll_ns = now + intervalToNs(entry.interval_ms);
+        return index;
+    }
 };
 
 fn nowNs() i64 {
@@ -181,44 +295,63 @@ fn intervalToNs(interval_ms: u32) i64 {
     return @as(i64, @intCast(interval_ms)) * std.time.ns_per_ms;
 }
 
-fn initBaseline(allocator: std.mem.Allocator, entry: *WatchEntry) !void {
-    entry.baseline_done = true;
-
-    var dir = std.fs.cwd().openDir(entry.root_path, .{}) catch {
-        entry.is_git = false;
-        entry.next_poll_ns = nowNs() + intervalToNs(entry.interval_ms);
-        return;
+fn computeBaseline(allocator: std.mem.Allocator, root_path: []const u8, initial_interval_ms: u32) !BaselineResult {
+    var dir = std.fs.cwd().openDir(root_path, .{}) catch {
+        return .{
+            .is_git = false,
+            .head = try allocator.dupe(u8, ""),
+            .file_count = 0,
+            .interval_ms = initial_interval_ms,
+            .next_poll_ns = nowNs() + intervalToNs(initial_interval_ms),
+        };
     };
     dir.close();
 
-    entry.is_git = try isGitRepo(allocator, entry.root_path);
-    if (!entry.is_git) {
-        entry.next_poll_ns = nowNs() + intervalToNs(entry.interval_ms);
-        return;
+    const is_git = try isGitRepo(allocator, root_path);
+    if (!is_git) {
+        return .{
+            .is_git = false,
+            .head = try allocator.dupe(u8, ""),
+            .file_count = 0,
+            .interval_ms = initial_interval_ms,
+            .next_poll_ns = nowNs() + intervalToNs(initial_interval_ms),
+        };
     }
 
-    const head = try gitHead(allocator, entry.root_path);
-    allocator.free(entry.last_head);
-    entry.last_head = head;
-    entry.file_count = try gitFileCount(allocator, entry.root_path);
-    entry.interval_ms = Watcher.pollIntervalMs(entry.file_count);
-    entry.next_poll_ns = nowNs() + intervalToNs(entry.interval_ms);
+    const file_count = try gitFileCount(allocator, root_path);
+    const interval_ms = Watcher.pollIntervalMs(file_count);
+    return .{
+        .is_git = true,
+        .head = try gitHead(allocator, root_path),
+        .file_count = file_count,
+        .interval_ms = interval_ms,
+        .next_poll_ns = nowNs() + intervalToNs(interval_ms),
+    };
 }
 
-fn checkForChanges(allocator: std.mem.Allocator, entry: *WatchEntry) !bool {
-    if (!entry.is_git) return false;
-
-    const head = try gitHead(allocator, entry.root_path);
-    defer allocator.free(head);
-    if (entry.last_head.len > 0 and !std.mem.eql(u8, head, entry.last_head)) {
-        allocator.free(entry.last_head);
-        entry.last_head = try allocator.dupe(u8, head);
-        return true;
+fn probeEntryChange(allocator: std.mem.Allocator, root_path: []const u8, previous_head: []const u8) !ChangeProbe {
+    const head = try gitHead(allocator, root_path);
+    if (previous_head.len > 0 and !std.mem.eql(u8, head, previous_head)) {
+        return .{
+            .head = head,
+            .changed = true,
+            .file_count = try gitFileCount(allocator, root_path),
+        };
     }
 
-    allocator.free(entry.last_head);
-    entry.last_head = try allocator.dupe(u8, head);
-    return try gitIsDirty(allocator, entry.root_path);
+    if (try gitIsDirty(allocator, root_path)) {
+        return .{
+            .head = head,
+            .changed = true,
+            .file_count = try gitFileCount(allocator, root_path),
+        };
+    }
+
+    return .{
+        .head = head,
+        .changed = false,
+        .file_count = 0,
+    };
 }
 
 fn isGitRepo(allocator: std.mem.Allocator, root_path: []const u8) !bool {

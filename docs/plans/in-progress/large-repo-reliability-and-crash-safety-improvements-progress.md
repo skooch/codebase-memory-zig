@@ -82,12 +82,54 @@ bash scripts/test_runtime_lifecycle.sh
   with explicit size guards, early-release points, crash-safe transactional
   behavior, and growable traversal state where current design still assumes
   moderate file or result sizes.
-- [ ] Tighten `src/mcp.zig`, `src/runtime_lifecycle.zig`, and `src/watcher.zig`
-  so request framing, shutdown, watcher concurrency, and status reporting stay
-  deterministic under load instead of relying on incidental sequencing.
+- [x] Tighten the first runtime-facing guardrails in `src/mcp.zig` and
+  `src/watcher.zig` so oversized request lines fail cleanly and watcher polling
+  no longer holds the mutex while running git probes or the indexing callback.
+- [ ] Continue tightening `src/runtime_lifecycle.zig` status reporting and load
+  behavior so runtime state stays deterministic under stress.
 - [ ] Add backpressure, timeout, and oversized-response behavior that fails
   cleanly and observably rather than silently truncating or wedging the runtime.
-- **Status:** pending
+- **Status:** in_progress
+
+## Phase 2 Checkpoint: Runtime Guardrails
+
+First Phase 2 code slice on 2026-04-18:
+
+- `src.mcp.runFiles`
+  - added a `1 MiB` request-line cap for stdio framing
+  - emits a deterministic MCP error response for oversized lines
+  - discards the remainder of the oversized line until newline, then resumes
+    processing subsequent requests
+- `src.watcher.pollOnce`
+  - snapshots due entries under lock, then performs baseline probing, git
+    checks, and the index callback outside the mutex
+  - reapplies state updates only after reacquiring the mutex and relocating the
+    live entry by project/root path
+- tests
+  - added a regression test proving `runFiles` rejects an oversized line and
+    still processes the next newline-delimited request
+
+Verification for this slice:
+
+```sh
+zig build test
+bash scripts/test_runtime_lifecycle.sh
+```
+
+Results:
+
+- `zig build test` passed
+- `bash scripts/test_runtime_lifecycle.sh` passed:
+  - clean EOF shutdown
+  - SIGTERM shutdown
+  - one-shot startup update notice
+
+What remains in Phase 2 after this slice:
+
+- pipeline/graph-buffer/store memory and transaction guardrails
+- explicit oversized-response and timeout handling beyond request-line framing
+- any additional runtime-lifecycle stress hooks that the later benchmark lanes
+  prove necessary
 
 ### Phase 3: Verify and Reclassify
 - [ ] Run `zig build`, `zig build test`, `bash scripts/run_benchmark_suite.sh`,

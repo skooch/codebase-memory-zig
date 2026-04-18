@@ -29,6 +29,7 @@ const cypher = @import("cypher.zig");
 const watcher = @import("watcher.zig");
 
 const Store = store.Store;
+const max_request_line_bytes = 1024 * 1024;
 
 const SupportedTool = enum {
     index_repository,
@@ -121,17 +122,32 @@ pub const McpServer = struct {
         var read_buf: [4096]u8 = undefined;
         var pending = std.ArrayList(u8).empty;
         defer pending.deinit(self.allocator);
+        var discarding_oversized_line = false;
 
         while (true) {
             const read_len = try stdin_file.read(&read_buf);
             if (read_len == 0) {
-                try self.handlePendingFileLine(&pending, stdout_file);
+                if (!discarding_oversized_line) {
+                    try self.handlePendingFileLine(&pending, stdout_file);
+                }
                 return;
             }
 
             for (read_buf[0..read_len]) |byte| {
                 if (byte == '\n') {
+                    if (discarding_oversized_line) {
+                        discarding_oversized_line = false;
+                        pending.clearRetainingCapacity();
+                        continue;
+                    }
                     try self.handlePendingFileLine(&pending, stdout_file);
+                    continue;
+                }
+                if (discarding_oversized_line) continue;
+                if (pending.items.len >= max_request_line_bytes) {
+                    try self.writeOversizedRequestError(stdout_file);
+                    pending.clearRetainingCapacity();
+                    discarding_oversized_line = true;
                     continue;
                 }
                 try pending.append(self.allocator, byte);
@@ -166,6 +182,15 @@ pub const McpServer = struct {
         if (line_text.len == 0) return;
 
         const response = try self.handleLine(line_text);
+        if (response) |resp| {
+            defer self.allocator.free(resp);
+            try stdout_file.writeAll(resp);
+            try stdout_file.writeAll("\n");
+        }
+    }
+
+    fn writeOversizedRequestError(self: *McpServer, stdout_file: std.fs.File) !void {
+        const response = try self.errorResponse(null, -32600, "Request too large");
         if (response) |resp| {
             defer self.allocator.free(resp);
             try stdout_file.writeAll(resp);
@@ -1737,7 +1762,7 @@ test "runFiles processes multiple newline-delimited requests" {
     const stdin_pipe = try std.posix.pipe();
     const stdout_pipe = try std.posix.pipe();
 
-    var stdin_reader = std.fs.File{ .handle = stdin_pipe[0] };
+    const stdin_reader = std.fs.File{ .handle = stdin_pipe[0] };
     defer stdin_reader.close();
     var stdin_writer = std.fs.File{ .handle = stdin_pipe[1] };
 
@@ -1768,6 +1793,74 @@ test "runFiles processes multiple newline-delimited requests" {
     try std.testing.expect(std.mem.indexOf(u8, initialize_response, "\"protocolVersion\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, index_response, "\"project\":\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, index_response, "\"nodes\":") != null);
+}
+
+const RunFilesThreadContext = struct {
+    server: *McpServer,
+    stdin_file: std.fs.File,
+    stdout_file: std.fs.File,
+    err: ?anyerror = null,
+};
+
+fn runFilesThread(ctx: *RunFilesThreadContext) void {
+    defer ctx.stdin_file.close();
+    defer ctx.stdout_file.close();
+    ctx.server.runFiles(ctx.stdin_file, ctx.stdout_file) catch |err| {
+        ctx.err = err;
+    };
+}
+
+test "runFiles rejects oversized request lines and continues after newline" {
+    const allocator = std.testing.allocator;
+
+    var s = try store.Store.openMemory(allocator);
+    defer s.deinit();
+    var srv = McpServer.init(allocator, &s);
+    defer srv.deinit();
+
+    const stdin_pipe = try std.posix.pipe();
+    const stdout_pipe = try std.posix.pipe();
+
+    const stdin_reader = std.fs.File{ .handle = stdin_pipe[0] };
+    var stdin_writer = std.fs.File{ .handle = stdin_pipe[1] };
+
+    var stdout_reader = std.fs.File{ .handle = stdout_pipe[0] };
+    defer stdout_reader.close();
+    var run_ctx = RunFilesThreadContext{
+        .server = &srv,
+        .stdin_file = stdin_reader,
+        .stdout_file = std.fs.File{ .handle = stdout_pipe[1] },
+    };
+    const thread = try std.Thread.spawn(.{}, runFilesThread, .{&run_ctx});
+    defer thread.join();
+
+    const oversized_line = try allocator.alloc(u8, max_request_line_bytes + 1);
+    defer allocator.free(oversized_line);
+    @memset(oversized_line, 'a');
+
+    const valid_tail =
+        \\{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}
+        \\
+    ;
+
+    try stdin_writer.writeAll("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}\n");
+    try stdin_writer.writeAll(oversized_line);
+    try stdin_writer.writeAll("\n");
+    try stdin_writer.writeAll(valid_tail);
+    stdin_writer.close();
+
+    const output = try stdout_reader.readToEndAlloc(allocator, 2 * 1024 * 1024);
+    defer allocator.free(output);
+    try std.testing.expect(run_ctx.err == null);
+
+    var responses = std.mem.splitScalar(u8, output, '\n');
+    const initialize_response = responses.next() orelse return error.Unexpected;
+    const oversized_response = responses.next() orelse return error.Unexpected;
+    const tools_response = responses.next() orelse return error.Unexpected;
+
+    try std.testing.expect(std.mem.indexOf(u8, initialize_response, "\"protocolVersion\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, oversized_response, "\"Request too large\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, tools_response, "\"tools\"") != null);
 }
 
 test "get_code_snippet returns source, match metadata, and suggestions" {
