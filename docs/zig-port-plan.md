@@ -124,7 +124,7 @@ The short version of that order is:
 2. discovery, indexing scope, and query semantics
 3. large-repo reliability and crash safety
 4. runtime lifecycle extras
-5. operational controls and configurability
+5. operational controls and configurability (in progress)
 6. release and setup packaging
 7. installer ecosystem parity
 8. operations script suite

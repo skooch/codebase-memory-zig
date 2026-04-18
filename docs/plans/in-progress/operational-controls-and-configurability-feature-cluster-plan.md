@@ -26,8 +26,8 @@ Observed upstream pattern:
 Phase 1
 
 ## File Map
-- Modify: `docs/plans/new/improvements/operational-controls-and-configurability-feature-cluster-plan.md`
-- Create: `docs/plans/new/improvements/operational-controls-and-configurability-feature-cluster-progress.md`
+- Modify: `docs/plans/in-progress/operational-controls-and-configurability-feature-cluster-plan.md`
+- Create: `docs/plans/in-progress/operational-controls-and-configurability-feature-cluster-progress.md`
 - Modify: `docs/gap-analysis.md`
 - Modify: `docs/port-comparison.md`
 - Modify: `docs/zig-port-plan.md`
@@ -45,7 +45,7 @@ Phase 1
 ### Phase 1: Inventory the Control Surface
 - [ ] Capture every requested operational knob in `docs/gap-analysis.md`, separating installer scope, cache and path config, runtime trigger behavior, host binding, and query-default ergonomics.
 - [ ] Add a configuration fixture area under `testdata/interop/configuration/` so env-var and config-file behavior can be tested without touching a real home directory.
-- [ ] Record the exact CLI, config, and runtime verification commands in `docs/plans/new/improvements/operational-controls-and-configurability-feature-cluster-progress.md`.
+- [ ] Record the exact CLI, config, and runtime verification commands in `docs/plans/in-progress/operational-controls-and-configurability-feature-cluster-progress.md`.
 - **Status:** pending
 
 ### Phase 2: Make the Knobs Explicit
@@ -57,7 +57,7 @@ Phase 1
 ### Phase 3: Verify and Reclassify
 - [ ] Run `zig build`, `zig build test`, and `bash scripts/run_cli_parity.sh` with the new config fixtures until behavior is stable and reversible.
 - [ ] Update `docs/port-comparison.md` only where the Zig port now deliberately matches or intentionally diverges from the original operational controls.
-- [ ] Record remaining deferred knobs and rejected complexity in `docs/plans/new/improvements/operational-controls-and-configurability-feature-cluster-progress.md`.
+- [ ] Record remaining deferred knobs and rejected complexity in `docs/plans/in-progress/operational-controls-and-configurability-feature-cluster-progress.md`.
 - **Status:** pending
 
 ## Decisions

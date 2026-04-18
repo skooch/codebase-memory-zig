@@ -15,9 +15,9 @@ Everything left in `docs/plans/new/` is optional follow-on work.
 
 ## Recommended Execution Order
 
-1. [operational-controls-and-configurability-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/operational-controls-and-configurability-feature-cluster-plan.md)
-   - Make operational knobs explicit before packaging or expanding agent-side
-     automation.
+1. [operational-controls-and-configurability-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/operational-controls-and-configurability-feature-cluster-plan.md)
+   - Active now in a dedicated worktree; it should still land before packaging
+     or broader agent-side automation.
 2. [release-and-setup-packaging-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/release-and-setup-packaging-plan.md)
    - Establish the release artifact and setup contract before broader installer
      matrix work.
@@ -55,5 +55,8 @@ Everything left in `docs/plans/new/` is optional follow-on work.
 
 ## Start Here
 
-The next unopened plan to start is
-[operational-controls-and-configurability-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/operational-controls-and-configurability-feature-cluster-plan.md).
+The active plan is
+[operational-controls-and-configurability-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/operational-controls-and-configurability-feature-cluster-plan.md).
+
+The next unopened plan after that is
+[release-and-setup-packaging-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/release-and-setup-packaging-plan.md).

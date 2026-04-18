@@ -90,6 +90,56 @@ Completed in Plan 03:
 Completed in Plan 05:
 - Long-tail edge parity: `THROWS`/`RAISES` edges from throw statements (JS/TS/TSX). Verified end-to-end on the edge-parity fixture with RAISES resolving custom error classes. Out-of-scope edges: `OVERRIDE` (Go-only), `CONTAINS_PACKAGE` (never implemented in C), `WRITES` and `READS` (not proven original-overlap by the current C reference fixture).
 
+## In-Progress Plan: Operational Controls and Configurability
+
+Current control-surface inventory from the Zig implementation:
+
+- persisted config keys
+  - `auto_index`
+  - `auto_index_limit`
+  - `download_url`
+- path and config-root overrides
+  - `CBM_CONFIG_PLATFORM`
+  - `CBM_CACHE_DIR`
+  - `LOCALAPPDATA`
+  - `APPDATA`
+  - `XDG_CACHE_HOME`
+  - `XDG_CONFIG_HOME`
+- runtime and lifecycle overrides
+  - `CBM_AUTO_INDEX`
+  - `CBM_AUTO_INDEX_LIMIT`
+  - `CBM_IDLE_STORE_TIMEOUT_MS`
+  - `CBM_UPDATE_CHECK_DISABLE`
+  - `CBM_UPDATE_CHECK_LATEST`
+  - `CBM_UPDATE_CHECK_CURRENT`
+  - `CBM_UPDATE_CHECK_URL`
+- operator-facing controls already present
+  - `cbm config list|get|set|reset`
+  - `cbm cli --progress`
+  - installer action flags: `-y`, `-n`, `--dry-run`, `--force`
+
+Known gaps this plan is targeting:
+
+- host bind/listen controls are not part of the current Zig operational
+  surface, so they need to be treated as absent rather than assumed.
+- installer scope is still effectively fixed to the currently shipped agent set
+  instead of exposing an explicit operator-controlled target matrix.
+- runtime and config knobs are spread across `src/cli.zig`, `src/main.zig`,
+  and `src/runtime_lifecycle.zig`, which makes precedence and verification less
+  obvious than it should be.
+- there is not yet a dedicated fixture-backed configuration lane under
+  `testdata/interop/configuration/` that exercises these knobs without touching
+  a real home directory.
+
+Phase 1 evidence:
+
+- the plan is now active at
+  [operational-controls-and-configurability-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/operational-controls-and-configurability-feature-cluster-plan.md)
+- the progress log and fixture placeholder now live at
+  [operational-controls-and-configurability-feature-cluster-progress.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/operational-controls-and-configurability-feature-cluster-progress.md)
+  and
+  [testdata/interop/configuration/env-overrides/README.md](/Users/skooch/projects/codebase-memory-zig/testdata/interop/configuration/env-overrides/README.md)
+
 ## Implemented Plan: Windows, Installer, and Client Integration
 
 Current matrix for the completed slice:
