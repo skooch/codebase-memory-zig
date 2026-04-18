@@ -111,16 +111,28 @@ The completed execution order for the current target contract was:
    - CLI parity, install/update/config flows, and selective defer decisions
    - reason: user-facing packaging and long-tail features should settle after core runtime behavior stops shifting
 
-The next recommended order for the remaining shared-surface parity follow-on is:
+The remaining work is no longer a single shared-parity follow-on. It is a
+mixed backlog of correctness hardening, runtime/client stabilization,
+productization, and optional expansion plans.
 
-1. **Carry the Phase 2 baseline forward**
-   - preserve the green interop harness and the documented acceptance rules while Phase 3 work lands
-2. **Close shared graph-fidelity gaps**
-   - definitions, call resolution, usage/type-ref, semantic, and config/type edge families
-3. **Close shared CLI/productization gaps**
-   - `install`, `uninstall`, `update`, and shared agent detection
-4. **Flip documentation only after evidence exists**
-   - update `docs/port-comparison.md` row by row only when the corresponding verification stays green
+Use [docs/plans/new/README.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/README.md)
+as the canonical order for the remaining backlog.
+
+The short version of that order is:
+
+1. parser accuracy and graph fidelity
+2. discovery, indexing scope, and query semantics
+3. large-repo reliability and crash safety
+4. runtime lifecycle extras
+5. Windows, installer, and client integration
+6. operational controls and configurability
+7. release and setup packaging
+8. installer ecosystem parity
+9. operations script suite
+10. language coverage expansion
+11. hybrid type resolution
+12. broader language-support expansion
+13. broader semantic-graph expansion
 
 ---
 

@@ -17,6 +17,10 @@ These plans are upstream-improvement backlog, not the current parity execution
 entrypoint. The graph-model parity plan is complete and archived at
 [graph-model-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/graph-model-parity-plan.md).
 
+For the cross-bucket order that includes these improvement plans plus the
+remaining ready-to-go and productization plans, use
+[../README.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/README.md).
+
 ## Plan Index
 
 - [parser-accuracy-and-graph-fidelity-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/parser-accuracy-and-graph-fidelity-improvements-plan.md)
