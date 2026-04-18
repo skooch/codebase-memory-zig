@@ -78,18 +78,18 @@ bash scripts/test_runtime_lifecycle.sh
 - **Status:** complete
 
 ### Phase 2: Add Explicit Guardrails
-- [ ] Strengthen `src/pipeline.zig`, `src/graph_buffer.zig`, and `src/store.zig`
+- [x] Strengthen `src/pipeline.zig`, `src/graph_buffer.zig`, and `src/store.zig`
   with explicit size guards, early-release points, crash-safe transactional
   behavior, and growable traversal state where current design still assumes
   moderate file or result sizes.
 - [x] Tighten the first runtime-facing guardrails in `src/mcp.zig` and
   `src/watcher.zig` so oversized request lines fail cleanly and watcher polling
   no longer holds the mutex while running git probes or the indexing callback.
-- [ ] Continue tightening `src/runtime_lifecycle.zig` status reporting and load
+- [x] Continue tightening `src/runtime_lifecycle.zig` status reporting and load
   behavior so runtime state stays deterministic under stress.
-- [ ] Add backpressure, timeout, and oversized-response behavior that fails
+- [x] Add backpressure, timeout, and oversized-response behavior that fails
   cleanly and observably rather than silently truncating or wedging the runtime.
-- **Status:** in_progress
+- **Status:** complete
 
 ## Phase 2 Checkpoint: Runtime Guardrails
 
@@ -164,28 +164,94 @@ Results:
   - both local stress lanes completed after the transaction-window reduction and
     graph-size preflight checks
 
-What remains in Phase 2 after this slice:
+Third Phase 2 code slice on 2026-04-18:
 
-- explicit oversized-response and timeout behavior beyond request-line framing
-- any remaining runtime-lifecycle status/backpressure cleanup under sustained
-  load
+- `src.mcp.zig`
+  - added a `4 MiB` response cap for JSON-RPC success envelopes
+  - converts oversized success payloads into a deterministic JSON-RPC error
+    instead of attempting to stream an unbounded response
+- `src.runtime_lifecycle.zig`
+  - added bounded update-notice injection so lifecycle metadata cannot push a
+    valid response past the response-size cap
+  - preserves the pending `update_notice` when the current response cannot
+    accept it yet, instead of silently dropping the notice
+- tests
+  - added regression coverage for oversized success responses
+  - added lifecycle tests for bounded notice injection and notice retention
 
-What remains in Phase 2 after this slice:
+Verification for this slice:
 
-- pipeline/graph-buffer/store memory and transaction guardrails
-- explicit oversized-response and timeout handling beyond request-line framing
-- any additional runtime-lifecycle stress hooks that the later benchmark lanes
-  prove necessary
+```sh
+zig build test
+bash scripts/test_runtime_lifecycle.sh
+```
+
+Results:
+
+- `zig build test` passed after clearing the worktree-local `.zig-cache` once
+  to recover from a real `NoSpaceLeft` workspace condition
+- `bash scripts/test_runtime_lifecycle.sh` passed:
+  - clean EOF shutdown
+  - SIGTERM shutdown
+  - one-shot startup update notice
 
 ### Phase 3: Verify and Reclassify
-- [ ] Run `zig build`, `zig build test`, `bash scripts/run_benchmark_suite.sh`,
+- [x] Run `zig build`, `zig build test`, `bash scripts/run_benchmark_suite.sh`,
   and `bash scripts/test_runtime_lifecycle.sh` with the new stress cases until
   resource usage and failure handling stay bounded.
-- [ ] Update `docs/port-comparison.md` only for the rows that have explicit
+- [x] Update `docs/port-comparison.md` only for the rows that have explicit
   stress evidence rather than anecdotal "seems stable" claims.
-- [ ] Record remaining scale risks, skipped stress lanes, and next follow-on
+- [x] Record remaining scale risks, skipped stress lanes, and next follow-on
   work in this progress file.
-- **Status:** pending
+- **Status:** complete
+
+## Phase 3 Completion Pass
+
+Final plan verification on 2026-04-18:
+
+```sh
+zig build
+zig build test
+bash scripts/run_benchmark_suite.sh testdata/bench/stress-manifest.json
+bash scripts/test_runtime_lifecycle.sh
+```
+
+Results:
+
+- `zig build` passed
+- `zig build test` passed
+- `bash scripts/test_runtime_lifecycle.sh` passed:
+  - clean EOF shutdown
+  - SIGTERM shutdown
+  - one-shot startup update notice
+- `bash scripts/run_benchmark_suite.sh testdata/bench/stress-manifest.json`
+  passed and rewrote `.benchmark_reports/benchmark_report.{json,md}`
+  - `self-repo` Zig cold-index median: `1282.226 ms`
+  - `sqlite-amalgamation` Zig cold-index median: `76.951 ms`
+  - both local stress lanes stayed green after the response-bound/runtime slice
+
+## Remaining Risks and Follow-On Work
+
+Residual risks after this plan:
+
+- `src.pipeline.collectExtractionsParallel` still allocates one result slot per
+  discovered file and only releases extraction ownership after the join/resolve
+  phase, so the extraction step itself is still sensitive to very wide file
+  sets even though persistence pressure is now bounded more tightly.
+- Graph persistence now fails early once the explicit node/edge caps are hit,
+  but it still persists in one logical pass rather than chunked batches. The
+  current contract is "bounded and observable", not "streaming".
+- The local stress manifest remains performance-oriented; it validates bounded
+  completion on the self-repo and vendored SQLite lanes, but it does not yet
+  inject corruption, simulate pathological monorepo fan-out, or assert memory
+  ceilings beyond the recorded RSS samples.
+
+Skipped or deferred in this plan:
+
+- No external-monorepo soak runs were added; the stress lanes stay local-only
+  by design for repeatability.
+- No idle-store eviction work was attempted here; that belongs to the later
+  runtime-lifecycle extras plan.
 
 ## Initial Baseline Probe
 

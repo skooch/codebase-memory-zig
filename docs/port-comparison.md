@@ -174,14 +174,14 @@ This section compares what kinds of graph entities the two systems are built to 
 
 | Capability | Original C | Zig Port | Status | Interoperable? | Notes |
 |-----------|------------|----------|--------|----------------|-------|
-| Default stdio MCP server | Yes | Yes | `Near parity` | Yes | This is the default mode in both entrypoints. |
+| Default stdio MCP server | Yes | Yes | `Near parity` | Yes | This is the default mode in both entrypoints, and Zig now has explicit `1 MiB` request-line and `4 MiB` response-envelope guardrails validated by unit tests plus the runtime harness. |
 | Persistent runtime cache / DB | Yes | Yes | `Near parity` | Yes | Zig uses `CBM_CACHE_DIR` or `~/.cache/codebase-memory-zig`. |
 | Watcher-driven auto-reindex | Yes | Yes | `Near parity` | Yes | Both use git-based watcher logic. |
 | Startup auto-index | Yes | Yes | `Near parity` | Yes | Zig supports config-driven or env-driven startup auto-index. |
 | Previously indexed project watcher registration | Yes | Yes | `Near parity` | Yes | Explicitly wired in Zig Phase 6. |
 | UI runtime flags (`--ui`, `--port`) | Yes | No | `Cut` | No | Zig does not ship the UI server. |
-| Startup update notification | Yes | Yes, one-shot notice on the first post-initialize response | `Near parity` | Yes | Zig now starts an update check on `initialize` and surfaces a single `update_notice`, with deterministic env overrides covered by the runtime harness. |
-| Benchmarking / soak / security scripts | Present | Initial benchmark suite now present, but much narrower than the original script set | `Partial` | No | Zig now ships `scripts/run_benchmark_suite.sh` for first-slice accuracy and performance comparisons, but it does not yet reproduce the original's broader benchmark, soak, and security script surface. |
+| Startup update notification | Yes | Yes, one-shot notice on the first post-initialize response | `Near parity` | Yes | Zig now starts an update check on `initialize`, preserves the pending notice until it can be injected safely, and covers the env-override plus one-shot behavior in the runtime harness. |
+| Benchmarking / soak / security scripts | Present | Initial benchmark suite now present, but much narrower than the original script set | `Partial` | No | Zig now ships `scripts/run_benchmark_suite.sh` plus a local stress manifest that completed on `2026-04-18` with Zig cold-index medians of `1282.226 ms` on `self-repo` and `76.951 ms` on `sqlite-amalgamation`, but it still does not reproduce the original's broader benchmark, soak, and security script surface. |
 
 ## 7. CLI and Productization
 

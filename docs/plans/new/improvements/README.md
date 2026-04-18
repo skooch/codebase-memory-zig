@@ -26,8 +26,11 @@ Completed discovery/query contract work is archived at
 
 ## Active Improvement Plan
 
-- [large-repo-reliability-and-crash-safety-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/large-repo-reliability-and-crash-safety-improvements-plan.md)
 - [parser-accuracy-and-graph-fidelity-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/parser-accuracy-and-graph-fidelity-improvements-plan.md)
+
+Completed improvement plans:
+
+- [large-repo-reliability-and-crash-safety-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/large-repo-reliability-and-crash-safety-improvements-plan.md)
 
 ## Remaining Improvement Queue
 

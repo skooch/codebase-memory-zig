@@ -8,9 +8,6 @@ currently active plans that have moved into `docs/plans/in-progress/`.
 
 ## Active Now
 
-- [large-repo-reliability-and-crash-safety-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/large-repo-reliability-and-crash-safety-improvements-plan.md)
-  - Active in `/Users/skooch/projects/worktrees/large-repo-reliability` on
-    `codex/large-repo-reliability`.
 - [parser-accuracy-and-graph-fidelity-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/parser-accuracy-and-graph-fidelity-improvements-plan.md)
   - Earlier correctness slice still exists in `docs/plans/in-progress/`.
 
@@ -69,7 +66,8 @@ currently active plans that have moved into `docs/plans/in-progress/`.
 
 ## Start Here
 
-The current active plan in this worktree is
-[large-repo-reliability-and-crash-safety-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/large-repo-reliability-and-crash-safety-improvements-plan.md).
-When it finishes, the next unopened plan to start is
+The remaining already-open active plan is
+[parser-accuracy-and-graph-fidelity-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/parser-accuracy-and-graph-fidelity-improvements-plan.md).
+When the in-progress correctness slices are finished, the next unopened plan to
+start is
 [06-runtime-lifecycle-extras-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/ready-to-go/06-runtime-lifecycle-extras-plan.md).

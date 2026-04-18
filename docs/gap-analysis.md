@@ -90,26 +90,29 @@ Completed in Plan 03:
 Completed in Plan 05:
 - Long-tail edge parity: `THROWS`/`RAISES` edges from throw statements (JS/TS/TSX). Verified end-to-end on the edge-parity fixture with RAISES resolving custom error classes. Out-of-scope edges: `OVERRIDE` (Go-only), `CONTAINS_PACKAGE` (never implemented in C), `WRITES` and `READS` (not proven original-overlap by the current C reference fixture).
 
-## Active In-Progress Plan: Large-Repo Reliability and Crash Safety
+## Implemented Plan: Large-Repo Reliability and Crash Safety
 
 Known current-state evidence from the Zig implementation:
 - `src.pipeline.collectExtractionsParallel` allocates a `results` slot for every
   discovered file and keeps every successful extraction resident until the join
-  phase completes, so peak memory still scales with the whole file set rather
-  than the active worker set.
-- `src.graph_buffer.dumpToStore` still walks every buffered node and edge in one
-  pass and builds an in-memory node-id remap without chunking or explicit write
-  caps before calling `upsertNode` / `upsertEdge`.
-- `src.store.beginImmediate` is a thin `BEGIN IMMEDIATE` wrapper; crash-safety
-  and oversized-write behavior still depend on the surrounding call sites rather
-  than on a stronger transaction or journal policy in the store layer itself.
-- `src.mcp.runFiles` appends every non-newline byte into a single `pending`
-  buffer with no explicit request-size ceiling, so malformed or oversized input
-  can still grow memory until EOF or a newline arrives.
-- `src.watcher.pollOnce` holds the watcher mutex while it runs `initBaseline`,
-  `checkForChanges`, the optional indexing callback, and follow-up git refresh
-  calls, so slow git commands or indexing work still block the whole watcher
-  state machine under lock.
+  phase completes, so extraction itself still scales with whole-file-set width
+  even though the later persistence path now releases that memory earlier.
+- `src.pipeline.run` / `runIncremental` now defer `BEGIN IMMEDIATE` until the
+  actual write phase and release owned extractions before graph-store writes and
+  search-index refresh, which bounded the writer-lock window under the local
+  stress lanes.
+- `src.graph_buffer.loadFromStore` / `dumpToStore` now enforce explicit graph
+  size caps before bulk allocation or SQLite writes begin, so oversized graphs
+  fail observably instead of relying on implicit "average repo" assumptions.
+- `src.mcp.runFiles` now caps newline-framed requests at `1 MiB`, and MCP
+  success envelopes are capped at `4 MiB`, so request and response framing now
+  fail with deterministic JSON-RPC errors instead of silent truncation.
+- `src.watcher.pollOnce` now snapshots due work under lock and performs git
+  probes and index callbacks outside the mutex, so slow watcher work no longer
+  blocks the whole watcher state machine under lock.
+- `src.runtime_lifecycle.injectUpdateNoticeBounded` now preserves pending update
+  notices when a response cannot safely accept them yet, instead of dropping
+  lifecycle metadata on error or oversized-response paths.
 
 Phase 1 contract for this plan:
 - Treat memory growth, oversized request buffering, and bulk graph-store writes

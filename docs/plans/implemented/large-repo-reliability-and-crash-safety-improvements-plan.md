@@ -26,11 +26,11 @@ Observed upstream pattern:
 - The durable upstream fixes added explicit caps, growable structures, earlier release points, and verified stress harnesses instead of relying on “average repo” assumptions.
 
 ## Current Phase
-Phase 2
+Implemented
 
 ## File Map
-- Modify: `docs/plans/in-progress/large-repo-reliability-and-crash-safety-improvements-plan.md`
-- Create: `docs/plans/in-progress/large-repo-reliability-and-crash-safety-improvements-progress.md`
+- Modify: `docs/plans/implemented/large-repo-reliability-and-crash-safety-improvements-plan.md`
+- Create: `docs/plans/implemented/large-repo-reliability-and-crash-safety-improvements-progress.md`
 - Modify: `docs/gap-analysis.md`
 - Modify: `docs/port-comparison.md`
 - Modify: `docs/zig-port-plan.md`
@@ -50,20 +50,20 @@ Phase 2
 ### Phase 1: Lock the Stress and Failure Matrix
 - [x] Convert the upstream crash classes into a Zig-side reproduction matrix in `docs/gap-analysis.md`, separating memory pressure, traversal overflow, store corruption, and lifecycle hangs.
 - [x] Add a local stress manifest and documentation under `testdata/bench/stress/` so large-repo checks are reproducible without depending on external monorepos.
-- [x] Record target metrics, red-line thresholds, exact verification commands, and the first baseline results in `docs/plans/in-progress/large-repo-reliability-and-crash-safety-improvements-progress.md`.
+- [x] Record target metrics, red-line thresholds, exact verification commands, and the first baseline results in `docs/plans/implemented/large-repo-reliability-and-crash-safety-improvements-progress.md`.
 - **Status:** complete
 
 ### Phase 2: Add Explicit Guardrails
-- [ ] Strengthen `src/pipeline.zig`, `src/graph_buffer.zig`, and `src/store.zig` with explicit size guards, early-release points, crash-safe transactional behavior, and growable traversal state where the current design still assumes moderate file or result sizes.
-- [ ] Tighten `src/mcp.zig`, `src/runtime_lifecycle.zig`, and `src/watcher.zig` so request framing, shutdown, watcher concurrency, and status reporting stay deterministic under load instead of relying on incidental sequencing.
-- [ ] Add backpressure, timeout, and oversized-response behavior that fails cleanly and observably rather than silently truncating or wedging the runtime.
-- **Status:** pending
+- [x] Strengthen `src/pipeline.zig`, `src/graph_buffer.zig`, and `src/store.zig` with explicit size guards, early-release points, crash-safe transactional behavior, and growable traversal state where the current design still assumes moderate file or result sizes.
+- [x] Tighten `src/mcp.zig`, `src/runtime_lifecycle.zig`, and `src/watcher.zig` so request framing, shutdown, watcher concurrency, and status reporting stay deterministic under load instead of relying on incidental sequencing.
+- [x] Add backpressure, timeout, and oversized-response behavior that fails cleanly and observably rather than silently truncating or wedging the runtime.
+- **Status:** complete
 
 ### Phase 3: Verify and Reclassify
-- [ ] Run `zig build`, `zig build test`, `bash scripts/run_benchmark_suite.sh`, and `bash scripts/test_runtime_lifecycle.sh` with the new stress cases until resource usage and failure handling stay bounded.
-- [ ] Update `docs/port-comparison.md` only for the rows that have explicit stress evidence rather than anecdotal “seems stable” claims.
-- [ ] Record remaining scale risks, skipped stress lanes, and next follow-on work in `docs/plans/in-progress/large-repo-reliability-and-crash-safety-improvements-progress.md`.
-- **Status:** pending
+- [x] Run `zig build`, `zig build test`, `bash scripts/run_benchmark_suite.sh`, and `bash scripts/test_runtime_lifecycle.sh` with the new stress cases until resource usage and failure handling stay bounded.
+- [x] Update `docs/port-comparison.md` only for the rows that have explicit stress evidence rather than anecdotal “seems stable” claims.
+- [x] Record remaining scale risks, skipped stress lanes, and next follow-on work in `docs/plans/implemented/large-repo-reliability-and-crash-safety-improvements-progress.md`.
+- **Status:** complete
 
 ## Decisions
 | Decision | Rationale |
