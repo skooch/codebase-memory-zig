@@ -24,13 +24,10 @@ remaining ready-to-go and productization plans, use
 Completed discovery/query contract work is archived at
 [../../implemented/discovery-indexing-scope-and-query-semantics-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/discovery-indexing-scope-and-query-semantics-improvements-plan.md).
 
-## Active Improvement Plan
-
-- [parser-accuracy-and-graph-fidelity-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/parser-accuracy-and-graph-fidelity-improvements-plan.md)
-
-Completed improvement plans:
+## Completed Improvement Plans
 
 - [large-repo-reliability-and-crash-safety-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/large-repo-reliability-and-crash-safety-improvements-plan.md)
+- [parser-accuracy-and-graph-fidelity-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/parser-accuracy-and-graph-fidelity-improvements-plan.md)
 
 ## Remaining Improvement Queue
 

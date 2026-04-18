@@ -3,13 +3,7 @@
 Refresh date: 2026-04-18
 
 The current target contract and the shared follow-on parity slices are complete.
-Everything left in `docs/plans/new/` is optional follow-on work except the
-currently active plans that have moved into `docs/plans/in-progress/`.
-
-## Active Now
-
-- [parser-accuracy-and-graph-fidelity-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/parser-accuracy-and-graph-fidelity-improvements-plan.md)
-  - Earlier correctness slice still exists in `docs/plans/in-progress/`.
+Everything left in `docs/plans/new/` is optional follow-on work.
 
 ## Ordering Principles
 
@@ -66,8 +60,5 @@ currently active plans that have moved into `docs/plans/in-progress/`.
 
 ## Start Here
 
-The remaining already-open active plan is
-[parser-accuracy-and-graph-fidelity-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/parser-accuracy-and-graph-fidelity-improvements-plan.md).
-When the in-progress correctness slices are finished, the next unopened plan to
-start is
+The next unopened plan to start is
 [06-runtime-lifecycle-extras-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/ready-to-go/06-runtime-lifecycle-extras-plan.md).

@@ -26,11 +26,11 @@ Observed upstream pattern:
 - The upstream project improved reliability when it added small, explicit language- or framework-specific rules plus regression fixtures instead of trying to generalize everything through one heuristic.
 
 ## Current Phase
-Phase 2
+Implemented
 
 ## File Map
-- Modify: `docs/plans/in-progress/parser-accuracy-and-graph-fidelity-improvements-plan.md`
-- Create: `docs/plans/in-progress/parser-accuracy-and-graph-fidelity-improvements-progress.md`
+- Modify: `docs/plans/implemented/parser-accuracy-and-graph-fidelity-improvements-plan.md`
+- Create: `docs/plans/implemented/parser-accuracy-and-graph-fidelity-improvements-progress.md`
 - Modify: `docs/gap-analysis.md`
 - Modify: `docs/port-comparison.md`
 - Modify: `docs/zig-port-plan.md`
@@ -51,20 +51,20 @@ Phase 2
 ### Phase 1: Lock the Accuracy Contract
 - [x] Map each upstream bug in this tranche to one of three buckets in `docs/gap-analysis.md`: current target-language correctness, deferred unsupported-language parity, or future semantic-graph expansion.
 - [x] Add focused fixtures under `testdata/interop/accuracy/` for the exact upstream failure modes that overlap the Zig architecture: false route detection, import-aware resolution, module-vs-function ownership, and embedded-script import extraction.
-- [x] Record the expected graph queries, expected labels, and exact verification commands in `docs/plans/in-progress/parser-accuracy-and-graph-fidelity-improvements-progress.md`.
+- [x] Record the expected graph queries, expected labels, and exact verification commands in `docs/plans/implemented/parser-accuracy-and-graph-fidelity-improvements-progress.md`.
 - **Status:** complete
 
 ### Phase 2: Repair Ownership and Resolution Rules
-- [ ] Extend `src/extractor.zig` and `src/pipeline.zig` so parser-backed extraction retains the enclosing owner for definitions, calls, imports, route handlers, and framework entry points instead of falling back to file-level ownership when context is available.
-- [ ] Strengthen `src/registry.zig`, `src/store.zig`, `src/cypher.zig`, and `src/mcp.zig` so package-aware, alias-aware, and ambiguity-aware lookup is preserved through storage and query surfaces rather than being collapsed into name-only matches.
-- [ ] Add the minimum explicit framework rules needed for current target languages first, and defer unsupported-language fixes as tracked fixture gaps instead of silently claiming parity.
-- **Status:** pending
+- [x] Extend `src/extractor.zig` and `src/pipeline.zig` so parser-backed extraction retains the enclosing owner for definitions, calls, imports, route handlers, and framework entry points instead of falling back to file-level ownership when context is available.
+- [x] Strengthen `src/registry.zig`, `src/store.zig`, `src/cypher.zig`, and `src/mcp.zig` so package-aware, alias-aware, and ambiguity-aware lookup is preserved through storage and query surfaces rather than being collapsed into name-only matches.
+- [x] Add the minimum explicit framework rules needed for current target languages first, and defer unsupported-language fixes as tracked fixture gaps instead of silently claiming parity.
+- **Status:** complete
 
 ### Phase 3: Verify and Reclassify
-- [ ] Run `zig build`, `zig build test`, and `bash scripts/run_interop_alignment.sh`, then add fixture-specific `search_graph`, `query_graph`, and `trace_call_path` checks for each accuracy case until output is stable.
-- [ ] Update `docs/port-comparison.md` so graph-fidelity rows move only where a fixture-backed parity claim now exists.
-- [ ] Record still-deferred unsupported-language cases and follow-on semantic work in `docs/plans/new/improvements/parser-accuracy-and-graph-fidelity-improvements-progress.md`.
-- **Status:** pending
+- [x] Run `zig build`, `zig build test`, and `bash scripts/run_interop_alignment.sh`, then add fixture-specific `search_graph`, `query_graph`, and `trace_call_path` checks for each accuracy case until output is stable.
+- [x] Update `docs/port-comparison.md` so graph-fidelity rows move only where a fixture-backed parity claim now exists.
+- [x] Record still-deferred unsupported-language cases and follow-on semantic work in `docs/plans/implemented/parser-accuracy-and-graph-fidelity-improvements-progress.md`.
+- **Status:** complete
 
 ## Decisions
 | Decision | Rationale |

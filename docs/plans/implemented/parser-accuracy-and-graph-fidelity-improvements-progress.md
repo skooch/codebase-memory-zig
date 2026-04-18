@@ -124,19 +124,108 @@ What this means:
 - **Status:** complete
 
 ### Phase 2: Repair Ownership and Resolution Rules
-- [ ] Update extraction ownership and route false-positive handling on the
+- [x] Update extraction ownership and route false-positive handling on the
   current parser-backed languages.
-- [ ] Preserve import alias and ambiguity information through registry, store,
+- [x] Preserve import alias and ambiguity information through registry, store,
   and query surfaces.
-- [ ] Add only the minimum explicit framework rules required for the verified
+- [x] Add only the minimum explicit framework rules required for the verified
   current-language fixtures.
-- **Status:** pending
+- **Status:** complete
+
+## Phase 2 Recheck
+
+Revalidated on 2026-04-18 from refreshed `main` in a rebuilt worktree:
+
+- Python fixture:
+  - direct CLI indexing returned `nodes=10`, `edges=12`
+  - direct `HANDLES` query returned exactly `health_check -> /health`
+  - the earlier "no rows" baseline in this progress file was stale relative to
+    the current branch tip
+- TypeScript fixture:
+  - direct CLI indexing returned `nodes=12`, `edges=16`
+  - direct `trace_call_path(function_name=\"run\")` returned outbound `CALLS`
+    edges to `markStart`, `parsePayload`, and `handleRequest`
+
+What this means:
+
+- the current Python false-route / decorator-backed handler case is green on the
+  refreshed branch
+- the current TypeScript alias-aware call-resolution case is green on the Zig
+  CLI surface
+- unsupported-language lanes remain deferred on purpose; no attempt was made to
+  promote the C++, R, or embedded Svelte/Vue fixtures into the current shipped
+  contract
 
 ### Phase 3: Verify and Reclassify
-- [ ] Add fixture-specific interop assertions to `testdata/interop/manifest.json`
+- [x] Add fixture-specific interop assertions to `testdata/interop/manifest.json`
   and re-run the harness plus direct MCP checks.
-- [ ] Reclassify only the rows in `docs/port-comparison.md` that now have
+- [x] Reclassify only the rows in `docs/port-comparison.md` that now have
   fixture-backed evidence.
-- [ ] Leave unsupported-language and semantic-expansion lanes deferred unless
+- [x] Leave unsupported-language and semantic-expansion lanes deferred unless
   the verification evidence changes.
-- **Status:** pending
+- **Status:** complete
+
+## Phase 3 Completion Pass
+
+Verification completed on 2026-04-18:
+
+```sh
+bash scripts/bootstrap_worktree.sh /Users/skooch/projects/codebase-memory-zig
+zig build
+zig build test
+env CODEBASE_MEMORY_ZIG_BIN="$PWD/zig-out/bin/cbm" bash scripts/run_interop_alignment.sh
+```
+
+Direct MCP probes run in isolated temp-home environments:
+
+```sh
+./zig-out/bin/cbm cli index_repository '{"project_path":"testdata/interop/accuracy/python-framework-cases","mode":"full"}'
+./zig-out/bin/cbm cli query_graph '{"project":"python-framework-cases","query":"MATCH (a)-[r:HANDLES]->(b) RETURN a.name, b.name ORDER BY a.name ASC, b.name ASC","max_rows":20}'
+./zig-out/bin/cbm cli index_repository '{"project_path":"testdata/interop/accuracy/typescript-import-cases","mode":"full"}'
+./zig-out/bin/cbm cli trace_call_path '{"project":"typescript-import-cases","function_name":"run","direction":"out","depth":4}'
+```
+
+Results:
+
+- `zig build` passed
+- `zig build test` passed
+- `bash scripts/run_interop_alignment.sh` passed and rewrote:
+  - `.interop_reports/interop_alignment_report.json`
+  - `.interop_reports/interop_alignment_report.md`
+- New parser-accuracy fixture status from the harness:
+  - `python-framework-cases`
+    - no Zig assertion failures
+    - no C assertion failures
+    - shared `search_graph` and `query_graph` comparisons matched
+  - `typescript-import-cases`
+    - no Zig assertion failures
+    - no C assertion failures
+    - shared `search_graph` and `trace_call_path` comparisons matched
+- Direct Zig-only CLI checks showed:
+  - Python `HANDLES` rows: `health_check -> /health`
+  - TypeScript `trace_call_path(run)` callees:
+    `markStart`, `parsePayload`, `handleRequest`
+
+## Remaining Risks and Deferred Lanes
+
+This plan intentionally leaves these lanes deferred:
+
+- `cpp-resolution-cases`
+  - unsupported-language ownership and namespace-resolution lane
+- `r-box-cases`
+  - unsupported-language `box::use()` and assignment-ownership lane
+- `svelte-vue-import-cases`
+  - embedded-script extraction lane outside the current parser-backed contract
+
+Unrelated pre-existing mismatches still present in the full shared harness:
+
+- `python-parity` `get_code_snippet`
+- `javascript-parity` `query_graph`
+- `go-basic` `search_graph`
+- `go-parity` `search_graph`
+- `go-parity` `query_graph`
+- `zig-parity` `search_graph`
+- `error-paths` `get_code_snippet`
+
+Those mismatches were not introduced by this plan and are outside the narrower
+current-language accuracy tranche validated here.

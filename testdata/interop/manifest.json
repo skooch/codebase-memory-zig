@@ -2251,6 +2251,111 @@
           }
         ]
       }
+    },
+    {
+      "id": "python-framework-cases",
+      "path": "testdata/interop/accuracy/python-framework-cases",
+      "project": "python-framework-cases",
+      "language": "python",
+      "scope_tools": [
+        "index_repository",
+        "search_graph",
+        "query_graph",
+        "list_projects"
+      ],
+      "assertions": {
+        "index_repository": {
+          "expect": {
+            "nodes_min": 10,
+            "edges_min": 11
+          }
+        },
+        "search_graph": [
+          {
+            "args": {
+              "project": "python-framework-cases",
+              "label": "Function"
+            },
+            "expect": {
+              "required_names": [
+                "build_router",
+                "create_app",
+                "health_check",
+                "not_a_route",
+                "read_status"
+              ]
+            }
+          }
+        ],
+        "query_graph": [
+          {
+            "args": {
+              "query": "MATCH (a)-[r:HANDLES]->(b) RETURN a.name, b.name ORDER BY a.name ASC, b.name ASC",
+              "project": "python-framework-cases",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": [
+                "a.name",
+                "b.name"
+              ],
+              "required_rows_min": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "typescript-import-cases",
+      "path": "testdata/interop/accuracy/typescript-import-cases",
+      "project": "typescript-import-cases",
+      "language": "typescript",
+      "scope_tools": [
+        "index_repository",
+        "search_graph",
+        "trace_call_path",
+        "list_projects"
+      ],
+      "assertions": {
+        "index_repository": {
+          "expect": {
+            "nodes_min": 12,
+            "edges_min": 13
+          }
+        },
+        "search_graph": [
+          {
+            "args": {
+              "project": "typescript-import-cases",
+              "label": "Function"
+            },
+            "expect": {
+              "required_names": [
+                "handleRequest",
+                "localOnly",
+                "markStart",
+                "parsePayload",
+                "run"
+              ]
+            }
+          }
+        ],
+        "trace_call_path": [
+          {
+            "args": {
+              "project": "typescript-import-cases",
+              "start_node_name_hint": "run",
+              "direction": "out",
+              "depth": 4
+            },
+            "expect": {
+              "required_edge_types": [
+                "CALLS"
+              ]
+            }
+          }
+        ]
+      }
     }
   ]
 }

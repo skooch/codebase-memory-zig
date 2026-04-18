@@ -123,7 +123,7 @@ Phase 1 contract for this plan:
 - Treat local stress fixtures and bounded verification thresholds as completion
   gates before upgrading any large-repo stability claims.
 
-## Active In-Progress Plan: Parser Accuracy and Graph Fidelity
+## Implemented Plan: Parser Accuracy and Graph Fidelity
 
 Known current-state evidence from the Zig implementation:
 - `src/extractor.zig:extractFile` still combines tree-sitter-backed definitions
@@ -132,8 +132,9 @@ Known current-state evidence from the Zig implementation:
   line parsing before later resolution, which is where owner drift and
   false-positive attachment can still occur.
 - `src.registry.addImportBinding` already preserves alias and namespace hints,
-  so the highest-value next contract work is proving where that metadata is
-  retained correctly and where it still collapses during extraction or lookup.
+  and the current accuracy fixtures now prove that the shared Python
+  decorator-backed `HANDLES` contract and the shared TypeScript alias-aware call
+  surface are stable on the refreshed branch tip.
 
 Phase 1 bucket map for the parser-accuracy tranche:
 
@@ -150,6 +151,21 @@ Phase 1 contract for this plan:
   still get local fixtures and explicit documentation.
 - Do not expand the broader semantic graph in this plan; only record the cases
   that belong to later route or indirect-call work.
+
+Completion evidence:
+
+- `python-framework-cases`
+  - shared `search_graph` and `query_graph(HANDLES)` assertions now match
+    between Zig and the current C reference in `scripts/run_interop_alignment.sh`
+- `typescript-import-cases`
+  - shared `search_graph` and `trace_call_path` assertions now match in the
+    interop harness
+  - direct Zig CLI tracing from `run` reaches `markStart`, `parsePayload`, and
+    `handleRequest`, which is stronger than the current shared harness floor
+- Deferred unsupported-language lanes remain explicitly deferred:
+  - `cpp-resolution-cases`
+  - `r-box-cases`
+  - `svelte-vue-import-cases`
 
 ## Completed Shared Capability Full-Parity Follow-On
 
