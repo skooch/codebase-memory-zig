@@ -109,6 +109,7 @@ fn loadIgnoreFile(
     allocator: std.mem.Allocator,
     root: []const u8,
     filename: []const u8,
+    rel_prefix: []const u8,
     rules: *std.ArrayList(IgnoreRule),
 ) !void {
     const path = try joinPath(allocator, root, filename);
@@ -136,7 +137,8 @@ fn loadIgnoreFile(
         if (line.len == 0) {
             continue;
         }
-        if (std.mem.endsWith(u8, line, "/")) {
+        const dir_only = std.mem.endsWith(u8, line, "/");
+        if (dir_only) {
             line = line[0 .. line.len - 1];
         }
         if (line.len == 0) {
@@ -147,8 +149,10 @@ fn loadIgnoreFile(
         if (normalized.len == 0) {
             continue;
         }
-        const dir_only = std.mem.endsWith(u8, normalized, "/");
-        const stored = try allocator.dupe(u8, normalized);
+        const stored = if (rel_prefix.len == 0)
+            try allocator.dupe(u8, normalized)
+        else
+            try std.fs.path.join(allocator, &.{ rel_prefix, normalized });
         try rules.append(allocator, .{
             .pattern = stored,
             .anchored = anchored,
@@ -159,9 +163,6 @@ fn loadIgnoreFile(
 }
 
 fn ruleMatches(rule: IgnoreRule, candidate: []const u8, is_dir: bool) bool {
-    if (rule.negated) {
-        return false;
-    }
     if (rule.dir_only and !is_dir) {
         return false;
     }
@@ -343,7 +344,7 @@ fn discoverForDirectory(
     abs_base: []const u8,
     rel_base: []const u8,
     opts: DiscoverOptions,
-    ignore_rules: []const IgnoreRule,
+    ignore_rules: *std.ArrayList(IgnoreRule),
     out: *std.ArrayList(FileInfo),
 ) !void {
     var iterator = dir.iterate();
@@ -360,15 +361,23 @@ fn discoverForDirectory(
             if (isSkipDirectory(entry.name) or isFastSkipFile(entry.name, opts)) {
                 continue;
             }
-            if (shouldIgnorePath(ignore_rules, rel_path, true)) {
+            if (shouldIgnorePath(ignore_rules.items, rel_path, true)) {
                 continue;
             }
+
+            const child_abs = try joinPath(allocator, abs_base, entry.name);
+            defer allocator.free(child_abs);
 
             var child = try dir.openDir(entry.name, .{ .iterate = true });
             defer child.close();
 
-            const child_abs = try joinPath(allocator, abs_base, entry.name);
-            defer allocator.free(child_abs);
+            const previous_rule_len = ignore_rules.items.len;
+            try loadIgnoreFile(allocator, child_abs, ".gitignore", rel_path, ignore_rules);
+            try loadIgnoreFile(allocator, child_abs, ".cbmignore", rel_path, ignore_rules);
+            defer while (ignore_rules.items.len > previous_rule_len) {
+                allocator.free(ignore_rules.pop().?.pattern);
+            };
+
             try discoverForDirectory(allocator, child, child_abs, rel_path, opts, ignore_rules, out);
             continue;
         }
@@ -377,7 +386,7 @@ fn discoverForDirectory(
             continue;
         }
 
-        if (shouldIgnorePath(ignore_rules, rel_path, false)) {
+        if (shouldIgnorePath(ignore_rules.items, rel_path, false)) {
             continue;
         }
         if (isSkipFileSuffix(entry.name) or isFastSkipFile(entry.name, opts)) {
@@ -431,15 +440,21 @@ pub fn discoverFiles(
     }
 
     // Repository root ignore files are supported, including filename-based overrides.
-    try loadIgnoreFile(allocator, root_abs, ".gitignore", &ignore_rules);
-    try loadIgnoreFile(allocator, root_abs, ".cbmignore", &ignore_rules);
+    try loadIgnoreFile(allocator, root_abs, ".gitignore", "", &ignore_rules);
+    try loadIgnoreFile(allocator, root_abs, ".cbmignore", "", &ignore_rules);
 
     var out = std.ArrayList(FileInfo).empty;
     var root = try std.fs.openDirAbsolute(root_abs, .{ .iterate = true, .no_follow = true });
     defer root.close();
 
-    try discoverForDirectory(allocator, root, root_abs, "", opts, ignore_rules.items, &out);
+    try discoverForDirectory(allocator, root, root_abs, "", opts, &ignore_rules, &out);
     return try out.toOwnedSlice(allocator);
+}
+
+pub fn languageForPath(path: []const u8) ?Language {
+    const file_name = std.fs.path.basename(path);
+    if (languageForFileName(file_name)) |language| return language;
+    return languageForExtension(std.fs.path.extension(file_name));
 }
 
 pub fn languageForExtension(ext: []const u8) ?Language {
@@ -564,4 +579,76 @@ test "discover skips shared js ts config files in full mode" {
 
     try std.testing.expectEqual(@as(usize, 1), files.len);
     try std.testing.expectEqualStrings("index.js", files[0].rel_path);
+}
+
+test "discover honors nested and negated ignore rules" {
+    const allocator = std.testing.allocator;
+    const root = try std.fmt.allocPrint(allocator, "/tmp/cbm-discover-ignore-{x}", .{std.crypto.random.int(u64)});
+    defer allocator.free(root);
+    try std.fs.cwd().makePath(root);
+    defer std.fs.cwd().deleteTree(root) catch {};
+
+    const nested_dir = try std.fs.path.join(allocator, &.{ root, "src", "nested" });
+    defer allocator.free(nested_dir);
+    try std.fs.cwd().makePath(nested_dir);
+
+    {
+        var dir = try std.fs.cwd().openDir(root, .{});
+        defer dir.close();
+
+        var ignore = try dir.createFile(".gitignore", .{});
+        defer ignore.close();
+        try ignore.writeAll(
+            \\keep.js
+            \\!keep.js
+            \\ignored.js
+            \\
+        );
+
+        var keep = try dir.createFile("keep.js", .{});
+        defer keep.close();
+        try keep.writeAll("export function keepHit() { return 1; }\n");
+
+        var ignored = try dir.createFile("ignored.js", .{});
+        defer ignored.close();
+        try ignored.writeAll("export function ignoredHit() { return 1; }\n");
+
+        var src = try dir.openDir("src", .{});
+        defer src.close();
+
+        var index = try src.createFile("index.ts", .{});
+        defer index.close();
+        try index.writeAll("export function visibleHit() { return 1; }\n");
+
+        var nested = try src.openDir("nested", .{});
+        defer nested.close();
+
+        var nested_ignore = try nested.createFile(".gitignore", .{});
+        defer nested_ignore.close();
+        try nested_ignore.writeAll("ghost.js\n");
+
+        var ghost = try nested.createFile("ghost.js", .{});
+        defer ghost.close();
+        try ghost.writeAll("export function ghostHit() { return 1; }\n");
+    }
+
+    const files = try discoverFiles(allocator, root, .{ .mode = .full });
+    defer {
+        for (files) |file| {
+            allocator.free(file.path);
+            allocator.free(file.rel_path);
+        }
+        allocator.free(files);
+    }
+
+    var found_keep = false;
+    var found_index = false;
+    for (files) |file| {
+        if (std.mem.eql(u8, file.rel_path, "keep.js")) found_keep = true;
+        if (std.mem.eql(u8, file.rel_path, "src/index.ts")) found_index = true;
+        try std.testing.expect(!std.mem.eql(u8, file.rel_path, "ignored.js"));
+        try std.testing.expect(!std.mem.eql(u8, file.rel_path, "src/nested/ghost.js"));
+    }
+    try std.testing.expect(found_keep);
+    try std.testing.expect(found_index);
 }

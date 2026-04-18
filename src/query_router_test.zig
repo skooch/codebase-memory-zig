@@ -126,6 +126,56 @@ test "searchCodePayload returns matching results" {
     try std.testing.expect(payload.len > 0 and payload[0] == '{');
 }
 
+test "searchCodePayload only searches indexed project files" {
+    const allocator = std.testing.allocator;
+
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(
+        allocator,
+        "/tmp/cbm-qr-scope-test-{x}",
+        .{project_id},
+    );
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    {
+        var dir = try std.fs.cwd().openDir(project_dir, .{});
+        defer dir.close();
+
+        var indexed = try dir.createFile("main.py", .{});
+        defer indexed.close();
+        try indexed.writeAll("def indexed_symbol():\n    return 1\n");
+
+        var extra = try dir.createFile("extra.py", .{});
+        defer extra.close();
+        try extra.writeAll("def unindexed_scope_hit():\n    return 2\n");
+    }
+
+    var db = try store.Store.openMemory(allocator);
+    defer db.deinit();
+    const project_name = std.fs.path.basename(project_dir);
+    try db.upsertProject(project_name, project_dir);
+    _ = try db.upsertNode(.{
+        .project = project_name,
+        .label = "File",
+        .name = "main.py",
+        .qualified_name = "scope-test:file:main.py",
+        .file_path = "main.py",
+    });
+
+    var router = QueryRouter.init(allocator, &db);
+    const payload = try router.searchCodePayload(.{
+        .project = project_name,
+        .pattern = "unindexed_scope_hit",
+        .mode = .files,
+    });
+    defer allocator.free(payload);
+
+    try std.testing.expect(std.mem.indexOf(u8, payload, "\"total\":0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, payload, "extra.py") == null);
+}
+
 test "getCodeSnippetPayload returns source for known function" {
     const allocator = std.testing.allocator;
 

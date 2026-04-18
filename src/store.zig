@@ -5,6 +5,7 @@
 const std = @import("std");
 const c = @cImport(@cInclude("sqlite3.h"));
 const adr = @import("adr.zig");
+const discover = @import("discover.zig");
 
 pub const StoreError = error{
     OpenFailed,
@@ -1467,20 +1468,12 @@ pub const Store = struct {
             });
         }
 
-        const lang_stmt = try self.prepare(
-            "SELECT label, COUNT(*) FROM nodes WHERE project = ?1 GROUP BY label ORDER BY COUNT(*) DESC LIMIT 25",
-        );
-        defer self.finalize(lang_stmt);
-        try self.bindText(lang_stmt, 1, project);
-        // Language extraction placeholder: node labels stand in for language here.
-        while (true) {
-            const rc = c.sqlite3_step(lang_stmt);
-            if (rc == c.SQLITE_DONE) break;
-            if (rc != c.SQLITE_ROW) return StoreError.SqlError;
-            try languages.append(self.allocator, .{
-                .language = try self.copyColumnText(lang_stmt, 0),
-                .count = c.sqlite3_column_int64(lang_stmt, 1),
-            });
+        const files = try self.listProjectFiles(project);
+        defer self.freePaths(files);
+        for (files) |file_path| {
+            if (discover.languageForPath(file_path)) |language| {
+                try appendLanguageCount(self.allocator, &languages, language.name());
+            }
         }
 
         return SchemaSummary{
@@ -1488,6 +1481,23 @@ pub const Store = struct {
             .edge_types = try edge_types.toOwnedSlice(self.allocator),
             .languages = try languages.toOwnedSlice(self.allocator),
         };
+    }
+
+    fn appendLanguageCount(
+        allocator: std.mem.Allocator,
+        counts: *std.ArrayList(LanguageCount),
+        language_name: []const u8,
+    ) !void {
+        for (counts.items) |*count| {
+            if (std.mem.eql(u8, count.language, language_name)) {
+                count.count += 1;
+                return;
+            }
+        }
+        try counts.append(allocator, .{
+            .language = try allocator.dupe(u8, language_name),
+            .count = 1,
+        });
     }
 
     pub fn freeSchema(self: *Store, schema: SchemaSummary) void {

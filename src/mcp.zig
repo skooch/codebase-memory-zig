@@ -1567,6 +1567,9 @@ test "get_graph_schema returns schema summary for indexed project" {
     try std.testing.expectEqualStrings("ready", result.get("status").?.string);
     try std.testing.expect(result.get("node_labels").?.array.items.len >= 2);
     try std.testing.expect(result.get("edge_types").?.array.items.len >= 1);
+    try std.testing.expect(result.get("languages").?.array.items.len >= 1);
+    const language = result.get("languages").?.array.items[0].object.get("language").?.string;
+    try std.testing.expectEqualStrings("python", language);
 }
 
 test "index_status and delete_project expose project lifecycle" {

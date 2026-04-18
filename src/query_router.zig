@@ -731,14 +731,8 @@ fn collectSearchCodeHits(
         allocator.free(indexed_hits);
     }
 
-    const files = try discover.discoverFiles(allocator, root_path, .{ .mode = .full });
-    defer {
-        for (files) |file| {
-            allocator.free(file.path);
-            allocator.free(file.rel_path);
-        }
-        allocator.free(files);
-    }
+    const files = try db.listProjectFiles(project);
+    defer db.freePaths(files);
 
     var out = std.ArrayList(CodeSearchHit).empty;
     errdefer {
@@ -752,13 +746,16 @@ fn collectSearchCodeHits(
         seen.deinit();
     }
 
-    file_loop: for (files) |file| {
+    file_loop: for (files) |rel_path| {
+        const abs_path = try std.fs.path.join(allocator, &.{ root_path, rel_path });
+        defer allocator.free(abs_path);
+
         if (try appendSearchCodeHitsForPath(
             allocator,
             db,
             project,
-            file.path,
-            file.rel_path,
+            abs_path,
+            rel_path,
             pattern,
             mode,
             file_pattern,

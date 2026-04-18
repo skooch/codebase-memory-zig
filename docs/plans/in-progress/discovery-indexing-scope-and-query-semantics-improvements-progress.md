@@ -86,11 +86,15 @@ Expected assertions:
 - **Status:** complete
 
 ### Phase 2: Implement Deterministic Scope Rules
-- [ ] Make discovery respect the intended ignore and scope boundaries.
-- [ ] Stop `search_code` from reading outside the indexed universe.
-- [ ] Expand schema and project-list payloads only where they help explain
+- [x] Make discovery respect the intended nested and negated ignore rules by
+  loading scoped ignore files during recursion.
+- [x] Stop `search_code` from reading outside the indexed universe by falling
+  back to indexed project files instead of a fresh discovery walk.
+- [x] Replace the placeholder schema-language summary with counts derived from
+  indexed project file paths.
+- [ ] Expand schema and project-list payloads further where they help explain
   indexed scope and query results.
-- **Status:** pending
+- **Status:** in_progress
 
 ### Phase 3: Verify and Reclassify
 - [ ] Add the discovery-scope fixture assertions to the interop harness.
@@ -121,3 +125,16 @@ What this baseline means:
 - the schema payload still has at least one concrete correctness issue in its
   `languages` output
 - the nested-ignore lane is the next explicit red-case probe for Phase 2
+
+## Post-Fix Probe
+
+Controlled probe rerun on 2026-04-18 after the first Phase 2 code slice:
+
+- `search_code(ghostNestedHit)` returned no rows
+- `search_graph(label=Function)` returned only `scopeVisible`
+- `get_graph_schema(discovery-scope)` returned `languages=[{"language":"typescript","count":1}]`
+
+What remains in this plan:
+- add the fixture assertions to the interop harness
+- decide how much additional scope explanation belongs in `get_graph_schema`
+  and `list_projects` without bloating the contract
