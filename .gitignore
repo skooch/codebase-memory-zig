@@ -3,6 +3,7 @@ zig-out/
 .benchmark_reports/
 .interop_reports/
 .agent_comparison_reports*/
+.corpus_cache/
 .zig-cache-bench/
 .zig-global-cache-bench/
 .zig-prefix-bench/

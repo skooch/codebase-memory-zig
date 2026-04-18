@@ -13,8 +13,22 @@ import time
 from pathlib import Path
 from typing import Any
 
+from repo_sources import resolve_repo_source
 
 TIME_BIN = Path("/usr/bin/time")
+TIME_MEASURE_ARGS = ["-l"] if sys.platform == "darwin" else ["-v"] if sys.platform.startswith("linux") else []
+GENERIC_EXPECT_KEYS = {
+    "required_substrings",
+    "required_names",
+    "required_files",
+    "required_keys",
+    "expect_error",
+    "error_substrings",
+}
+KEY_ALIASES = {
+    "total": {"total", "total_results"},
+    "file_path": {"file_path", "file"},
+}
 
 
 def to_unix_path(path: str) -> str:
@@ -146,6 +160,12 @@ def parse_max_rss(stderr: str) -> int | None:
                     return int(parts[0])
                 except ValueError:
                     return None
+        if ":" in stripped and stripped.lower().startswith("maximum resident set size"):
+            _, value = stripped.split(":", 1)
+            try:
+                return int(value.strip().split()[0])
+            except ValueError:
+                return None
     return None
 
 
@@ -158,8 +178,8 @@ def create_runtime_env(temp_home: str) -> dict[str, str]:
 
 def run_command(cmd: list[str], env: dict[str, str], cwd: str, measure: bool) -> dict[str, Any]:
     wrapped_cmd = cmd
-    if measure and TIME_BIN.exists():
-        wrapped_cmd = [str(TIME_BIN), "-l", *cmd]
+    if measure and TIME_BIN.exists() and TIME_MEASURE_ARGS:
+        wrapped_cmd = [str(TIME_BIN), *TIME_MEASURE_ARGS, *cmd]
     start = time.perf_counter()
     proc = subprocess.run(
         wrapped_cmd,
@@ -180,10 +200,17 @@ def run_command(cmd: list[str], env: dict[str, str], cwd: str, measure: bool) ->
     }
 
 
-def build_cli_args(tool: str, tool_args: dict[str, Any], repo_abs: Path, repo: dict[str, Any], impl: str) -> tuple[str, dict[str, Any]]:
+def build_cli_args(
+    tool: str,
+    tool_args: dict[str, Any],
+    repo_abs: Path,
+    repo: dict[str, Any],
+    impl: str,
+    project_override: str | None = None,
+) -> tuple[str, dict[str, Any]]:
     args = json.loads(json.dumps(tool_args))
-    zig_project = project_name_for_zig(repo_abs, repo)
-    c_project = normalize_project_name_for_c(str(repo_abs))
+    zig_project = project_override or project_name_for_zig(repo_abs, repo)
+    c_project = project_override or normalize_project_name_for_c(str(repo_abs))
 
     if tool == "index_repository":
         return tool, ({"project_path": str(repo_abs)} if impl == "zig" else {"repo_path": str(repo_abs)})
@@ -239,13 +266,14 @@ def run_cli_tool(
     tool: str,
     tool_args: dict[str, Any],
     measure: bool,
+    project_override: str | None = None,
 ) -> dict[str, Any]:
-    tool_name, args = build_cli_args(tool, tool_args, repo_abs, repo, impl)
+    tool_name, args = build_cli_args(tool, tool_args, repo_abs, repo, impl, project_override)
 
     if impl == "zig" and tool == "trace_call_path" and "start_node_qn" not in args:
         hint = str(args.pop("start_node_name_hint", ""))
         if hint:
-            resolved = resolve_start_node_qn(bin_path, repo_abs, repo, env, hint)
+            resolved = resolve_start_node_qn(bin_path, repo_abs, repo, env, hint, project_override)
             if resolved is None:
                 return {
                     "command": [],
@@ -258,13 +286,163 @@ def run_cli_tool(
                 }
             args["start_node_qn"] = resolved
 
+    if tool == "get_code_snippet" and "qualified_name" not in args:
+        hint = str(args.pop("qualified_name_hint", ""))
+        if hint:
+            resolved = resolve_snippet_qualified_name(
+                bin_path,
+                repo_abs,
+                repo,
+                impl,
+                env,
+                hint,
+                project_override,
+            )
+            if resolved is None:
+                return {
+                    "command": [],
+                    "returncode": 1,
+                    "stdout": "",
+                    "stderr": f"unable to resolve qualified_name for {hint}",
+                    "elapsed_ms": 0.0,
+                    "max_rss": None,
+                    "payload": {"__error__": "unresolved qualified name"},
+                }
+            args["qualified_name"] = resolved
+
     command = [bin_path, "cli", tool_name, json.dumps(args, separators=(",", ":"))]
     result = run_command(command, env=env, cwd=str(repo_abs.parent), measure=measure)
     result["payload"] = extract_cli_payload(result["stdout"])
     return result
 
 
-def resolve_start_node_qn(bin_path: str, repo_abs: Path, repo: dict[str, Any], env: dict[str, str], hint: str) -> str | None:
+def normalized_stderr_lines(stderr: str) -> list[str]:
+    return [line.strip() for line in stderr.splitlines() if line.strip()]
+
+
+def extract_error_info(result: dict[str, Any]) -> dict[str, Any]:
+    payload = result.get("payload")
+    payload_reason = ""
+    payload_code: int | None = None
+    if isinstance(payload, dict) and payload.get("__error__"):
+        payload_reason = str(payload["__error__"])
+    elif isinstance(payload, dict) and isinstance(payload.get("error"), dict):
+        payload_error = payload["error"]
+        payload_code = int(payload_error["code"]) if isinstance(payload_error.get("code"), int) else None
+        payload_reason = str(payload_error.get("message") or payload_error)
+
+    stderr_lines = normalized_stderr_lines(str(result.get("stderr", "")))
+    return {
+        "present": bool(int(result.get("returncode", 0)) != 0 or payload_reason),
+        "returncode": int(result.get("returncode", 0)),
+        "payload_code": payload_code,
+        "payload_reason": payload_reason or None,
+        "stderr_summary": (stderr_lines[-1] if stderr_lines else None),
+        "stderr_tail": stderr_lines[-5:],
+    }
+
+
+def iter_field_values(payload: Any, keys: set[str]) -> list[str]:
+    values: list[str] = []
+
+    def visit(node: Any) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key in keys and not isinstance(value, (dict, list)):
+                    values.append(str(value))
+                visit(value)
+        elif isinstance(node, list):
+            for item in node:
+                visit(item)
+
+    visit(payload)
+    return values
+
+
+def grade_generic_payload(payload: Any, expect: dict[str, Any], error: dict[str, Any]) -> tuple[str, float, dict[str, Any]]:
+    if expect.get("expect_error"):
+        if not error.get("present"):
+            return "FAIL", 0.0, {"reason": "expected error"}
+
+        required_error_substrings = [str(item) for item in expect.get("error_substrings", [])]
+        if not required_error_substrings:
+            return "PASS", 1.0, {"error": error}
+
+        haystack = " ".join(
+            part
+            for part in [
+                str(error.get("payload_reason") or ""),
+                str(error.get("stderr_summary") or ""),
+                " ".join(str(line) for line in error.get("stderr_tail", [])),
+            ]
+            if part
+        )
+        missing = [item for item in required_error_substrings if item not in haystack]
+        passed = len(required_error_substrings) - len(missing)
+        if not missing:
+            return "PASS", 1.0, {"missing_error_substrings": missing}
+        if passed > 0:
+            return "PARTIAL", round(passed / len(required_error_substrings), 3), {"missing_error_substrings": missing}
+        return "FAIL", 0.0, {"missing_error_substrings": missing}
+
+    if error.get("present"):
+        return "FAIL", 0.0, {"reason": error.get("payload_reason") or error.get("stderr_summary") or "command failed"}
+
+    checks = 0
+    passed = 0
+    details: dict[str, Any] = {}
+
+    required_substrings = [str(item) for item in expect.get("required_substrings", [])]
+    if required_substrings:
+        checks += len(required_substrings)
+        haystack = payload if isinstance(payload, str) else json.dumps(payload, sort_keys=True)
+        missing = [item for item in required_substrings if item not in haystack]
+        passed += len(required_substrings) - len(missing)
+        details["missing_substrings"] = missing
+
+    required_names = [str(item) for item in expect.get("required_names", [])]
+    if required_names:
+        checks += len(required_names)
+        names = set(iter_field_values(payload, {"name", "node"}))
+        missing = [item for item in required_names if item not in names]
+        passed += len(required_names) - len(missing)
+        details["missing_names"] = missing
+
+    required_files = [str(item) for item in expect.get("required_files", [])]
+    if required_files:
+        checks += len(required_files)
+        files = set(iter_field_values(payload, {"file", "file_path"}))
+        missing = [item for item in required_files if not any(path == item or path.endswith(item) for path in files)]
+        passed += len(required_files) - len(missing)
+        details["missing_files"] = missing
+
+    required_keys = [str(item) for item in expect.get("required_keys", [])]
+    if required_keys:
+        checks += len(required_keys)
+        payload_keys = set(payload.keys()) if isinstance(payload, dict) else set()
+        missing = [item for item in required_keys if not (KEY_ALIASES.get(item, {item}) & payload_keys)]
+        passed += len(required_keys) - len(missing)
+        details["missing_keys"] = missing
+
+    if checks == 0:
+        return "N/A", 0.0, {"reason": "no expectations"}
+
+    score = passed / checks
+    if score == 1.0:
+        return "PASS", 1.0, details
+    if score > 0.0:
+        return "PARTIAL", round(score, 3), details
+    return "FAIL", 0.0, details
+
+
+def resolve_start_node_qn(
+    bin_path: str,
+    repo_abs: Path,
+    repo: dict[str, Any],
+    env: dict[str, str],
+    hint: str,
+    project_override: str | None = None,
+) -> str | None:
     result = run_cli_tool(
         bin_path=bin_path,
         repo_abs=repo_abs,
@@ -274,6 +452,38 @@ def resolve_start_node_qn(bin_path: str, repo_abs: Path, repo: dict[str, Any], e
         tool="search_graph",
         tool_args={"name_pattern": hint, "limit": 25},
         measure=False,
+        project_override=project_override,
+    )
+    payload = result.get("payload")
+    nodes = [node for node in canonical_search_nodes(payload) if node["name"] == hint]
+    preferred_labels = {"Function", "Method", "Class", "Interface", "Trait", "Struct"}
+    preferred = [node for node in nodes if node["label"] in preferred_labels]
+    if len(preferred) == 1:
+        return preferred[0]["qualified_name"]
+    if len(nodes) == 1:
+        return nodes[0]["qualified_name"]
+    return None
+
+
+def resolve_snippet_qualified_name(
+    bin_path: str,
+    repo_abs: Path,
+    repo: dict[str, Any],
+    impl: str,
+    env: dict[str, str],
+    hint: str,
+    project_override: str | None = None,
+) -> str | None:
+    result = run_cli_tool(
+        bin_path=bin_path,
+        repo_abs=repo_abs,
+        repo=repo,
+        impl=impl,
+        env=env,
+        tool="search_graph",
+        tool_args={"name_pattern": hint, "limit": 25},
+        measure=False,
+        project_override=project_override,
     )
     payload = result.get("payload")
     nodes = [node for node in canonical_search_nodes(payload) if node["name"] == hint]
@@ -343,9 +553,11 @@ def grade_get_code_snippet(payload: Any, expect: dict[str, Any]) -> tuple[str, f
     return "FAIL", 0.0, {"missing": missing}
 
 
-def grade_scenario(tool: str, payload: Any, expect: dict[str, Any]) -> tuple[str, float, dict[str, Any]]:
-    if isinstance(payload, dict) and payload.get("__error__"):
-        return "FAIL", 0.0, {"reason": payload.get("__error__")}
+def grade_scenario(tool: str, payload: Any, expect: dict[str, Any], error: dict[str, Any]) -> tuple[str, float, dict[str, Any]]:
+    if GENERIC_EXPECT_KEYS & set(expect.keys()):
+        return grade_generic_payload(payload, expect, error)
+    if error.get("present"):
+        return "FAIL", 0.0, {"reason": error.get("payload_reason") or error.get("stderr_summary") or "command failed"}
     if tool == "search_graph":
         return grade_search_graph(payload, expect)
     if tool == "query_graph":
@@ -374,6 +586,15 @@ def summarize_measurements(values: list[dict[str, Any]]) -> dict[str, Any]:
     return summary
 
 
+def indexed_project_name(index_result: dict[str, Any], repo_abs: Path, repo: dict[str, Any], impl: str) -> str:
+    payload = index_result.get("payload")
+    if isinstance(payload, dict):
+        project = payload.get("project")
+        if isinstance(project, str) and project:
+            return project
+    return project_name_for_zig(repo_abs, repo) if impl == "zig" else normalize_project_name_for_c(str(repo_abs))
+
+
 def run_accuracy_suite(bin_path: str, repo_abs: Path, repo: dict[str, Any], impl: str) -> dict[str, Any]:
     scenarios = repo.get("accuracy_scenarios", [])
     if not scenarios:
@@ -391,6 +612,7 @@ def run_accuracy_suite(bin_path: str, repo_abs: Path, repo: dict[str, Any], impl
             tool_args={},
             measure=False,
         )
+        indexed_project = indexed_project_name(index_result, repo_abs, repo, impl)
         scenario_results: list[dict[str, Any]] = []
         earned = 0.0
         possible = 0.0
@@ -405,8 +627,10 @@ def run_accuracy_suite(bin_path: str, repo_abs: Path, repo: dict[str, Any], impl
                 tool=tool,
                 tool_args=scenario.get("args", {}),
                 measure=False,
+                project_override=indexed_project,
             )
-            grade, score, details = grade_scenario(tool, result.get("payload"), scenario.get("expect", {}))
+            error = extract_error_info(result)
+            grade, score, details = grade_scenario(tool, result.get("payload"), scenario.get("expect", {}), error)
             if grade != "N/A":
                 possible += 1.0
                 earned += score
@@ -418,6 +642,7 @@ def run_accuracy_suite(bin_path: str, repo_abs: Path, repo: dict[str, Any], impl
                     "score": score,
                     "details": details,
                     "returncode": result["returncode"],
+                    "error": error,
                     "payload": result.get("payload"),
                 }
             )
@@ -481,6 +706,7 @@ def run_query_benchmarks(
                 tool_args={},
                 measure=False,
             )
+            indexed_project = indexed_project_name(index_result, repo_abs, repo, impl)
             if index_result["returncode"] != 0:
                 if measure:
                     for scenario in scenarios:
@@ -504,6 +730,7 @@ def run_query_benchmarks(
                     tool=str(scenario["tool"]),
                     tool_args=scenario.get("args", {}),
                     measure=measure,
+                    project_override=indexed_project,
                 )
                 if measure:
                     grouped[str(scenario["id"])].append(
@@ -526,6 +753,20 @@ def run_query_benchmarks(
 
 def load_manifest(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text())
+
+
+def filter_repos(manifest: dict[str, Any], repo_ids: list[str]) -> dict[str, Any]:
+    if not repo_ids:
+        return manifest
+    requested = set(repo_ids)
+    repos = [repo for repo in manifest.get("repos", []) if str(repo.get("id", "")) in requested]
+    found = {str(repo.get("id", "")) for repo in repos}
+    missing = sorted(requested - found)
+    if missing:
+        raise ValueError(f"unknown repo ids requested: {', '.join(missing)}")
+    filtered = dict(manifest)
+    filtered["repos"] = repos
+    return filtered
 
 
 def build_markdown_report(report: dict[str, Any]) -> str:
@@ -606,14 +847,16 @@ def compare_repo_results(repo_result: dict[str, Any]) -> dict[str, Any]:
     return {"index_faster": faster}
 
 
-def run_repo_suite(repo: dict[str, Any], zig_bin: str, c_bin: str, root: Path) -> dict[str, Any]:
-    repo_abs = (root / repo["path"]).resolve()
+def run_repo_suite(repo: dict[str, Any], zig_bin: str, c_bin: str, root: Path, source_cache_dir: Path) -> dict[str, Any]:
+    resolved_repo = resolve_repo_source(repo, root, source_cache_dir)
+    repo_abs = Path(resolved_repo["path"])
     warmup_runs = int(repo.get("warmup_runs", 1))
     measured_runs = int(repo.get("measured_runs", 2))
 
     result = {
         "id": repo["id"],
         "path": str(repo_abs),
+        "source": resolved_repo["source"],
         "notes": list(repo.get("notes", [])),
         "zig": {},
         "c": {},
@@ -641,6 +884,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--zig-bin", required=True)
     parser.add_argument("--c-bin", required=True)
     parser.add_argument("--report-dir", required=True)
+    parser.add_argument("--source-cache-dir", default="")
+    parser.add_argument("--repo-id", action="append", default=[], help="Limit the run to one or more repo ids from the manifest")
     return parser.parse_args()
 
 
@@ -650,8 +895,9 @@ def main() -> int:
     root = Path(args.root).resolve()
     report_dir = Path(args.report_dir).resolve()
     report_dir.mkdir(parents=True, exist_ok=True)
+    source_cache_dir = Path(args.source_cache_dir).resolve() if args.source_cache_dir else (root / ".corpus_cache")
 
-    manifest = load_manifest(manifest_path)
+    manifest = filter_repos(load_manifest(manifest_path), list(args.repo_id))
     report = {
         "manifest": str(manifest_path),
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -660,7 +906,7 @@ def main() -> int:
     }
 
     for repo in manifest.get("repos", []):
-        report["repos"].append(run_repo_suite(repo, args.zig_bin, args.c_bin, root))
+        report["repos"].append(run_repo_suite(repo, args.zig_bin, args.c_bin, root, source_cache_dir))
 
     json_path = report_dir / "benchmark_report.json"
     md_path = report_dir / "benchmark_report.md"

@@ -24,6 +24,16 @@ Optional arguments:
 bash scripts/run_benchmark_suite.sh testdata/bench/manifest.json .benchmark_reports
 ```
 
+Pass through extra runner flags such as a repo subset:
+
+```sh
+bash scripts/run_benchmark_suite.sh \
+  testdata/bench/github-large.json \
+  .benchmark_reports/github-large \
+  --repo-id flask \
+  --repo-id zls
+```
+
 Defaults:
 
 - manifest: `testdata/bench/manifest.json`
@@ -34,6 +44,7 @@ The shell wrapper will:
 - build the Zig binary in `ReleaseFast` unless `CODEBASE_MEMORY_ZIG_BIN` is set
 - use `../codebase-memory-mcp/build/c/codebase-memory-mcp` unless `CODEBASE_MEMORY_C_BIN` is set
 - write JSON and Markdown reports into the chosen report directory
+- materialize any pinned GitHub corpus entries into `.corpus_cache/`
 
 ## What The First Slice Covers
 
@@ -93,13 +104,30 @@ The Markdown report includes:
 - median query timings
 - a simple faster/slower comparison for cold indexing
 
+When a manifest entry uses GitHub, the JSON report also records:
+
+- `repo` and `ref`
+- the cached checkout subpath
+- the resolved commit SHA used for the run
+
 ## Current Limits
 
 This is the initial runnable slice, not the finished benchmark program.
 
 Current limits:
 
-- the default manifest uses only local repos already available in this workspace
+- the default manifest still uses only local repos already available in this workspace
 - timing is CLI-based, not persistent in-session MCP timing
-- large external benchmark repos and pinned remote clone workflows are still future work
 - the benchmark lane scores a shared scenario contract; it does not try to diff every payload field the way the interop lane does
+
+## GitHub Corpus
+
+`testdata/bench/github-large.json` adds a pinned GitHub benchmark corpus for larger mature repositories:
+
+- `pallets/flask@3.1.3`
+- `expressjs/express@v5.2.1`
+- `reduxjs/redux-toolkit@v2.11.2`
+- `clap-rs/clap@v4.6.1`
+- `zigtools/zls@0.16.0`
+
+These are intentionally pinned to release refs so repeated runs stay comparable.

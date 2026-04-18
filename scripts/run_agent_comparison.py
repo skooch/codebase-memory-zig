@@ -10,7 +10,8 @@ import time
 from pathlib import Path
 from typing import Any
 
-from run_benchmark_suite import create_runtime_env, run_cli_tool, summarize_measurements
+from repo_sources import resolve_repo_source
+from run_benchmark_suite import create_runtime_env, indexed_project_name, run_cli_tool, summarize_measurements
 
 
 AGENTS = (
@@ -212,6 +213,7 @@ def run_agent(
     task: dict[str, Any],
     warmup_runs: int,
     measured_runs: int,
+    project_override: str,
 ) -> dict[str, Any]:
     task_tool = str(task["tool"])
     task_args = dict(task.get("args", {}))
@@ -226,6 +228,7 @@ def run_agent(
             tool=task_tool,
             tool_args=task_args,
             measure=False,
+            project_override=project_override,
         )
 
     measurements: list[dict[str, Any]] = []
@@ -240,6 +243,7 @@ def run_agent(
                 tool=task_tool,
                 tool_args=task_args,
                 measure=True,
+                project_override=project_override,
             )
         )
 
@@ -362,8 +366,10 @@ def run_repo(
     root_dir: Path,
     zig_bin: str,
     c_bin: str,
+    source_cache_dir: Path,
 ) -> dict[str, Any]:
-    repo_abs = (root_dir / str(repo["path"])).resolve()
+    resolved_repo = resolve_repo_source(repo, root_dir, source_cache_dir)
+    repo_abs = Path(resolved_repo["path"])
     warmup_runs = int(repo.get("warmup_runs", 0))
     measured_runs = int(repo.get("measured_runs", 1))
 
@@ -375,6 +381,7 @@ def run_repo(
             "hybrid": create_runtime_env(hybrid_home),
         }
         index_results: dict[str, Any] = {}
+        indexed_projects: dict[str, str] = {}
         for label, impl in AGENTS:
             bin_path = c_bin if impl == "c" else zig_bin
             index_results[label] = run_cli_tool(
@@ -387,6 +394,7 @@ def run_repo(
                 tool_args={},
                 measure=True,
             )
+            indexed_projects[label] = indexed_project_name(index_results[label], repo_abs, repo, impl)
 
         tasks: list[dict[str, Any]] = []
         for task in repo.get("tasks", []):
@@ -399,6 +407,7 @@ def run_repo(
                 task=task,
                 warmup_runs=warmup_runs,
                 measured_runs=measured_runs,
+                project_override=indexed_projects["original"],
             )
             hybrid = run_agent(
                 bin_path=zig_bin,
@@ -409,6 +418,7 @@ def run_repo(
                 task=task,
                 warmup_runs=warmup_runs,
                 measured_runs=measured_runs,
+                project_override=indexed_projects["hybrid"],
             )
             tasks.append(
                 {
@@ -426,6 +436,7 @@ def run_repo(
         return {
             "id": repo["id"],
             "path": str(repo_abs),
+            "source": resolved_repo["source"],
             "notes": list(repo.get("notes", [])),
             "index": {
                 "original": index_results["original"],
@@ -622,6 +633,7 @@ def main() -> int:
     parser.add_argument("--zig-bin", required=True)
     parser.add_argument("--c-bin", required=True)
     parser.add_argument("--report-dir", required=True)
+    parser.add_argument("--source-cache-dir", default="")
     parser.add_argument("--repo-id", action="append", default=[], help="Limit the run to one or more repo ids from the suite set")
     args = parser.parse_args()
 
@@ -629,6 +641,7 @@ def main() -> int:
     root_dir = Path(args.root).resolve()
     report_dir = Path(args.report_dir).resolve()
     report_dir.mkdir(parents=True, exist_ok=True)
+    source_cache_dir = Path(args.source_cache_dir).resolve() if args.source_cache_dir else (root_dir / ".corpus_cache")
 
     manifest, sources = load_manifest_sources(manifest_path)
     manifest = filter_repos(manifest, list(args.repo_id))
@@ -638,6 +651,7 @@ def main() -> int:
             root_dir=root_dir,
             zig_bin=args.zig_bin,
             c_bin=args.c_bin,
+            source_cache_dir=source_cache_dir,
         )
         for repo in manifest.get("repos", [])
     ]

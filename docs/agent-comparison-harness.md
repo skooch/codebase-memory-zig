@@ -21,6 +21,11 @@ Each suite file defines one or more repositories with:
 - `warmup_runs` and `measured_runs`
 - `tasks`: shared agent-style prompts, MCP tool name, tool args, and scoring expectations
 
+Optional source forms:
+
+- local checkout via `path`
+- pinned GitHub checkout via `github.repo` + `github.ref`
+
 Each repo run is also treated as a recorded explorer session:
 
 - the harness indexes once per implementation
@@ -59,6 +64,8 @@ Outputs:
 - `.agent_comparison_reports/sessions/<repo-id>/hybrid.json`
 - `.agent_comparison_reports/sessions/<repo-id>/comparison.json`
 
+Pinned GitHub suites are materialized into `.corpus_cache/` and reused across runs.
+
 Scoring rules:
 
 - `PASS`: the implementation met every expectation for the task
@@ -81,5 +88,14 @@ Recommended layout:
 - one suite file per reusable fixture or repo class
 - keep prompts and expectations close to that repo
 - compose larger runs by pointing the harness at the suite directory
+
+Pinned GitHub suite example:
+
+```sh
+zsh scripts/run_agent_comparison.zsh \
+  testdata/agent-comparison/suites/github-large.json \
+  .agent_comparison_reports/github-large \
+  --repo-id flask
+```
 
 This keeps the MCP surface stable while letting us validate whether the hybrid internals improve retrieval quality, architecture answers, and latency on the same tasks.
