@@ -90,6 +90,40 @@ Completed in Plan 03:
 Completed in Plan 05:
 - Long-tail edge parity: `THROWS`/`RAISES` edges from throw statements (JS/TS/TSX). Verified end-to-end on the edge-parity fixture with RAISES resolving custom error classes. Out-of-scope edges: `OVERRIDE` (Go-only), `CONTAINS_PACKAGE` (never implemented in C), `WRITES` and `READS` (not proven original-overlap by the current C reference fixture).
 
+## In-Progress Plan: Windows, Installer, and Client Integration
+
+Current matrix for the first slice:
+- runtime cache root selection
+  - `CBM_CACHE_DIR`
+  - Windows `LOCALAPPDATA`
+  - Unix `XDG_CACHE_HOME`
+  - `HOME` fallback
+- roaming config root selection
+  - Windows `APPDATA`
+  - Unix `XDG_CONFIG_HOME`
+  - macOS `~/Library/Application Support`
+- client config targets under test
+  - Codex CLI
+  - Claude Code
+  - Zed
+  - VS Code
+  - KiloCode
+- startup checks to preserve while installer path logic changes
+  - `initialize`
+  - one-shot `update_notice`
+  - EOF and SIGTERM shutdown
+
+Known current-state baseline before this slice completes:
+- `src.cli.runtimeCacheDir` now accepts an explicit config-platform override and
+  can resolve Windows `LOCALAPPDATA` and Unix `XDG_CACHE_HOME` roots in
+  addition to the existing `CBM_CACHE_DIR` / `HOME` fallback behavior.
+- `src.cli.detectAgents` and the Zed, VS Code, and KiloCode install helpers now
+  route through shared config-platform path helpers instead of deriving paths
+  only from the host OS tag, which makes Windows-layout checks reproducible on
+  a non-Windows host.
+- `scripts/run_cli_parity.sh` currently proves the shared Codex/Claude temp-home
+  contract, but it does not yet run fixture-backed Windows-layout checks.
+
 ## Implemented Plan: Large-Repo Reliability and Crash Safety
 
 Known current-state evidence from the Zig implementation:

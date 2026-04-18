@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "codebase-memory-zig": {
+      "type": "stdio",
+      "command": "C:\\Users\\Test\\bin\\cbm.exe",
+      "args": []
+    }
+  }
+}

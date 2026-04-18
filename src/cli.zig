@@ -1,3 +1,4 @@
+const builtin = @import("builtin");
 const std = @import("std");
 
 pub const server_name = "codebase-memory-zig";
@@ -60,17 +61,120 @@ pub const InstallReport = struct {
     };
 };
 
+const ConfigPlatform = enum {
+    windows,
+    macos,
+    unix,
+};
+
+fn currentConfigPlatform() ConfigPlatform {
+    if (std.posix.getenv("CBM_CONFIG_PLATFORM")) |override| {
+        if (std.ascii.eqlIgnoreCase(override, "windows")) return .windows;
+        if (std.ascii.eqlIgnoreCase(override, "macos")) return .macos;
+        if (std.ascii.eqlIgnoreCase(override, "linux")) return .unix;
+        if (std.ascii.eqlIgnoreCase(override, "unix")) return .unix;
+    }
+    return switch (builtin.os.tag) {
+        .windows => .windows,
+        .macos => .macos,
+        else => .unix,
+    };
+}
+
+fn runtimeCacheDirForPlatform(
+    allocator: std.mem.Allocator,
+    home: ?[]const u8,
+    platform: ConfigPlatform,
+    cache_override: ?[]const u8,
+    local_appdata: ?[]const u8,
+    xdg_cache_home: ?[]const u8,
+) ![]u8 {
+    if (cache_override) |value| return allocator.dupe(u8, value);
+    if (home) |home_dir| {
+        return switch (platform) {
+            .windows => if (local_appdata) |value|
+                std.fs.path.join(allocator, &.{ value, server_name })
+            else
+                std.fs.path.join(allocator, &.{ home_dir, "AppData", "Local", server_name }),
+            .macos => std.fs.path.join(allocator, &.{ home_dir, ".cache", server_name }),
+            .unix => if (xdg_cache_home) |value|
+                std.fs.path.join(allocator, &.{ value, server_name })
+            else
+                std.fs.path.join(allocator, &.{ home_dir, ".cache", server_name }),
+        };
+    }
+    return std.fs.path.join(allocator, &.{ ".cache", server_name });
+}
+
+fn appConfigPrefixForPlatform(
+    allocator: std.mem.Allocator,
+    home: []const u8,
+    platform: ConfigPlatform,
+    appdata: ?[]const u8,
+    xdg_config_home: ?[]const u8,
+) ![]u8 {
+    return switch (platform) {
+        .windows => if (appdata) |value|
+            allocator.dupe(u8, value)
+        else
+            std.fs.path.join(allocator, &.{ home, "AppData", "Roaming" }),
+        .macos => std.fs.path.join(allocator, &.{ home, "Library", "Application Support" }),
+        .unix => if (xdg_config_home) |value|
+            allocator.dupe(u8, value)
+        else
+            std.fs.path.join(allocator, &.{ home, ".config" }),
+    };
+}
+
+fn zedConfigPathForPlatform(
+    allocator: std.mem.Allocator,
+    home: []const u8,
+    platform: ConfigPlatform,
+    appdata: ?[]const u8,
+    xdg_config_home: ?[]const u8,
+) ![]u8 {
+    const prefix = try appConfigPrefixForPlatform(allocator, home, platform, appdata, xdg_config_home);
+    defer allocator.free(prefix);
+    const zed_dir = switch (platform) {
+        .unix => "zed",
+        .macos, .windows => "Zed",
+    };
+    return std.fs.path.join(allocator, &.{ prefix, zed_dir, "settings.json" });
+}
+
+fn vscodeConfigPathForPlatform(
+    allocator: std.mem.Allocator,
+    home: []const u8,
+    platform: ConfigPlatform,
+    appdata: ?[]const u8,
+    xdg_config_home: ?[]const u8,
+) ![]u8 {
+    const prefix = try appConfigPrefixForPlatform(allocator, home, platform, appdata, xdg_config_home);
+    defer allocator.free(prefix);
+    return std.fs.path.join(allocator, &.{ prefix, "Code", "User", "mcp.json" });
+}
+
+fn kilocodeConfigPathForPlatform(
+    allocator: std.mem.Allocator,
+    home: []const u8,
+    platform: ConfigPlatform,
+    appdata: ?[]const u8,
+    xdg_config_home: ?[]const u8,
+) ![]u8 {
+    const prefix = try appConfigPrefixForPlatform(allocator, home, platform, appdata, xdg_config_home);
+    defer allocator.free(prefix);
+    return std.fs.path.join(allocator, &.{ prefix, "Code", "User", "globalStorage", "kilocode.kilo-code", "settings", "mcp_settings.json" });
+}
+
 pub fn runtimeCacheDir(allocator: std.mem.Allocator) ![]u8 {
-    if (std.process.getEnvVarOwned(allocator, "CBM_CACHE_DIR")) |value| {
-        return value;
-    } else |_| {}
-
-    if (std.process.getEnvVarOwned(allocator, "HOME")) |home| {
-        defer allocator.free(home);
-        return std.fs.path.join(allocator, &.{ home, ".cache", "codebase-memory-zig" });
-    } else |_| {}
-
-    return std.fs.path.join(allocator, &.{ ".cache", "codebase-memory-zig" });
+    return runtimeCacheDirForPlatform(
+        allocator,
+        std.posix.getenv("HOME"),
+        currentConfigPlatform(),
+        std.posix.getenv("CBM_CACHE_DIR"),
+        std.posix.getenv("LOCALAPPDATA"),
+        std.posix.getenv("XDG_CACHE_HOME"),
+    );
 }
 
 pub fn configPath(allocator: std.mem.Allocator) ![]u8 {
@@ -167,17 +271,19 @@ fn executableOnPath(allocator: std.mem.Allocator, name: []const u8) bool {
 }
 
 /// Return the platform-specific application config directory prefix.
-/// macOS: home/Library/Application Support, Linux: home/.config
 fn appConfigPrefix(allocator: std.mem.Allocator, home: []const u8) ?[]u8 {
-    const builtin = @import("builtin");
-    return switch (builtin.os.tag) {
-        .macos => std.fs.path.join(allocator, &.{ home, "Library", "Application Support" }) catch null,
-        else => std.fs.path.join(allocator, &.{ home, ".config" }) catch null,
-    };
+    return appConfigPrefixForPlatform(
+        allocator,
+        home,
+        currentConfigPlatform(),
+        std.posix.getenv("APPDATA"),
+        std.posix.getenv("XDG_CONFIG_HOME"),
+    ) catch null;
 }
 
 pub fn detectAgents(allocator: std.mem.Allocator, home: []const u8) AgentSet {
     var agents = AgentSet{};
+    const platform = currentConfigPlatform();
 
     agents.claude = pathExists(home, ".claude");
     agents.codex = pathExists(home, ".codex");
@@ -197,9 +303,10 @@ pub fn detectAgents(allocator: std.mem.Allocator, home: []const u8) AgentSet {
     if (appConfigPrefix(allocator, home)) |prefix| {
         defer allocator.free(prefix);
 
-        // Zed: macOS ~/Library/Application Support/Zed, Linux ~/.config/zed
-        const builtin = @import("builtin");
-        const zed_sub = if (builtin.os.tag == .macos) "Zed" else "zed";
+        const zed_sub = switch (platform) {
+            .unix => "zed",
+            .macos, .windows => "Zed",
+        };
         if (std.fs.path.join(allocator, &.{ prefix, zed_sub })) |zed_path| {
             defer allocator.free(zed_path);
             agents.zed = dirExists(zed_path);
@@ -1457,11 +1564,13 @@ fn installZedConfig(
     home: []const u8,
     options: InstallOptions,
 ) !InstallReport.Action {
-    const builtin = @import("builtin");
-    const config_path = if (builtin.os.tag == .macos)
-        try std.fs.path.join(allocator, &.{ home, "Library", "Application Support", "Zed", "settings.json" })
-    else
-        try std.fs.path.join(allocator, &.{ home, ".config", "zed", "settings.json" });
+    const config_path = try zedConfigPathForPlatform(
+        allocator,
+        home,
+        currentConfigPlatform(),
+        std.posix.getenv("APPDATA"),
+        std.posix.getenv("XDG_CONFIG_HOME"),
+    );
     defer allocator.free(config_path);
 
     const updated = try updateGenericMcpJson(allocator, config_path, options.binary_path, .context_servers, true);
@@ -1483,11 +1592,13 @@ fn uninstallZedConfig(
     home: []const u8,
     dry_run: bool,
 ) !InstallReport.Action {
-    const builtin = @import("builtin");
-    const config_path = if (builtin.os.tag == .macos)
-        try std.fs.path.join(allocator, &.{ home, "Library", "Application Support", "Zed", "settings.json" })
-    else
-        try std.fs.path.join(allocator, &.{ home, ".config", "zed", "settings.json" });
+    const config_path = try zedConfigPathForPlatform(
+        allocator,
+        home,
+        currentConfigPlatform(),
+        std.posix.getenv("APPDATA"),
+        std.posix.getenv("XDG_CONFIG_HOME"),
+    );
     defer allocator.free(config_path);
 
     if (try removeJsonMcpEntry(allocator, config_path, "context_servers", dry_run)) {
@@ -1501,11 +1612,13 @@ fn installVscodeConfig(
     home: []const u8,
     options: InstallOptions,
 ) !InstallReport.Action {
-    const builtin = @import("builtin");
-    const config_path = if (builtin.os.tag == .macos)
-        try std.fs.path.join(allocator, &.{ home, "Library", "Application Support", "Code", "User", "mcp.json" })
-    else
-        try std.fs.path.join(allocator, &.{ home, ".config", "Code", "User", "mcp.json" });
+    const config_path = try vscodeConfigPathForPlatform(
+        allocator,
+        home,
+        currentConfigPlatform(),
+        std.posix.getenv("APPDATA"),
+        std.posix.getenv("XDG_CONFIG_HOME"),
+    );
     defer allocator.free(config_path);
 
     const updated = try updateGenericMcpJson(allocator, config_path, options.binary_path, .vscode_servers, true);
@@ -1527,11 +1640,13 @@ fn uninstallVscodeConfig(
     home: []const u8,
     dry_run: bool,
 ) !InstallReport.Action {
-    const builtin = @import("builtin");
-    const config_path = if (builtin.os.tag == .macos)
-        try std.fs.path.join(allocator, &.{ home, "Library", "Application Support", "Code", "User", "mcp.json" })
-    else
-        try std.fs.path.join(allocator, &.{ home, ".config", "Code", "User", "mcp.json" });
+    const config_path = try vscodeConfigPathForPlatform(
+        allocator,
+        home,
+        currentConfigPlatform(),
+        std.posix.getenv("APPDATA"),
+        std.posix.getenv("XDG_CONFIG_HOME"),
+    );
     defer allocator.free(config_path);
 
     if (try removeJsonMcpEntry(allocator, config_path, "servers", dry_run)) {
@@ -1545,11 +1660,13 @@ fn installKilocodeConfig(
     home: []const u8,
     options: InstallOptions,
 ) !InstallReport.Action {
-    const builtin = @import("builtin");
-    const config_path = if (builtin.os.tag == .macos)
-        try std.fs.path.join(allocator, &.{ home, "Library", "Application Support", "Code", "User", "globalStorage", "kilocode.kilo-code", "settings", "mcp_settings.json" })
-    else
-        try std.fs.path.join(allocator, &.{ home, ".config", "Code", "User", "globalStorage", "kilocode.kilo-code", "settings", "mcp_settings.json" });
+    const config_path = try kilocodeConfigPathForPlatform(
+        allocator,
+        home,
+        currentConfigPlatform(),
+        std.posix.getenv("APPDATA"),
+        std.posix.getenv("XDG_CONFIG_HOME"),
+    );
     defer allocator.free(config_path);
 
     const updated = try updateGenericMcpJson(allocator, config_path, options.binary_path, .mcp_servers, true);
@@ -1571,11 +1688,13 @@ fn uninstallKilocodeConfig(
     home: []const u8,
     dry_run: bool,
 ) !InstallReport.Action {
-    const builtin = @import("builtin");
-    const config_path = if (builtin.os.tag == .macos)
-        try std.fs.path.join(allocator, &.{ home, "Library", "Application Support", "Code", "User", "globalStorage", "kilocode.kilo-code", "settings", "mcp_settings.json" })
-    else
-        try std.fs.path.join(allocator, &.{ home, ".config", "Code", "User", "globalStorage", "kilocode.kilo-code", "settings", "mcp_settings.json" });
+    const config_path = try kilocodeConfigPathForPlatform(
+        allocator,
+        home,
+        currentConfigPlatform(),
+        std.posix.getenv("APPDATA"),
+        std.posix.getenv("XDG_CONFIG_HOME"),
+    );
     defer allocator.free(config_path);
 
     if (try removeJsonMcpEntry(allocator, config_path, "mcpServers", dry_run)) {
@@ -1751,6 +1870,67 @@ test "detect agents matches supported directories" {
     detected = detectAgents(allocator, home);
     try std.testing.expect(detected.codex);
     try std.testing.expect(detected.claude);
+}
+
+test "runtime cache dir uses windows local appdata when platform is overridden" {
+    const allocator = std.testing.allocator;
+    const path = try runtimeCacheDirForPlatform(
+        allocator,
+        "/tmp/cbm-home",
+        .windows,
+        null,
+        "C:/Users/test/AppData/Local",
+        null,
+    );
+    defer allocator.free(path);
+
+    try std.testing.expectEqualStrings(
+        "C:/Users/test/AppData/Local/codebase-memory-zig",
+        path,
+    );
+}
+
+test "windows client config paths use roaming appdata roots" {
+    const allocator = std.testing.allocator;
+
+    const zed_path = try zedConfigPathForPlatform(
+        allocator,
+        "/tmp/cbm-home",
+        .windows,
+        "C:/Users/test/AppData/Roaming",
+        null,
+    );
+    defer allocator.free(zed_path);
+    try std.testing.expectEqualStrings(
+        "C:/Users/test/AppData/Roaming/Zed/settings.json",
+        zed_path,
+    );
+
+    const vscode_path = try vscodeConfigPathForPlatform(
+        allocator,
+        "/tmp/cbm-home",
+        .windows,
+        "C:/Users/test/AppData/Roaming",
+        null,
+    );
+    defer allocator.free(vscode_path);
+    try std.testing.expectEqualStrings(
+        "C:/Users/test/AppData/Roaming/Code/User/mcp.json",
+        vscode_path,
+    );
+
+    const kilocode_path = try kilocodeConfigPathForPlatform(
+        allocator,
+        "/tmp/cbm-home",
+        .windows,
+        "C:/Users/test/AppData/Roaming",
+        null,
+    );
+    defer allocator.free(kilocode_path);
+    try std.testing.expectEqualStrings(
+        "C:/Users/test/AppData/Roaming/Code/User/globalStorage/kilocode.kilo-code/settings/mcp_settings.json",
+        kilocode_path,
+    );
 }
 
 test "install dry run preserves filesystem for supported agents" {

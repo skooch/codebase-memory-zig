@@ -1,0 +1,8 @@
+{
+  "context_servers": {
+    "codebase-memory-zig": {
+      "command": "C:\\Users\\Test\\bin\\cbm.exe",
+      "args": []
+    }
+  }
+}
