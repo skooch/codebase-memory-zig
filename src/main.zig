@@ -506,7 +506,7 @@ fn runInstallCommand(allocator: std.mem.Allocator) !void {
     const scope = parsed.scope orelse config.install_scope;
     const include_extras = parsed.include_extras orelse config.install_extras;
     try printInstallReport(allocator, stdout_file, home, binary_path, "Install", report, parsed.dry_run, scope, include_extras);
-    if (!report.detected.codex and !report.detected.claude and !parsed.force) {
+    if (!cli.hasDetectedAgentsInScope(report.detected, scope) and !parsed.force) {
         if (scope == .shipped) {
             try stdout_file.writeAll("No shipped agents detected. Use --scope detected or --force to create config files.\n");
         } else {
@@ -575,7 +575,7 @@ fn runUpdateCommand(allocator: std.mem.Allocator) !void {
     const scope = parsed.scope orelse config.install_scope;
     const include_extras = parsed.include_extras orelse config.install_extras;
     try printInstallReport(allocator, stdout_file, home, binary_path, "Update", report, parsed.dry_run, scope, include_extras);
-    if (!report.detected.codex and !report.detected.claude and !parsed.force) {
+    if (!cli.hasDetectedAgentsInScope(report.detected, scope) and !parsed.force) {
         if (scope == .shipped) {
             try stdout_file.writeAll("No shipped agents detected. Use --scope detected or --force to create config files.\n");
         } else {
@@ -703,11 +703,19 @@ fn printInstallReport(
     try printFile(stdout_file, "Scope: {s}\n", .{@tagName(scope)});
     try printFile(stdout_file, "Extras: {s}\n", .{if (include_extras) "managed" else "mcp-only"});
     try stdout_file.writeAll("Detected agents:");
-    if (!report.detected.codex and !report.detected.claude) {
+    if (!cli.hasAnyDetectedAgents(report.detected)) {
         try stdout_file.writeAll(" none\n");
     } else {
         if (report.detected.claude) try stdout_file.writeAll(" Claude Code");
         if (report.detected.codex) try stdout_file.writeAll(" Codex CLI");
+        if (report.detected.gemini) try stdout_file.writeAll(" Gemini CLI");
+        if (report.detected.zed) try stdout_file.writeAll(" Zed");
+        if (report.detected.opencode) try stdout_file.writeAll(" OpenCode");
+        if (report.detected.antigravity) try stdout_file.writeAll(" Antigravity");
+        if (report.detected.aider) try stdout_file.writeAll(" Aider");
+        if (report.detected.kilocode) try stdout_file.writeAll(" KiloCode");
+        if (report.detected.vscode) try stdout_file.writeAll(" VS Code");
+        if (report.detected.openclaw) try stdout_file.writeAll(" OpenClaw");
         try stdout_file.writeAll("\n");
     }
     if (binary_path) |path| {
@@ -719,9 +727,23 @@ fn printInstallReport(
         "  Claude Code: {s} ({s}, {s})\n",
         .{ @tagName(report.claude), claude_nested_path, claude_legacy_path },
     );
+    try printActionLine(stdout_file, "Gemini CLI", report.gemini);
+    try printActionLine(stdout_file, "Zed", report.zed);
+    try printActionLine(stdout_file, "OpenCode", report.opencode);
+    try printActionLine(stdout_file, "Antigravity", report.antigravity);
+    try printActionLine(stdout_file, "Aider", report.aider);
+    try printActionLine(stdout_file, "KiloCode", report.kilocode);
+    try printActionLine(stdout_file, "VS Code", report.vscode);
+    try printActionLine(stdout_file, "OpenClaw", report.openclaw);
+    try printActionLine(stdout_file, "Claude skills", report.skills);
+    try printActionLine(stdout_file, "Hooks", report.hooks);
     if (dry_run) {
         try stdout_file.writeAll("(dry-run - no files were modified)\n");
     }
+}
+
+fn printActionLine(stdout_file: std.fs.File, label: []const u8, action: cli.InstallReport.Action) !void {
+    try printFile(stdout_file, "  {s}: {s}\n", .{ label, @tagName(action) });
 }
 
 fn writeConfigValue(stdout_file: std.fs.File, key: []const u8, config: cli.AppConfig) !void {

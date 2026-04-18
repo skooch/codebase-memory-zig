@@ -35,6 +35,7 @@ done
 
 REPORT_DIR="${POSITIONAL_ARGS[0]:-$ROOT_DIR/.interop_reports}"
 GOLDEN_DIR="$ROOT_DIR/testdata/interop/golden"
+CLI_FIXTURE_DIR="$ROOT_DIR/testdata/cli-agent-fixtures"
 WINDOWS_FIXTURE_DIR="$ROOT_DIR/testdata/agent-comparison/windows-paths"
 
 # C binary is only needed in compare mode
@@ -59,7 +60,7 @@ fi
 
 mkdir -p "$REPORT_DIR"
 
-python3 - "$ZIG_BIN" "$C_BIN" "$REPORT_DIR" "$MODE" "$GOLDEN_DIR" "$WINDOWS_FIXTURE_DIR" <<'PY'
+python3 - "$ZIG_BIN" "$C_BIN" "$REPORT_DIR" "$MODE" "$GOLDEN_DIR" "$CLI_FIXTURE_DIR" "$WINDOWS_FIXTURE_DIR" <<'PY'
 import hashlib
 import json
 import os
@@ -75,6 +76,7 @@ report_dir = Path(sys.argv[3])
 mode = sys.argv[4] if len(sys.argv) > 4 else "compare"
 golden_dir = Path(sys.argv[5]) if len(sys.argv) > 5 else None
 fixture_dir = Path(sys.argv[6]) if len(sys.argv) > 6 else None
+windows_fixture_dir = Path(sys.argv[7]) if len(sys.argv) > 7 else None
 
 
 def contains_ci(text: str, needle: str) -> bool:
@@ -99,6 +101,14 @@ def parse_cli_json(text: str) -> Dict[str, Any]:
         except json.JSONDecodeError:
             continue
     return {}
+
+
+def parse_json_file(path: Path) -> Dict[str, Any]:
+    try:
+        data = json.loads(path.read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 def run_cmd(
@@ -173,6 +183,185 @@ def inspect_windows_layout(binary: Path, fixture_root: Path) -> Dict[str, Any]:
             },
         }
 
+
+def inspect_installer_ecosystem(binary: Path, label: str, fixture_root: Path) -> Dict[str, Any]:
+    server_key = "codebase-memory-zig" if label == "zig" else "codebase-memory-mcp"
+
+    with tempfile.TemporaryDirectory(prefix="cbm-cli-ecosystem-") as tmp:
+        home = Path(tmp)
+        claude_dir = home / ".claude"
+        codex_dir = home / ".codex"
+        gemini_dir = home / ".gemini"
+        antigravity_dir = gemini_dir / "antigravity"
+        openclaw_dir = home / ".openclaw"
+        kilocode_rules_dir = home / ".kilocode" / "rules"
+        opencode_dir = home / ".config" / "opencode"
+        local_bin_dir = home / ".local" / "bin"
+
+        for path in [
+            claude_dir,
+            codex_dir,
+            gemini_dir,
+            antigravity_dir,
+            openclaw_dir,
+            kilocode_rules_dir,
+            opencode_dir,
+            local_bin_dir,
+        ]:
+            path.mkdir(parents=True, exist_ok=True)
+
+        app_prefix = home / "Library" / "Application Support" if sys.platform == "darwin" else home / ".config"
+        zed_dir = app_prefix / ("Zed" if sys.platform == "darwin" else "zed")
+        vscode_dir = app_prefix / "Code" / "User"
+        kilocode_settings_dir = app_prefix / "Code" / "User" / "globalStorage" / "kilocode.kilo-code" / "settings"
+        for path in [zed_dir, vscode_dir, kilocode_settings_dir]:
+            path.mkdir(parents=True, exist_ok=True)
+
+        aider_stub = local_bin_dir / "aider"
+        aider_stub.write_text("#!/bin/sh\nexit 0\n")
+        aider_stub.chmod(0o755)
+        opencode_stub = local_bin_dir / "opencode"
+        opencode_stub.write_text("#!/bin/sh\nexit 0\n")
+        opencode_stub.chmod(0o755)
+
+        claude_legacy = home / ".claude.json"
+        codex_config = codex_dir / "config.toml"
+        gemini_settings = gemini_dir / "settings.json"
+        opencode_config = opencode_dir / "opencode.json"
+        openclaw_config = openclaw_dir / "openclaw.json"
+
+        seed_fixture(codex_config, fixture_root / "codex" / "config.toml")
+        seed_fixture(claude_legacy, fixture_root / "claude" / "legacy.json")
+        seed_fixture(gemini_settings, fixture_root / "gemini" / "settings.json")
+        seed_fixture(opencode_config, fixture_root / "opencode" / "opencode.json")
+        seed_fixture(openclaw_config, fixture_root / "openclaw" / "openclaw.json")
+
+        env = {
+            "PATH": str(local_bin_dir) + os.pathsep + os.environ.get("PATH", "")
+        }
+        install = run_cmd([str(binary), "install", "-y", "--scope", "detected"], home, env)
+        update_dry_run = run_cmd([str(binary), "update", "-y", "--dry-run", "--scope", "detected"], home, env)
+        claude_nested = claude_dir / ".mcp.json"
+        claude_settings = claude_dir / "settings.json"
+        claude_gate = claude_dir / "hooks" / "cbm-code-discovery-gate"
+        claude_reminder = claude_dir / "hooks" / "cbm-session-reminder"
+        claude_skill = claude_dir / "skills" / "codebase-memory" / "SKILL.md"
+        codex_instructions = codex_dir / "AGENTS.md"
+        gemini_instructions = gemini_dir / "GEMINI.md"
+        antigravity_config = antigravity_dir / "mcp_config.json"
+        antigravity_instructions = antigravity_dir / "AGENTS.md"
+        zed_config = zed_dir / "settings.json"
+        vscode_config = vscode_dir / "mcp.json"
+        kilocode_config = kilocode_settings_dir / "mcp_settings.json"
+        kilocode_rules = kilocode_rules_dir / "codebase-memory-mcp.md"
+        aider_instructions = home / "CONVENTIONS.md"
+        opencode_instructions = opencode_dir / "AGENTS.md"
+
+        claude_legacy_after_install = file_text(claude_legacy)
+        claude_nested_after_install = file_text(claude_nested)
+        codex_after_install = file_text(codex_config)
+        gemini_after_install = file_text(gemini_settings)
+        zed_after_install = file_text(zed_config)
+        vscode_after_install = file_text(vscode_config)
+        opencode_after_install = file_text(opencode_config)
+        antigravity_after_install = file_text(antigravity_config)
+        kilocode_after_install = file_text(kilocode_config)
+        openclaw_after_install = file_text(openclaw_config)
+
+        claude_legacy_install_json = parse_json_file(claude_legacy)
+        gemini_install_json = parse_json_file(gemini_settings)
+        claude_settings_install_json = parse_json_file(claude_settings)
+
+        pretool_hooks = claude_settings_install_json.get("hooks", {}).get("PreToolUse", [])
+        session_hooks = claude_settings_install_json.get("hooks", {}).get("SessionStart", [])
+        gemini_hooks = gemini_install_json.get("hooks", {}).get("BeforeTool", [])
+        claude_gate_after_install = claude_gate.exists()
+        claude_reminder_after_install = claude_reminder.exists()
+        claude_skill_after_install = claude_skill.exists()
+        codex_instructions_after_install = codex_instructions.exists()
+        gemini_instructions_after_install = gemini_instructions.exists()
+        antigravity_instructions_after_install = antigravity_instructions.exists()
+        opencode_instructions_after_install = opencode_instructions.exists()
+        aider_instructions_after_install = aider_instructions.exists()
+        kilocode_rules_after_install = kilocode_rules.exists()
+
+        uninstall = run_cmd([str(binary), "uninstall", "-y", "--scope", "detected"], home, env)
+
+        return {
+            "installer_ecosystem_contract": {
+                "install_mentions_all_detected_agents": all(
+                    contains_ci(install.stdout, label_text)
+                    for label_text in [
+                        "Claude Code",
+                        "Codex CLI",
+                        "Gemini CLI",
+                        "Zed",
+                        "OpenCode",
+                        "Antigravity",
+                        "Aider",
+                        "KiloCode",
+                        "VS Code",
+                        "OpenClaw",
+                    ]
+                ),
+                "install_wrote_claude_nested": str(binary) in claude_nested_after_install,
+                "install_wrote_claude_legacy": str(binary) in claude_legacy_after_install,
+                "install_preserved_claude_existing_key": claude_legacy_install_json.get("existingKey") is True,
+                "install_added_claude_pretool_hook": len(pretool_hooks) > 0,
+                "install_added_claude_session_hook": len(session_hooks) > 0,
+                "install_added_claude_gate_script": claude_gate_after_install,
+                "install_added_claude_reminder_script": claude_reminder_after_install,
+                "install_added_claude_skill": claude_skill_after_install,
+                "install_wrote_codex_config": str(binary) in codex_after_install,
+                "install_preserved_codex_existing_block": "existing_section" in codex_after_install,
+                "install_added_codex_instructions": codex_instructions_after_install,
+                "install_wrote_gemini_config": str(binary) in gemini_after_install,
+                "install_preserved_gemini_existing_key": gemini_install_json.get("existingKey") is True,
+                "install_added_gemini_hook": len(gemini_hooks) > 0,
+                "install_added_gemini_instructions": gemini_instructions_after_install,
+                "install_wrote_zed_config": str(binary) in zed_after_install,
+                "install_wrote_vscode_config": str(binary) in vscode_after_install,
+                "install_wrote_opencode_config": str(binary) in opencode_after_install,
+                "install_added_opencode_instructions": opencode_instructions_after_install,
+                "install_wrote_antigravity_config": str(binary) in antigravity_after_install,
+                "install_added_antigravity_instructions": antigravity_instructions_after_install,
+                "install_added_aider_instructions": aider_instructions_after_install,
+                "install_wrote_kilocode_config": str(binary) in kilocode_after_install,
+                "install_added_kilocode_rules": kilocode_rules_after_install,
+                "install_wrote_openclaw_config": str(binary) in openclaw_after_install,
+                "update_detected_scope_succeeds": update_dry_run.returncode == 0,
+                "update_detected_scope_mentions_all_agents": all(
+                    contains_ci(update_dry_run.stdout, label_text)
+                    for label_text in [
+                        "Claude Code",
+                        "Codex CLI",
+                        "Gemini CLI",
+                        "Zed",
+                        "OpenCode",
+                        "Antigravity",
+                        "Aider",
+                        "KiloCode",
+                        "VS Code",
+                        "OpenClaw",
+                    ]
+                ),
+                "uninstall_removed_claude_entry": server_key not in file_text(claude_legacy)
+                and server_key not in file_text(claude_nested),
+                "uninstall_preserved_claude_existing_key": parse_json_file(claude_legacy).get("existingKey") is True,
+                "uninstall_removed_claude_hooks": server_key not in file_text(claude_settings),
+                "uninstall_removed_claude_skill": not claude_skill.exists(),
+                "uninstall_removed_codex_entry": server_key not in file_text(codex_config),
+                "uninstall_preserved_codex_existing_block": "existing_section" in file_text(codex_config),
+                "uninstall_removed_gemini_entry": server_key not in file_text(gemini_settings),
+                "uninstall_preserved_gemini_existing_key": parse_json_file(gemini_settings).get("existingKey") is True,
+                "uninstall_removed_zed_entry": server_key not in file_text(zed_config),
+                "uninstall_removed_vscode_entry": server_key not in file_text(vscode_config),
+                "uninstall_removed_opencode_entry": server_key not in file_text(opencode_config),
+                "uninstall_removed_antigravity_entry": server_key not in file_text(antigravity_config),
+                "uninstall_removed_kilocode_entry": server_key not in file_text(kilocode_config),
+                "uninstall_removed_openclaw_entry": server_key not in file_text(openclaw_config),
+            },
+        }
 
 def inspect_operational_controls(binary: Path) -> Dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix="cbm-cli-config-") as tmp:
@@ -351,9 +540,14 @@ def inspect_impl(label: str, binary: Path) -> dict:
         }
 
         windows_result = (
-            inspect_windows_layout(binary, fixture_dir)
-            if label == "zig" and fixture_dir is not None and fixture_dir.exists()
+            inspect_windows_layout(binary, windows_fixture_dir)
+            if label == "zig" and windows_fixture_dir is not None and windows_fixture_dir.exists()
             else {"windows_contract": {}}
+        )
+        installer_result = (
+            inspect_installer_ecosystem(binary, label, fixture_dir)
+            if label == "zig" and fixture_dir is not None and fixture_dir.exists()
+            else {"installer_ecosystem_contract": {}}
         )
         operational_result = (
             inspect_operational_controls(binary)
@@ -384,6 +578,7 @@ def inspect_impl(label: str, binary: Path) -> dict:
                 "stderr": uninstall.stderr.splitlines(),
             },
             "shared_contract": shared_contract,
+            "installer_ecosystem_contract": installer_result["installer_ecosystem_contract"],
             "windows_contract": windows_result["windows_contract"],
             "operational_contract": operational_result["operational_contract"],
         }
@@ -399,6 +594,7 @@ def run_update_golden(zig_result: Dict[str, Any]) -> None:
     golden_path = golden_dir / GOLDEN_FILE
     snapshot = {
         "shared_contract": zig_result["shared_contract"],
+        "installer_ecosystem_contract": zig_result.get("installer_ecosystem_contract", {}),
         "windows_contract": zig_result.get("windows_contract", {}),
         "operational_contract": zig_result.get("operational_contract", {}),
     }
@@ -421,6 +617,10 @@ def run_zig_only(zig_result: Dict[str, Any]) -> None:
         "shared_contract": (
             golden.get("shared_contract", {}),
             zig_result["shared_contract"],
+        ),
+        "installer_ecosystem_contract": (
+            golden.get("installer_ecosystem_contract", {}),
+            zig_result.get("installer_ecosystem_contract", {}),
         ),
         "windows_contract": (
             golden.get("windows_contract", {}),

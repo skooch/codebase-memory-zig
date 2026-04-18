@@ -55,6 +55,26 @@ pub const InstallScope = enum {
     shipped,
 };
 
+pub fn hasAnyDetectedAgents(agents: AgentSet) bool {
+    return agents.codex or
+        agents.claude or
+        agents.gemini or
+        agents.zed or
+        agents.opencode or
+        agents.antigravity or
+        agents.aider or
+        agents.kilocode or
+        agents.vscode or
+        agents.openclaw;
+}
+
+pub fn hasDetectedAgentsInScope(agents: AgentSet, scope: InstallScope) bool {
+    return switch (scope) {
+        .detected => hasAnyDetectedAgents(agents),
+        .shipped => agents.codex or agents.claude,
+    };
+}
+
 pub const InstallReport = struct {
     detected: AgentSet = .{},
     codex: Action = .skipped,
