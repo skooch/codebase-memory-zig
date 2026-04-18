@@ -232,6 +232,9 @@ pub const McpServer = struct {
         if (request.value.method.len == 0) {
             return self.errorResponse(request.value.id, -32600, "Missing method");
         }
+        if (request.value.id == null) {
+            return null;
+        }
 
         if (std.mem.eql(u8, request.value.method, "initialize")) {
             if (self.lifecycle_ref) |lifecycle| lifecycle.startUpdateCheck();
@@ -1959,6 +1962,52 @@ test "runFiles rejects oversized request lines and continues after newline" {
     try std.testing.expect(std.mem.indexOf(u8, initialize_response, "\"protocolVersion\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, oversized_response, "\"Request too large\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, tools_response, "\"tools\"") != null);
+}
+
+test "notifications are ignored without a response" {
+    var s = try store.Store.openMemory(std.testing.allocator);
+    defer s.deinit();
+
+    var srv = McpServer.init(std.testing.allocator, &s);
+    defer srv.deinit();
+
+    const response = try srv.handleRequest(
+        \\{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}
+    );
+    try std.testing.expect(response == null);
+}
+
+test "notifications do not consume the first update notice response" {
+    const allocator = std.testing.allocator;
+
+    var s = try store.Store.openMemory(allocator);
+    defer s.deinit();
+    var srv = McpServer.init(allocator, &s);
+    defer srv.deinit();
+
+    var lifecycle = runtime_lifecycle.RuntimeLifecycle.init(allocator, "0.0.0");
+    defer lifecycle.deinit();
+    srv.setRuntimeLifecycle(&lifecycle);
+    lifecycle.update_notice = try allocator.dupe(u8, "Update available: 0.0.0 -> 9.9.9 -- run: cbm update");
+
+    const initialize_response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}
+    )).?;
+    defer allocator.free(initialize_response);
+
+    const notification_response = try srv.handleRequest(
+        \\{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}
+    );
+    try std.testing.expect(notification_response == null);
+
+    const tools_response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}
+    )).?;
+    defer allocator.free(tools_response);
+
+    try std.testing.expect(std.mem.indexOf(u8, initialize_response, "\"protocolVersion\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, tools_response, "\"update_notice\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, tools_response, "Update available: 0.0.0 -> 9.9.9") != null);
 }
 
 test "idle store eviction closes the runtime db and reopens on the next tool call" {

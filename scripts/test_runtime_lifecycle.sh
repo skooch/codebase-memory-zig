@@ -102,3 +102,46 @@ if "update_notice" in second_tools.get("result", {}):
     raise SystemExit("update notice should be one-shot and absent on second tools/list response")
 PY
 echo "OK: startup update notice"
+
+echo "Testing initialized notification stays silent..."
+cat > "$TMPDIR/initialized.jsonl" <<'JSONL'
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}
+{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}
+{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}
+JSONL
+
+CBM_UPDATE_CHECK_CURRENT=0.0.0 \
+CBM_UPDATE_CHECK_LATEST=9.9.9 \
+"$BINARY" < "$TMPDIR/initialized.jsonl" > "$TMPDIR/initialized.out" 2> "$TMPDIR/initialized.err"
+
+python3 - "$TMPDIR/initialized.out" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+decoder = json.JSONDecoder()
+text = Path(sys.argv[1]).read_text()
+responses = []
+idx = 0
+while idx < len(text):
+    while idx < len(text) and text[idx].isspace():
+        idx += 1
+    if idx >= len(text):
+        break
+    response, next_idx = decoder.raw_decode(text, idx)
+    responses.append(response)
+    idx = next_idx
+
+if len(responses) != 2:
+    raise SystemExit(f"expected 2 responses, got {len(responses)}")
+
+init_resp, tools_resp = responses
+
+if "protocolVersion" not in init_resp.get("result", {}):
+    raise SystemExit("initialize response missing protocolVersion")
+
+notice = tools_resp.get("result", {}).get("update_notice", "")
+if "Update available: 0.0.0 -> 9.9.9" not in notice:
+    raise SystemExit(f"missing expected update notice after initialized notification: {notice!r}")
+PY
+echo "OK: initialized notification stays silent"
