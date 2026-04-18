@@ -7,8 +7,8 @@ Broaden parser-backed language coverage so the Zig port can market itself as clo
 Phase 1
 
 ## File Map
-- Modify: `docs/plans/new/ready-to-go/07-language-coverage-expansion-plan.md`
-- Create: `docs/plans/new/ready-to-go/07-language-coverage-expansion-progress.md`
+- Modify: `docs/plans/in-progress/07-language-coverage-expansion-plan.md`
+- Create: `docs/plans/in-progress/07-language-coverage-expansion-progress.md`
 - Modify: `docs/port-comparison.md`
 - Modify: `docs/gap-analysis.md`
 - Modify: `build.zig`
@@ -23,7 +23,7 @@ Phase 1
 
 ### Phase 1: Lock the Expansion Contract
 - [ ] Re-read the original language-support surface and identify the next parser-backed languages that most improve the drop-in replacement story in `docs/gap-analysis.md`.
-- [ ] Define the chosen language rollout, fixture set, and verification workflow in `docs/plans/new/ready-to-go/07-language-coverage-expansion-progress.md`.
+- [ ] Define the chosen language rollout, fixture set, and verification workflow in `docs/plans/in-progress/07-language-coverage-expansion-progress.md`.
 - [ ] Keep the first pass limited to concrete parser-backed additions rather than reopening hybrid LSP resolution in the same plan.
 - **Status:** pending
 
@@ -36,7 +36,7 @@ Phase 1
 ### Phase 3: Verify And Reclassify
 - [ ] Run `zig build`, `zig build test`, and the language-expansion interop fixture checks until the selected languages index successfully and expose stable graph facts.
 - [ ] Update `docs/port-comparison.md` so the language-coverage rows move out of `Partial` only after the added parser-backed languages are verified.
-- [ ] Record the final verification transcript and any intentionally deferred language families in `docs/plans/new/ready-to-go/07-language-coverage-expansion-progress.md`.
+- [ ] Record the final verification transcript and any intentionally deferred language families in `docs/plans/in-progress/07-language-coverage-expansion-progress.md`.
 - **Status:** pending
 
 ## Decisions
