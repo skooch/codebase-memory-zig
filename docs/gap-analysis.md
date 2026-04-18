@@ -55,6 +55,7 @@ Completed after the readiness gate:
   - MinHash/LSH similarity edges
   - signal-driven graceful shutdown for stdio MCP sessions
   - one-shot startup update notification on the first post-initialize response
+  - timed idle runtime-store eviction plus reopen on the next stdio tool call
 - CLI and productization baseline:
   - persisted runtime config
   - `install`, `uninstall`, `update`, and `config`
@@ -82,7 +83,6 @@ Intentionally deferred after Phase 7:
 - Deeper usage/type-reference extraction parity and broader cross-language semantics beyond the current target daily-use slice.
 - Richer decorator/enrichment follow-ons and broader route/config expansion beyond the implemented graph-model parity fixture contract. (Git-history coupling is implemented; route nodes and config-linking both have strict shared graph-model fixture slices.)
 - Broader installer/self-update behavior beyond the current source-build-friendly Codex CLI / Claude Code support.
-- Idle-store and session-lifecycle extras beyond the current persistent-store + watcher runtime model.
 
 Completed in Plan 03:
 - Advanced trace parity: modes (calls/data_flow/cross_service), multi-edge-type BFS, risk labels, test-file filtering, function_name alias, structured callees/callers response format.
@@ -122,6 +122,38 @@ Phase 1 contract for this plan:
   correctness requirements, not best-effort behavior.
 - Treat local stress fixtures and bounded verification thresholds as completion
   gates before upgrading any large-repo stability claims.
+
+## Implemented Plan: Runtime Lifecycle Extras
+
+Known current-state evidence from the Zig implementation:
+- `src.main.runMcpServer` now wires the shared runtime DB path and idle timeout
+  into the MCP server, with `CBM_IDLE_STORE_TIMEOUT_MS` available for bounded
+  verification runs.
+- `src.mcp.runFiles` now polls stdio with an idle timeout and closes the shared
+  runtime SQLite handle after inactivity instead of keeping the runtime DB open
+  indefinitely for the entire session.
+- `src.mcp.handleLine` now reopens that shared runtime DB on the next
+  `tools/call` request before dispatch, so session queries resume cleanly after
+  an idle eviction without changing the public MCP contract.
+- `scripts/test_runtime_lifecycle_extras.sh` now proves the live stdio process
+  closes the runtime DB after idling and reopens it on the next tool call, and
+  `src.mcp` has a focused unit test for the same reopen path.
+
+Phase 1 contract for this plan:
+- Treat the remaining runtime gap as idle store lifecycle behavior, not as a
+  reason to reopen the already-completed shutdown or update-notice work.
+- Treat the public overlap as release-and-reopen behavior on the shared Zig
+  runtime DB; the original C runtime's per-project cached-store topology is an
+  internal implementation difference rather than a contract requirement here.
+- Require live-process verification of the idle close/reopen cycle before
+  upgrading the runtime-extras parity claim.
+
+Completion evidence:
+
+- `zig build`
+- `zig build test`
+- `bash scripts/test_runtime_lifecycle.sh`
+- `bash scripts/test_runtime_lifecycle_extras.sh`
 
 ## Implemented Plan: Parser Accuracy and Graph Fidelity
 
@@ -218,8 +250,6 @@ Deferred or optional future slices:
 - Productization beyond the current contract:
   - broader installer/self-update behavior
   - broader agent integration coverage and installer diagnostics
-- Runtime follow-ons beyond the current contract:
-  - idle-store eviction and other broader session-lifecycle extras from the original runtime
 
 ### Recommended Sequencing
 

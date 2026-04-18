@@ -81,7 +81,7 @@ It is intentionally not a wish list. It describes:
 | `tools/call` | Yes | Yes | `Near parity` | Yes | Core RPC path is implemented in both. |
 | One-shot CLI tool execution | `codebase-memory-mcp cli ...` | `cbm cli ...` | `Near parity` | Yes | Both support direct command-line tool invocation. |
 | CLI progress output | Rich progress sink with per-stage pipeline events | Shared phase-aware progress stream for overlapping commands | `Near parity` | Yes | The temp-HOME CLI parity check in the interop harness now reports `cli_progress: match`; richer original-only lifecycle/runtime extras remain separate rows. |
-| Idle-store / session-lifecycle extras | Present in the original MCP runtime | Not implemented in the Zig runtime | `Partial` | No | The Zig runtime now matches the smaller shutdown/update-notice overlap, but it still does not implement the original's broader idle-store and session-lifecycle behavior. |
+| Idle-store / session-lifecycle extras | Present in the original MCP runtime | Timed idle eviction of the shared runtime DB plus reopen on the next stdio tool call | `Near parity` | Yes | Zig now proves the overlapping idle close/reopen behavior with `bash scripts/test_runtime_lifecycle_extras.sh`. The original's per-project cached-store topology remains an internal design difference rather than a public contract gap for this repo. |
 | Signal-driven graceful shutdown | Yes | Yes | `Near parity` | Yes | Zig now installs `SIGINT` / `SIGTERM` handlers and the runtime harness verifies clean shutdown while stdio is active. |
 
 ### 2.2 MCP Tools

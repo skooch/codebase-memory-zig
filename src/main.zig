@@ -135,6 +135,8 @@ fn runMcpServer(allocator: std.mem.Allocator) !void {
     server.setWatcher(&watcher);
     server.setIndexGuard(&runtime.index_busy);
     server.setRuntimeLifecycle(&lifecycle);
+    server.setRuntimeStorePath(runtime.db_path);
+    server.setIdleStoreTimeoutMs(envUnsigned("CBM_IDLE_STORE_TIMEOUT_MS", cbm.mcp.default_idle_store_timeout_ms));
     defer server.deinit();
 
     const stdin_file = std.fs.File.stdin();

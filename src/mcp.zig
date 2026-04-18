@@ -19,6 +19,7 @@
 //  * index_status
 //  * detect_changes
 
+const builtin = @import("builtin");
 const std = @import("std");
 const adr = @import("adr.zig");
 const store = @import("store.zig");
@@ -32,6 +33,7 @@ const Store = store.Store;
 const max_request_line_bytes = 1024 * 1024;
 const max_response_bytes = 4 * 1024 * 1024;
 const response_too_large_code: i64 = -32001;
+pub const default_idle_store_timeout_ms: u64 = 60_000;
 
 const SupportedTool = enum {
     index_repository,
@@ -94,6 +96,9 @@ pub const McpServer = struct {
     watcher_ref: ?*watcher.Watcher = null,
     index_guard: ?*std.atomic.Value(bool) = null,
     lifecycle_ref: ?*runtime_lifecycle.RuntimeLifecycle = null,
+    runtime_db_path: ?[]const u8 = null,
+    idle_store_timeout_ms: u64 = 0,
+    last_store_activity_ms: ?u64 = null,
 
     pub fn init(allocator: std.mem.Allocator, db: *Store) McpServer {
         return .{ .allocator = allocator, .db = db };
@@ -115,6 +120,17 @@ pub const McpServer = struct {
         self.lifecycle_ref = lifecycle_ref;
     }
 
+    pub fn setRuntimeStorePath(self: *McpServer, runtime_db_path: []const u8) void {
+        self.runtime_db_path = runtime_db_path;
+    }
+
+    pub fn setIdleStoreTimeoutMs(self: *McpServer, timeout_ms: usize) void {
+        self.idle_store_timeout_ms = @intCast(timeout_ms);
+        if (self.idle_store_timeout_ms == 0) {
+            self.last_store_activity_ms = null;
+        }
+    }
+
     pub fn handleRequest(self: *McpServer, request: []const u8) !?[]const u8 {
         return self.handleLine(request);
     }
@@ -127,6 +143,10 @@ pub const McpServer = struct {
         var discarding_oversized_line = false;
 
         while (true) {
+            if (!try self.waitForInput(stdin_file)) {
+                continue;
+            }
+
             const read_len = try stdin_file.read(&read_buf);
             if (read_len == 0) {
                 if (!discarding_oversized_line) {
@@ -255,6 +275,8 @@ pub const McpServer = struct {
             if (request.value.params == null) {
                 return self.errorResponse(request.value.id, -32602, "Missing params");
             }
+            try self.ensureStoreOpen();
+            self.noteStoreActivityNow();
             const call_request = extractToolCall(self.allocator, request.value.params.?) catch {
                 return self.errorResponse(request.value.id, -32602, "Invalid tool call params");
             };
@@ -273,6 +295,49 @@ pub const McpServer = struct {
         }
 
         return self.errorResponse(request.value.id, -32601, "Method not found");
+    }
+
+    fn ensureStoreOpen(self: *McpServer) !void {
+        if (self.db.db != null) return;
+        const runtime_db_path = self.runtime_db_path orelse return;
+        const db_path_z = try self.allocator.dupeZ(u8, runtime_db_path);
+        defer self.allocator.free(db_path_z);
+        self.db.* = try Store.openPath(self.allocator, db_path_z);
+    }
+
+    fn noteStoreActivityNow(self: *McpServer) void {
+        self.noteStoreActivityAt(nowMillis());
+    }
+
+    fn noteStoreActivityAt(self: *McpServer, now_ms: u64) void {
+        if (self.runtime_db_path == null or self.idle_store_timeout_ms == 0) return;
+        self.last_store_activity_ms = now_ms;
+    }
+
+    fn evictIdleStoreIfNeededAt(self: *McpServer, now_ms: u64) void {
+        if (self.runtime_db_path == null or self.idle_store_timeout_ms == 0) return;
+        if (self.db.db == null) return;
+        const last_activity_ms = self.last_store_activity_ms orelse return;
+        if (now_ms < last_activity_ms or now_ms - last_activity_ms < self.idle_store_timeout_ms) return;
+        self.db.deinit();
+        self.last_store_activity_ms = null;
+    }
+
+    fn waitForInput(self: *McpServer, stdin_file: std.fs.File) !bool {
+        if (builtin.os.tag == .windows) return true;
+        if (self.runtime_db_path == null or self.idle_store_timeout_ms == 0) return true;
+
+        var fds = [_]std.posix.pollfd{.{
+            .fd = stdin_file.handle,
+            .events = std.posix.POLL.IN,
+            .revents = 0,
+        }};
+        const timeout_ms: i32 = @intCast(@min(self.idle_store_timeout_ms, @as(u64, @intCast(std.math.maxInt(i32)))));
+        const ready = try std.posix.poll(&fds, timeout_ms);
+        if (ready != 0) return true;
+
+        self.evictIdleStoreIfNeededAt(nowMillis());
+        return false;
     }
 
     fn dispatchToolCall(self: *McpServer, request_id: ?std.json.Value, call: ToolCallRequest) !?[]const u8 {
@@ -1014,6 +1079,11 @@ fn projectStatusText(status: store.ProjectStatus.Status) []const u8 {
         .no_project => "no_project",
         .not_found => "not_found",
     };
+}
+
+fn nowMillis() u64 {
+    const now = std.time.milliTimestamp();
+    return if (now <= 0) 0 else @intCast(now);
 }
 
 fn SupportedToolFromString(name: []const u8) error{UnsupportedTool}!SupportedTool {
@@ -1889,6 +1959,40 @@ test "runFiles rejects oversized request lines and continues after newline" {
     try std.testing.expect(std.mem.indexOf(u8, initialize_response, "\"protocolVersion\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, oversized_response, "\"Request too large\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, tools_response, "\"tools\"") != null);
+}
+
+test "idle store eviction closes the runtime db and reopens on the next tool call" {
+    const allocator = std.testing.allocator;
+    var temp_dir = std.testing.tmpDir(.{});
+    defer temp_dir.cleanup();
+
+    const temp_root = try temp_dir.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(temp_root);
+    const db_path = try std.fs.path.join(allocator, &.{ temp_root, "runtime.db" });
+    defer allocator.free(db_path);
+    const db_path_z = try allocator.dupeZ(u8, db_path);
+    defer allocator.free(db_path_z);
+
+    var s = try store.Store.openPath(allocator, db_path_z);
+    defer s.deinit();
+
+    var srv = McpServer.init(allocator, &s);
+    defer srv.deinit();
+    srv.setRuntimeStorePath(db_path);
+    srv.setIdleStoreTimeoutMs(50);
+    srv.noteStoreActivityAt(100);
+
+    try std.testing.expect(s.db != null);
+    srv.evictIdleStoreIfNeededAt(151);
+    try std.testing.expect(s.db == null);
+
+    const response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"list_projects","arguments":{}}}
+    )).?;
+    defer allocator.free(response);
+
+    try std.testing.expect(s.db != null);
+    try std.testing.expect(std.mem.indexOf(u8, response, "\"projects\"") != null);
 }
 
 test "get_code_snippet returns source, match metadata, and suggestions" {
