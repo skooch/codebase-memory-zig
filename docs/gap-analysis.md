@@ -90,6 +90,32 @@ Completed in Plan 03:
 Completed in Plan 05:
 - Long-tail edge parity: `THROWS`/`RAISES` edges from throw statements (JS/TS/TSX). Verified end-to-end on the edge-parity fixture with RAISES resolving custom error classes. Out-of-scope edges: `OVERRIDE` (Go-only), `CONTAINS_PACKAGE` (never implemented in C), `WRITES` and `READS` (not proven original-overlap by the current C reference fixture).
 
+## Active In-Progress Plan: Discovery, Indexing Scope, and Query Semantics
+
+Known current-state evidence from the Zig implementation:
+- `src.discover.discoverFiles` loads `.gitignore` and `.cbmignore` only at the
+  repository root before recursing, so nested ignore-file semantics are not part
+  of the current contract.
+- `src.discover.shouldIgnorePath` is an ordered matcher over the loaded rules,
+  with no separate scope metadata explaining why a path was skipped.
+- `src.query_router.collectSearchCodeHits` falls back to
+  `discoverFiles(root_path, .{ .mode = .full })` when indexed-path candidate
+  search returns no hits, which means `search_code` can currently scan files
+  outside the indexed universe.
+- `src.mcp.handleGetGraphSchema` currently returns project status plus counts for
+  node labels, edge types, and languages, but not relationship patterns,
+  property inventories, or sample structures that explain query results.
+- `src.mcp.handleListProjects` returns all stored projects with counts and root
+  paths, but it does not currently explain stale, duplicate, or skipped scope.
+
+Phase 1 contract for this plan:
+- Treat root and nested ignore behavior, worktree skipping, and indexed-file
+  boundaries as explicit contract surfaces rather than incidental side effects.
+- Treat `search_code` returning hits from unindexed files as a correctness gap,
+  not a convenience fallback.
+- Treat schema and project-list payload shape as explanation surfaces that must
+  help users understand indexed scope, not just aggregate counts.
+
 ## Active In-Progress Plan: Parser Accuracy and Graph Fidelity
 
 Known current-state evidence from the Zig implementation:
