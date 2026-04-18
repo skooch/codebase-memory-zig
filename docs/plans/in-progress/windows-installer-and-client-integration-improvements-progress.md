@@ -104,7 +104,38 @@ Results:
 
 Remaining gap before this plan can close:
 
-- `scripts/run_cli_parity.sh` still needs a fixture-backed Windows-layout lane
-  instead of only the shared Codex/Claude temp-home contract
+- the default compare mode in `scripts/run_cli_parity.sh` is still limited to
+  the shared Codex/Claude contract even though `--zig-only` now has a
+  fixture-backed Windows-layout lane
 - `docs/installer-matrix.md` and `docs/port-comparison.md` should not change
   until that fixture-backed verification exists
+
+## Phase 2 Checkpoint: Fixture-Backed Windows CLI Lane
+
+Second implementation slice on 2026-04-18:
+
+- `scripts/run_cli_parity.sh`
+  - added a Windows-layout fixture lane for `--zig-only` and `--update-golden`
+  - seeds VS Code and Zed config files from
+    `testdata/agent-comparison/windows-paths/`
+  - runs `install --force` and `config set auto_index true` under
+    `CBM_CONFIG_PLATFORM=windows` with explicit `APPDATA` and `LOCALAPPDATA`
+  - snapshots a separate `windows_contract` alongside the existing
+    shared-agent contract
+- `testdata/interop/golden/cli-parity.json`
+  - now records the Windows-layout expectations:
+    - runtime config under `LOCALAPPDATA`
+    - VS Code, Zed, and KiloCode config writes under `APPDATA`
+
+Verification for this slice:
+
+```sh
+bash scripts/run_cli_parity.sh --update-golden
+bash scripts/run_cli_parity.sh --zig-only
+```
+
+Results:
+
+- refreshed the golden snapshot with the new `windows_contract`
+- `bash scripts/run_cli_parity.sh --zig-only` passed with `23` total checks
+  matching the golden snapshot

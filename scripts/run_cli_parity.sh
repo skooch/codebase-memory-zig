@@ -35,6 +35,7 @@ done
 
 REPORT_DIR="${POSITIONAL_ARGS[0]:-$ROOT_DIR/.interop_reports}"
 GOLDEN_DIR="$ROOT_DIR/testdata/interop/golden"
+WINDOWS_FIXTURE_DIR="$ROOT_DIR/testdata/agent-comparison/windows-paths"
 
 # C binary is only needed in compare mode
 C_BIN=""
@@ -58,7 +59,7 @@ fi
 
 mkdir -p "$REPORT_DIR"
 
-python3 - "$ZIG_BIN" "$C_BIN" "$REPORT_DIR" "$MODE" "$GOLDEN_DIR" <<'PY'
+python3 - "$ZIG_BIN" "$C_BIN" "$REPORT_DIR" "$MODE" "$GOLDEN_DIR" "$WINDOWS_FIXTURE_DIR" <<'PY'
 import hashlib
 import json
 import os
@@ -73,6 +74,7 @@ c_bin_arg = sys.argv[2]
 report_dir = Path(sys.argv[3])
 mode = sys.argv[4] if len(sys.argv) > 4 else "compare"
 golden_dir = Path(sys.argv[5]) if len(sys.argv) > 5 else None
+fixture_dir = Path(sys.argv[6]) if len(sys.argv) > 6 else None
 
 
 def contains_ci(text: str, needle: str) -> bool:
@@ -90,11 +92,77 @@ def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def run_cmd(argv: List[str], home: Path) -> subprocess.CompletedProcess:
+def run_cmd(
+    argv: List[str],
+    home: Path,
+    extra_env: Optional[Dict[str, str]] = None,
+    use_default_cache: bool = True,
+) -> subprocess.CompletedProcess:
     env = os.environ.copy()
     env["HOME"] = str(home)
-    env["CBM_CACHE_DIR"] = str(home / ".cache" / "codebase-memory-zig")
+    if use_default_cache:
+        env["CBM_CACHE_DIR"] = str(home / ".cache" / "codebase-memory-zig")
+    if extra_env:
+        env.update(extra_env)
     return subprocess.run(argv, text=True, capture_output=True, env=env, check=False)
+
+
+def seed_fixture(path: Path, fixture: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(fixture.read_text())
+
+
+def inspect_windows_layout(binary: Path, fixture_root: Path) -> Dict[str, Any]:
+    with tempfile.TemporaryDirectory(prefix="cbm-cli-windows-") as tmp:
+        root = Path(tmp)
+        home = root / "home"
+        home.mkdir(parents=True, exist_ok=True)
+        appdata = home / "AppData" / "Roaming"
+        localappdata = home / "AppData" / "Local"
+        appdata.mkdir(parents=True, exist_ok=True)
+        localappdata.mkdir(parents=True, exist_ok=True)
+
+        vscode_path = appdata / "Code" / "User" / "mcp.json"
+        zed_path = appdata / "Zed" / "settings.json"
+        kilocode_path = appdata / "Code" / "User" / "globalStorage" / "kilocode.kilo-code" / "settings" / "mcp_settings.json"
+        config_path = localappdata / "codebase-memory-zig" / "config.json"
+
+        seed_fixture(vscode_path, fixture_root / "mcp.json")
+        seed_fixture(zed_path, fixture_root / "settings.json")
+
+        env = {
+            "CBM_CONFIG_PLATFORM": "windows",
+            "APPDATA": str(appdata),
+            "LOCALAPPDATA": str(localappdata),
+        }
+
+        install = run_cmd([str(binary), "install", "-y", "--force"], home, env, use_default_cache=False)
+        config_set = run_cmd(
+            [str(binary), "config", "set", "auto_index", "true"],
+            home,
+            env,
+            use_default_cache=False,
+        )
+
+        return {
+            "install": {
+                "returncode": install.returncode,
+                "stdout": install.stdout.splitlines(),
+                "stderr": install.stderr.splitlines(),
+            },
+            "config_set": {
+                "returncode": config_set.returncode,
+                "stdout": config_set.stdout.splitlines(),
+                "stderr": config_set.stderr.splitlines(),
+            },
+            "windows_contract": {
+                "config_set_success": config_set.returncode == 0,
+                "config_uses_localappdata": config_path.exists(),
+                "windows_vscode_wrote_binary": str(binary) in file_text(vscode_path),
+                "windows_zed_wrote_binary": str(binary) in file_text(zed_path),
+                "windows_kilocode_wrote_binary": str(binary) in file_text(kilocode_path),
+            },
+        }
 
 
 def inspect_impl(label: str, binary: Path) -> dict:
@@ -166,6 +234,12 @@ def inspect_impl(label: str, binary: Path) -> dict:
             "uninstall_removed_claude_legacy_binary": str(binary) not in claude_legacy_after_uninstall,
         }
 
+        windows_result = (
+            inspect_windows_layout(binary, fixture_dir)
+            if label == "zig" and fixture_dir is not None and fixture_dir.exists()
+            else {"windows_contract": {}}
+        )
+
         return {
             "home": str(home),
             "install": {
@@ -189,6 +263,7 @@ def inspect_impl(label: str, binary: Path) -> dict:
                 "stderr": uninstall.stderr.splitlines(),
             },
             "shared_contract": shared_contract,
+            "windows_contract": windows_result["windows_contract"],
         }
 
 
@@ -200,7 +275,10 @@ def run_update_golden(zig_result: Dict[str, Any]) -> None:
     assert golden_dir is not None, "golden_dir required for update-golden mode"
     golden_dir.mkdir(parents=True, exist_ok=True)
     golden_path = golden_dir / GOLDEN_FILE
-    snapshot = {"shared_contract": zig_result["shared_contract"]}
+    snapshot = {
+        "shared_contract": zig_result["shared_contract"],
+        "windows_contract": zig_result.get("windows_contract", {}),
+    }
     golden_path.write_text(json.dumps(snapshot, indent=2, sort_keys=True) + "\n")
     print("updated: %s" % golden_path)
     print(json.dumps(snapshot, indent=2, sort_keys=True))
@@ -216,20 +294,30 @@ def run_zig_only(zig_result: Dict[str, Any]) -> None:
         raise SystemExit(1)
 
     golden = json.loads(golden_path.read_text())
-    golden_contract = golden.get("shared_contract", {})
-    current_contract = zig_result["shared_contract"]
-
-    compare_keys = sorted(set(list(golden_contract.keys()) + list(current_contract.keys())))
+    sections = {
+        "shared_contract": (
+            golden.get("shared_contract", {}),
+            zig_result["shared_contract"],
+        ),
+        "windows_contract": (
+            golden.get("windows_contract", {}),
+            zig_result.get("windows_contract", {}),
+        ),
+    }
+    compare_keys = []
     mismatches = []  # type: List[Dict[str, Any]]
-    for key in compare_keys:
-        golden_val = golden_contract.get(key)
-        current_val = current_contract.get(key)
-        if golden_val != current_val:
-            mismatches.append({
-                "key": key,
-                "golden": golden_val,
-                "current": current_val,
-            })
+    for section_name, (golden_contract, current_contract) in sections.items():
+        section_keys = sorted(set(list(golden_contract.keys()) + list(current_contract.keys())))
+        compare_keys.extend(["%s.%s" % (section_name, key) for key in section_keys])
+        for key in section_keys:
+            golden_val = golden_contract.get(key)
+            current_val = current_contract.get(key)
+            if golden_val != current_val:
+                mismatches.append({
+                    "key": "%s.%s" % (section_name, key),
+                    "golden": golden_val,
+                    "current": current_val,
+                })
 
     # Write report
     report = {
@@ -252,11 +340,16 @@ def run_zig_only(zig_result: Dict[str, Any]) -> None:
         "",
         "## Summary",
     ]
-    for key in compare_keys:
-        golden_val = golden_contract.get(key)
-        current_val = current_contract.get(key)
-        status = "match" if golden_val == current_val else "MISMATCH"
-        md_lines.append("- `%s`: %s (current=%s, golden=%s)" % (key, status, current_val, golden_val))
+    for section_name, (golden_contract, current_contract) in sections.items():
+        section_keys = sorted(set(list(golden_contract.keys()) + list(current_contract.keys())))
+        for key in section_keys:
+            golden_val = golden_contract.get(key)
+            current_val = current_contract.get(key)
+            status = "match" if golden_val == current_val else "MISMATCH"
+            md_lines.append(
+                "- `%s.%s`: %s (current=%s, golden=%s)"
+                % (section_name, key, status, current_val, golden_val)
+            )
     md_path = report_dir / "cli_parity_report.md"
     md_path.write_text("\n".join(md_lines) + "\n")
 

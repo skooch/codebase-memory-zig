@@ -18,5 +18,12 @@
     "update_dry_run_kept_files": true,
     "update_dry_run_mentions": true,
     "update_dry_run_success": true
+  },
+  "windows_contract": {
+    "config_set_success": true,
+    "config_uses_localappdata": true,
+    "windows_kilocode_wrote_binary": true,
+    "windows_vscode_wrote_binary": true,
+    "windows_zed_wrote_binary": true
   }
 }

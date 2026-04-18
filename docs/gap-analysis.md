@@ -121,8 +121,10 @@ Known current-state baseline before this slice completes:
   route through shared config-platform path helpers instead of deriving paths
   only from the host OS tag, which makes Windows-layout checks reproducible on
   a non-Windows host.
-- `scripts/run_cli_parity.sh` currently proves the shared Codex/Claude temp-home
-  contract, but it does not yet run fixture-backed Windows-layout checks.
+- `scripts/run_cli_parity.sh --zig-only` now seeds fixture-backed Windows
+  layouts under `APPDATA` / `LOCALAPPDATA` and verifies the Zig installer and
+  runtime-config paths there, but the default compare mode is still limited to
+  the shared Codex/Claude contract.
 
 ## Implemented Plan: Large-Repo Reliability and Crash Safety
 
