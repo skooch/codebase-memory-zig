@@ -556,6 +556,8 @@ fn parseImports(
     out: *std.ArrayList(UnresolvedImport),
 ) !void {
     switch (language) {
+        .go => try parseGoImports(allocator, line, importer_id, file_path, out),
+        .java => try parseJavaImports(allocator, line, importer_id, file_path, out),
         .python => try parsePythonImports(allocator, line, importer_id, file_path, out),
         .javascript, .typescript, .tsx => try parseJsImports(allocator, line, importer_id, file_path, out),
         .rust => try parseRustImports(allocator, line, importer_id, file_path, out),
@@ -620,6 +622,56 @@ fn parsePythonImports(
             });
         }
     }
+}
+
+fn parseGoImports(
+    allocator: std.mem.Allocator,
+    line: []const u8,
+    importer_id: i64,
+    file_path: []const u8,
+    out: *std.ArrayList(UnresolvedImport),
+) !void {
+    const trimmed = std.mem.trim(u8, line, " \t");
+    if (!std.mem.startsWith(u8, trimmed, "import ")) return;
+    var tail = std.mem.trim(u8, trimmed["import ".len ..], " \t");
+    if (tail.len == 0 or tail[0] == '(') return;
+
+    var alias: []const u8 = "";
+    if (tail[0] != '"' and tail[0] != '`') {
+        const first_space = std.mem.indexOfScalar(u8, tail, ' ') orelse return;
+        alias = std.mem.trim(u8, tail[0..first_space], " \t");
+        tail = std.mem.trim(u8, tail[first_space + 1 ..], " \t");
+    }
+
+    const spec = extractQuotedString(tail) orelse return;
+    try out.append(allocator, .{
+        .importer_id = importer_id,
+        .import_name = try allocator.dupe(u8, spec),
+        .binding_alias = try allocator.dupe(u8, alias),
+        .file_path = try allocator.dupe(u8, file_path),
+    });
+}
+
+fn parseJavaImports(
+    allocator: std.mem.Allocator,
+    line: []const u8,
+    importer_id: i64,
+    file_path: []const u8,
+    out: *std.ArrayList(UnresolvedImport),
+) !void {
+    const trimmed = std.mem.trim(u8, line, " \t");
+    if (!std.mem.startsWith(u8, trimmed, "import ")) return;
+    var tail = std.mem.trim(u8, trimmed["import ".len ..], " \t;");
+    if (std.mem.startsWith(u8, tail, "static ")) {
+        tail = std.mem.trim(u8, tail["static ".len ..], " \t;");
+    }
+    if (tail.len == 0) return;
+    try out.append(allocator, .{
+        .importer_id = importer_id,
+        .import_name = try allocator.dupe(u8, tail),
+        .binding_alias = try allocator.dupe(u8, lastImportSegment(tail)),
+        .file_path = try allocator.dupe(u8, file_path),
+    });
 }
 
 fn parseJsImports(
@@ -1468,6 +1520,8 @@ fn isConstructorCall(line: []const u8, ident_start: usize) bool {
 
 fn parseSymbol(language: discover.Language, line: []const u8) ?ParsedSymbol {
     return switch (language) {
+        .go => parseGoDefs(line),
+        .java => parseJavaDefs(line),
         .python => parsePythonDefs(line),
         .javascript, .typescript, .tsx => parseJsDefs(line),
         .rust => parseRustDefs(line),
@@ -1750,7 +1804,7 @@ fn parsePythonVariableName(line: []const u8) ?[]const u8 {
 
 fn supportsTreeSitterDefs(language: discover.Language) bool {
     return switch (language) {
-        .python, .javascript, .typescript, .tsx, .rust, .zig => true,
+        .go, .java, .python, .javascript, .typescript, .tsx, .rust, .zig => true,
         else => false,
     };
 }
@@ -1763,7 +1817,7 @@ fn estimateParsedSymbolEndLine(
 ) i32 {
     if (!isDeclarationLabel(symbol.label)) return start_line;
     return switch (language) {
-        .javascript, .typescript, .tsx, .rust, .zig => estimateBraceDelimitedEndLine(bytes, language, start_line),
+        .go, .java, .javascript, .typescript, .tsx, .rust, .zig => estimateBraceDelimitedEndLine(bytes, language, start_line),
         else => start_line,
     };
 }
@@ -1817,6 +1871,8 @@ fn collectDefinitionsWithTreeSitter(
     out: *std.ArrayList(TsDefinition),
 ) !void {
     const language_fn: *const fn () *const ts.Language = switch (language) {
+        .go => treeSitterLanguageGo,
+        .java => treeSitterLanguageJava,
         .python => treeSitterLanguagePython,
         .javascript => treeSitterLanguageJavascript,
         .typescript => treeSitterLanguageTypescript,
@@ -1878,6 +1934,12 @@ fn extractTsContainer(
     bytes: []const u8,
     node: ts.Node,
 ) !?TsContainer {
+    if (language == .go and std.mem.eql(u8, node.kind(), "method_declaration")) {
+        const receiver_node = node.childByFieldName("receiver") orelse return null;
+        const receiver_type = try extractGoReceiverType(allocator, bytes, receiver_node) orelse return null;
+        return .{ .label = "Class", .name = receiver_type };
+    }
+
     var current = node.parent();
     while (current) |ancestor| : (current = ancestor.parent()) {
         const label = tsNodeLabel(language, ancestor) orelse continue;
@@ -1891,6 +1953,27 @@ fn extractTsContainer(
 fn tsNodeLabel(language: discover.Language, node: ts.Node) ?[]const u8 {
     const kind = node.kind();
     return switch (language) {
+        .go => if (std.mem.eql(u8, kind, "function_declaration"))
+            "Function"
+        else if (std.mem.eql(u8, kind, "method_declaration"))
+            "Method"
+        else if (std.mem.eql(u8, kind, "type_spec"))
+            goTypeSpecLabel(node)
+        else
+            null,
+        .java => if (std.mem.eql(u8, kind, "class_declaration") or
+            std.mem.eql(u8, kind, "enum_declaration") or
+            std.mem.eql(u8, kind, "record_declaration"))
+            "Class"
+        else if (std.mem.eql(u8, kind, "interface_declaration") or
+            std.mem.eql(u8, kind, "annotation_type_declaration"))
+            "Interface"
+        else if (std.mem.eql(u8, kind, "method_declaration") or
+            std.mem.eql(u8, kind, "constructor_declaration") or
+            std.mem.eql(u8, kind, "compact_constructor_declaration"))
+            "Method"
+        else
+            null,
         .python => if (std.mem.eql(u8, kind, "function_definition"))
             if (nodeHasAncestorKind(node, "class_definition")) "Method" else "Function"
         else if (std.mem.eql(u8, kind, "class_definition"))
@@ -2015,6 +2098,11 @@ fn extractTsName(
     bytes: []const u8,
     node: ts.Node,
 ) !?[]const u8 {
+    if (language == .go and std.mem.eql(u8, node.kind(), "type_spec")) {
+        const name_node = node.childByFieldName("name") orelse return null;
+        return try copyTsNodeText(allocator, bytes, name_node);
+    }
+
     if (language == .javascript or language == .typescript or language == .tsx) {
         if (std.mem.eql(u8, node.kind(), "variable_declarator")) {
             const name_node = node.childByFieldName("name") orelse return null;
@@ -2131,6 +2219,39 @@ fn extractRustImplFromText(bytes: []const u8) ?[]const u8 {
     return parts.target_name;
 }
 
+fn goTypeSpecLabel(node: ts.Node) ?[]const u8 {
+    const type_node = node.childByFieldName("type") orelse return null;
+    const type_kind = type_node.kind();
+    if (std.mem.eql(u8, type_kind, "struct_type")) return "Class";
+    if (std.mem.eql(u8, type_kind, "interface_type")) return "Interface";
+    return null;
+}
+
+fn extractGoReceiverType(
+    allocator: std.mem.Allocator,
+    bytes: []const u8,
+    receiver_node: ts.Node,
+) !?[]const u8 {
+    const receiver_text = (try copyTsNodeText(allocator, bytes, receiver_node)) orelse return null;
+    defer allocator.free(receiver_text);
+    return try allocator.dupe(u8, lastIdentifier(receiver_text) orelse return null);
+}
+
+fn lastIdentifier(text: []const u8) ?[]const u8 {
+    var end = text.len;
+    while (end > 0) {
+        const ch = text[end - 1];
+        if (isIdentifierChar(ch)) break;
+        end -= 1;
+    }
+    if (end == 0) return null;
+
+    var start = end - 1;
+    while (start > 0 and isIdentifierChar(text[start - 1])) : (start -= 1) {}
+    if (!isIdentifierStart(text[start])) return null;
+    return text[start..end];
+}
+
 fn tsSymbolLessThan(_: void, lhs: TsSymbol, rhs: TsSymbol) bool {
     if (lhs.start_line < rhs.start_line) return true;
     if (lhs.start_line > rhs.start_line) return false;
@@ -2223,6 +2344,16 @@ extern "c" fn tree_sitter_typescript() *const ts.Language;
 extern "c" fn tree_sitter_tsx() *const ts.Language;
 extern "c" fn tree_sitter_rust() *const ts.Language;
 extern "c" fn tree_sitter_zig() *const ts.Language;
+extern "c" fn tree_sitter_go() *const ts.Language;
+extern "c" fn tree_sitter_java() *const ts.Language;
+
+fn treeSitterLanguageGo() *const ts.Language {
+    return tree_sitter_go();
+}
+
+fn treeSitterLanguageJava() *const ts.Language {
+    return tree_sitter_java();
+}
 
 fn treeSitterLanguagePython() *const ts.Language {
     return tree_sitter_python();
@@ -2342,6 +2473,77 @@ fn parseZigDefs(line: []const u8) ?ParsedSymbol {
         return .{ .label = "Test", .name = test_name };
     }
     return null;
+}
+
+fn parseGoDefs(line: []const u8) ?ParsedSymbol {
+    const trimmed = std.mem.trim(u8, line, " \t");
+    if (extractPrefixName(trimmed, "func ")) |name| {
+        return .{ .label = "Function", .name = name };
+    }
+    if (std.mem.startsWith(u8, trimmed, "func (")) {
+        const close = std.mem.indexOfScalar(u8, trimmed, ')') orelse return null;
+        if (extractPrefixName(trimmed[close + 1 ..], "")) |name| {
+            return .{ .label = "Method", .name = name };
+        }
+    }
+    if (std.mem.startsWith(u8, trimmed, "type ")) {
+        const rest = std.mem.trim(u8, trimmed["type ".len ..], " \t");
+        if (std.mem.indexOf(u8, rest, " struct")) |struct_pos| {
+            const name = std.mem.trim(u8, rest[0..struct_pos], " \t");
+            if (name.len > 0) return .{ .label = "Class", .name = name };
+        }
+        if (std.mem.indexOf(u8, rest, " interface")) |interface_pos| {
+            const name = std.mem.trim(u8, rest[0..interface_pos], " \t");
+            if (name.len > 0) return .{ .label = "Interface", .name = name };
+        }
+    }
+    return null;
+}
+
+fn parseJavaDefs(line: []const u8) ?ParsedSymbol {
+    if (parseJavaTypeDef(line)) |symbol| return symbol;
+    if (parseJavaMethodDef(line)) |name| {
+        return .{ .label = "Method", .name = name };
+    }
+    return null;
+}
+
+fn parseJavaTypeDef(line: []const u8) ?ParsedSymbol {
+    const trimmed = std.mem.trim(u8, line, " \t");
+    const labels = [_]struct { keyword: []const u8, label: []const u8 }{
+        .{ .keyword = " class ", .label = "Class" },
+        .{ .keyword = " interface ", .label = "Interface" },
+        .{ .keyword = " enum ", .label = "Class" },
+        .{ .keyword = " record ", .label = "Class" },
+    };
+    for (labels) |entry| {
+        if (std.mem.indexOf(u8, trimmed, entry.keyword)) |idx| {
+            const rest = trimmed[idx + entry.keyword.len ..];
+            if (firstIdentifier(rest)) |name| {
+                return .{ .label = entry.label, .name = name };
+            }
+        }
+    }
+    return null;
+}
+
+fn parseJavaMethodDef(line: []const u8) ?[]const u8 {
+    const trimmed = std.mem.trim(u8, line, " \t");
+    if (trimmed.len == 0) return null;
+    if (std.mem.indexOfScalar(u8, trimmed, '(') == null or std.mem.indexOfScalar(u8, trimmed, ')') == null) return null;
+    if (std.mem.indexOfScalar(u8, trimmed, '{') == null and !std.mem.endsWith(u8, trimmed, ";")) return null;
+    const control_prefixes = [_][]const u8{ "if ", "for ", "while ", "switch ", "catch ", "return ", "new " };
+    for (control_prefixes) |prefix| {
+        if (std.mem.startsWith(u8, trimmed, prefix)) return null;
+    }
+    const paren = std.mem.indexOfScalar(u8, trimmed, '(') orelse return null;
+    if (paren == 0) return null;
+    var end = paren;
+    while (end > 0 and std.ascii.isWhitespace(trimmed[end - 1])) : (end -= 1) {}
+    var start = end;
+    while (start > 0 and isIdentifierChar(trimmed[start - 1])) : (start -= 1) {}
+    if (start == end or !isIdentifierStart(trimmed[start])) return null;
+    return trimmed[start..end];
 }
 
 fn parseYamlDefs(line: []const u8) ?ParsedSymbol {
@@ -2524,6 +2726,7 @@ fn normalizeReferenceName(text: []const u8) ?[]const u8 {
 fn isImportLine(language: discover.Language, line: []const u8) bool {
     const trimmed = std.mem.trim(u8, line, " \t");
     return switch (language) {
+        .go, .java => std.mem.startsWith(u8, trimmed, "import "),
         .python => std.mem.startsWith(u8, trimmed, "import ") or std.mem.startsWith(u8, trimmed, "from "),
         .javascript, .typescript, .tsx => std.mem.startsWith(u8, trimmed, "import ") or std.mem.indexOf(u8, trimmed, "require(") != null,
         .rust => std.mem.startsWith(u8, trimmed, "use ") or std.mem.startsWith(u8, trimmed, "pub use "),
@@ -3154,6 +3357,10 @@ pub fn freeFileExtraction(allocator: std.mem.Allocator, extraction: FileExtracti
 test "extractor parses definitions for core languages" {
     try std.testing.expect(parseSymbol(.python, "def hello(x):") != null);
     try std.testing.expect(parseSymbol(.python, "class A(object):") != null);
+    try std.testing.expect(parseSymbol(.go, "func greet(name string) string {") != null);
+    try std.testing.expect(parseSymbol(.go, "type Worker struct {") != null);
+    try std.testing.expect(parseSymbol(.java, "public class Worker {") != null);
+    try std.testing.expect(parseSymbol(.java, "public String run() {") != null);
     try std.testing.expect(parseSymbol(.zig, "fn main() !void") != null);
     try std.testing.expect(parseSymbol(.rust, "pub async fn load()") != null);
     try std.testing.expect(parseSymbol(.javascript, "export async function calc(a,b)") != null);
@@ -3206,6 +3413,28 @@ test "extractor preserves import aliases across language forms" {
     try std.testing.expectEqualStrings("renamed", imports.items[0].binding_alias);
     try std.testing.expectEqualStrings("crate::util::other", imports.items[1].import_name);
     try std.testing.expectEqualStrings("other", imports.items[1].binding_alias);
+    for (imports.items) |imp| {
+        std.testing.allocator.free(imp.import_name);
+        std.testing.allocator.free(imp.binding_alias);
+        std.testing.allocator.free(imp.file_path);
+    }
+    imports.clearRetainingCapacity();
+
+    try parseGoImports(std.testing.allocator, "import alias \"example.com/tools/runtime\"", 1, "main.go", &imports);
+    try std.testing.expectEqual(@as(usize, 1), imports.items.len);
+    try std.testing.expectEqualStrings("example.com/tools/runtime", imports.items[0].import_name);
+    try std.testing.expectEqualStrings("alias", imports.items[0].binding_alias);
+    for (imports.items) |imp| {
+        std.testing.allocator.free(imp.import_name);
+        std.testing.allocator.free(imp.binding_alias);
+        std.testing.allocator.free(imp.file_path);
+    }
+    imports.clearRetainingCapacity();
+
+    try parseJavaImports(std.testing.allocator, "import java.util.List;", 1, "Main.java", &imports);
+    try std.testing.expectEqual(@as(usize, 1), imports.items.len);
+    try std.testing.expectEqualStrings("java.util.List", imports.items[0].import_name);
+    try std.testing.expectEqualStrings("List", imports.items[0].binding_alias);
 }
 
 test "tree-sitter extracts python definitions with labels and line numbers" {
@@ -3409,6 +3638,80 @@ test "tree-sitter extracts rust definitions with labels and line numbers" {
     try std.testing.expectEqual(@as(i32, 16), definitionEndLine(defs.items, "Method", "run", 16).?);
 }
 
+test "tree-sitter extracts go definitions with labels and method ownership" {
+    var defs = std.ArrayList(TsDefinition).empty;
+    defer freePendingTsDefinitions(std.testing.allocator, &defs);
+
+    try collectDefinitionsWithTreeSitter(
+        std.testing.allocator,
+        \\package main
+        \\
+        \\type Runner interface {
+        \\    Run() string
+        \\}
+        \\
+        \\type Worker struct {
+        \\    Mode string
+        \\}
+        \\
+        \\func (w *Worker) Run() string {
+        \\    return w.Mode
+        \\}
+        \\
+        \\func boot() string {
+        \\    return (&Worker{Mode: "batch"}).Run()
+        \\}
+        \\
+    ,
+        .go,
+        &defs,
+    );
+
+    try std.testing.expect(definitionPresent(defs.items, "Interface", "Runner", 3));
+    try std.testing.expect(definitionPresent(defs.items, "Class", "Worker", 7));
+    try std.testing.expect(definitionWithContainerPresent(defs.items, "Method", "Run", "Worker", 11));
+    try std.testing.expect(definitionPresent(defs.items, "Function", "boot", 15));
+}
+
+test "tree-sitter extracts java definitions with labels and method ownership" {
+    var defs = std.ArrayList(TsDefinition).empty;
+    defer freePendingTsDefinitions(std.testing.allocator, &defs);
+
+    try collectDefinitionsWithTreeSitter(
+        std.testing.allocator,
+        \\package demo;
+        \\
+        \\interface Runner {
+        \\    String run();
+        \\}
+        \\
+        \\class Worker implements Runner {
+        \\    Worker() {}
+        \\
+        \\    public String run() {
+        \\        return "ok";
+        \\    }
+        \\}
+        \\
+        \\public class Main {
+        \\    static String boot() {
+        \\        return new Worker().run();
+        \\    }
+        \\}
+        \\
+    ,
+        .java,
+        &defs,
+    );
+
+    try std.testing.expect(definitionPresent(defs.items, "Interface", "Runner", 3));
+    try std.testing.expect(definitionPresent(defs.items, "Class", "Worker", 7));
+    try std.testing.expect(definitionWithContainerPresent(defs.items, "Method", "Worker", "Worker", 8));
+    try std.testing.expect(definitionWithContainerPresent(defs.items, "Method", "run", "Worker", 10));
+    try std.testing.expect(definitionPresent(defs.items, "Class", "Main", 15));
+    try std.testing.expect(definitionWithContainerPresent(defs.items, "Method", "boot", "Main", 16));
+}
+
 test "tree-sitter tracks rust multiline body end lines" {
     var defs = std.ArrayList(TsDefinition).empty;
     defer freePendingTsDefinitions(std.testing.allocator, &defs);
@@ -3552,6 +3855,23 @@ fn definitionPresent(
         if (def.start_line != expected_line) continue;
         if (!std.mem.eql(u8, def.label, expected_label)) continue;
         if (!std.mem.eql(u8, def.name, expected_name)) continue;
+        return true;
+    }
+    return false;
+}
+
+fn definitionWithContainerPresent(
+    defs: []const TsDefinition,
+    expected_label: []const u8,
+    expected_name: []const u8,
+    expected_container: []const u8,
+    expected_line: i32,
+) bool {
+    for (defs) |def| {
+        if (def.start_line != expected_line) continue;
+        if (!std.mem.eql(u8, def.label, expected_label)) continue;
+        if (!std.mem.eql(u8, def.name, expected_name)) continue;
+        if (!std.mem.eql(u8, def.container_name, expected_container)) continue;
         return true;
     }
     return false;

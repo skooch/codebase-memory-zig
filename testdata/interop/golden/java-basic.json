@@ -1,0 +1,148 @@
+{
+  "delete_project": [],
+  "detect_changes_count": 0,
+  "fixture_id": "java-basic",
+  "get_architecture": [],
+  "get_code_snippet": [],
+  "get_graph_schema": [],
+  "index_repository": {
+    "edges_actual": 20,
+    "edges_min": 4,
+    "nodes_actual": 13,
+    "nodes_min": 7
+  },
+  "index_status": [],
+  "list_projects": [
+    "java-basic"
+  ],
+  "manage_adr": [],
+  "query_graph": [
+    {
+      "columns": [
+        "a.name",
+        "b.name"
+      ],
+      "rows": [
+        [
+          "Main",
+          "boot"
+        ],
+        [
+          "Main",
+          "main"
+        ],
+        [
+          "Worker",
+          "Worker"
+        ],
+        [
+          "Worker",
+          "helper"
+        ],
+        [
+          "Worker",
+          "run"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "a.name",
+        "b.name"
+      ],
+      "rows": [
+        [
+          "run",
+          "helper"
+        ]
+      ]
+    }
+  ],
+  "search_code": [],
+  "search_graph": [
+    [
+      {
+        "file_path": "Main.java",
+        "label": "Class",
+        "name": "Main",
+        "qualified_name": "java-basic:Main.java:java:symbol:java:Main"
+      },
+      {
+        "file_path": "Main.java",
+        "label": "Class",
+        "name": "Worker",
+        "qualified_name": "java-basic:Main.java:java:symbol:java:Worker"
+      }
+    ],
+    [
+      {
+        "file_path": "Main.java",
+        "label": "Interface",
+        "name": "Runner",
+        "qualified_name": "java-basic:Main.java:java:symbol:java:Runner"
+      }
+    ],
+    [
+      {
+        "file_path": "Main.java",
+        "label": "Method",
+        "name": "Worker",
+        "qualified_name": "java-basic:Main.java:java:symbol:java:Worker.Worker"
+      },
+      {
+        "file_path": "Main.java",
+        "label": "Method",
+        "name": "boot",
+        "qualified_name": "java-basic:Main.java:java:symbol:java:Main.boot"
+      },
+      {
+        "file_path": "Main.java",
+        "label": "Method",
+        "name": "helper",
+        "qualified_name": "java-basic:Main.java:java:symbol:java:Worker.helper"
+      },
+      {
+        "file_path": "Main.java",
+        "label": "Method",
+        "name": "main",
+        "qualified_name": "java-basic:Main.java:java:symbol:java:Main.main"
+      },
+      {
+        "file_path": "Main.java",
+        "label": "Method",
+        "name": "println",
+        "qualified_name": "java-basic:Main.java:java:symbol:java:println"
+      },
+      {
+        "file_path": "Main.java",
+        "label": "Method",
+        "name": "run",
+        "qualified_name": "java-basic:Main.java:java:symbol:java:Runner.run"
+      },
+      {
+        "file_path": "Main.java",
+        "label": "Method",
+        "name": "run",
+        "qualified_name": "java-basic:Main.java:java:symbol:java:Worker.run"
+      }
+    ]
+  ],
+  "tools_list": [
+    "delete_project",
+    "detect_changes",
+    "get_architecture",
+    "get_code_snippet",
+    "get_graph_schema",
+    "index_repository",
+    "index_status",
+    "list_projects",
+    "manage_adr",
+    "query_graph",
+    "search_code",
+    "search_graph",
+    "trace_call_path"
+  ],
+  "trace_call_path": [
+    []
+  ]
+}

@@ -23,6 +23,8 @@ fi
 
 # Pinned versions - update these when upgrading grammars
 declare -A GRAMMAR_REPOS=(
+    [go]="https://github.com/tree-sitter/tree-sitter-go"
+    [java]="https://github.com/tree-sitter/tree-sitter-java"
     [rust]="https://github.com/tree-sitter/tree-sitter-rust"
     [python]="https://github.com/tree-sitter/tree-sitter-python"
     [javascript]="https://github.com/tree-sitter/tree-sitter-javascript"
@@ -32,6 +34,8 @@ declare -A GRAMMAR_REPOS=(
 )
 
 declare -A GRAMMAR_TAGS=(
+    [go]="v0.25.0"
+    [java]="v0.23.5"
     [rust]="v0.24.2"
     [python]="v0.25.0"
     [javascript]="v0.25.0"
@@ -96,7 +100,7 @@ if [[ "$FORCE" == true ]]; then
 fi
 
 # typescript and tsx share a repo but are cloned separately for simplicity
-for lang in rust python javascript typescript tsx zig; do
+for lang in go java rust python javascript typescript tsx zig; do
     fetch_grammar "$lang"
 done
 

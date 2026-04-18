@@ -6,9 +6,9 @@
   "get_code_snippet": [],
   "get_graph_schema": [],
   "index_repository": {
-    "edges_actual": 2,
+    "edges_actual": 14,
     "edges_min": 2,
-    "nodes_actual": 3,
+    "nodes_actual": 9,
     "nodes_min": 3
   },
   "index_status": [],
@@ -22,21 +22,64 @@
         "a.name",
         "b.name"
       ],
-      "rows": []
+      "rows": [
+        [
+          "boot",
+          "NewWorker"
+        ]
+      ]
     },
     {
       "columns": [
         "a.name",
         "b.name"
       ],
-      "rows": []
+      "rows": [
+        [
+          "Worker",
+          "Run"
+        ]
+      ]
     }
   ],
   "search_code": [],
   "search_graph": [
-    [],
-    [],
-    []
+    [
+      {
+        "file_path": "main.go",
+        "label": "Class",
+        "name": "Config",
+        "qualified_name": "go-parity:main.go:go:symbol:go:Config"
+      },
+      {
+        "file_path": "main.go",
+        "label": "Class",
+        "name": "Worker",
+        "qualified_name": "go-parity:main.go:go:symbol:go:Worker"
+      }
+    ],
+    [
+      {
+        "file_path": "main.go",
+        "label": "Interface",
+        "name": "Runner",
+        "qualified_name": "go-parity:main.go:go:symbol:go:Runner"
+      }
+    ],
+    [
+      {
+        "file_path": "main.go",
+        "label": "Function",
+        "name": "NewWorker",
+        "qualified_name": "go-parity:main.go:go:symbol:go:NewWorker"
+      },
+      {
+        "file_path": "main.go",
+        "label": "Function",
+        "name": "boot",
+        "qualified_name": "go-parity:main.go:go:symbol:go:boot"
+      }
+    ]
   ],
   "tools_list": [
     "delete_project",
@@ -54,6 +97,32 @@
     "trace_call_path"
   ],
   "trace_call_path": [
-    []
+    [
+      [
+        "NewWorker",
+        "Config",
+        "USAGE"
+      ],
+      [
+        "NewWorker",
+        "Worker",
+        "USAGE"
+      ],
+      [
+        "Worker",
+        "Run",
+        "DEFINES_METHOD"
+      ],
+      [
+        "boot",
+        "NewWorker",
+        "CALLS"
+      ],
+      [
+        "boot",
+        "Run",
+        "CALLS"
+      ]
+    ]
   ]
 }

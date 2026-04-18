@@ -1743,6 +1743,67 @@
       }
     },
     {
+      "id": "java-basic",
+      "path": "testdata/interop/language-expansion/java-basic",
+      "project": "java-basic",
+      "language": "java",
+      "scope_tools": ["index_repository", "search_graph", "query_graph", "trace_call_path", "list_projects"],
+      "assertions": {
+        "index_repository": {
+          "expect": { "nodes_min": 7, "edges_min": 4 }
+        },
+        "search_graph": [
+          {
+            "args": { "project": "java-basic", "label": "Class" },
+            "expect": { "required_names": ["Worker", "Main"] }
+          },
+          {
+            "args": { "project": "java-basic", "label": "Interface" },
+            "expect": { "required_names": ["Runner"] }
+          },
+          {
+            "args": { "project": "java-basic", "label": "Method" },
+            "expect": { "required_names": ["Worker", "run", "helper", "boot", "main"] }
+          }
+        ],
+        "query_graph": [
+          {
+            "args": {
+              "query": "MATCH (a:Class)-[:DEFINES_METHOD]->(b:Method) RETURN a.name, b.name ORDER BY a.name ASC, b.name ASC",
+              "project": "java-basic",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["a.name", "b.name"],
+              "required_rows_min": 3
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a:Method)-[:CALLS]->(b:Method) RETURN a.name, b.name ORDER BY a.name ASC, b.name ASC",
+              "project": "java-basic",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["a.name", "b.name"],
+              "required_rows_min": 1
+            }
+          }
+        ],
+        "trace_call_path": [{
+          "args": {
+            "function_name": "boot",
+            "project": "java-basic",
+            "direction": "outbound",
+            "max_depth": 3
+          },
+          "expect": {
+            "min_edges": 1
+          }
+        }]
+      }
+    },
+    {
       "id": "zig-parity",
       "path": "testdata/interop/zig-parity",
       "project": "zig-parity",

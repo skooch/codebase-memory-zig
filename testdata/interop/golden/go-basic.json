@@ -6,9 +6,9 @@
   "get_code_snippet": [],
   "get_graph_schema": [],
   "index_repository": {
-    "edges_actual": 2,
+    "edges_actual": 5,
     "edges_min": 1,
-    "nodes_actual": 3,
+    "nodes_actual": 5,
     "nodes_min": 3
   },
   "index_status": [],
@@ -19,7 +19,20 @@
   "query_graph": [],
   "search_code": [],
   "search_graph": [
-    []
+    [
+      {
+        "file_path": "main.go",
+        "label": "Function",
+        "name": "greet",
+        "qualified_name": "go-basic:main.go:go:symbol:go:greet"
+      },
+      {
+        "file_path": "main.go",
+        "label": "Function",
+        "name": "run",
+        "qualified_name": "go-basic:main.go:go:symbol:go:run"
+      }
+    ]
   ],
   "tools_list": [
     "delete_project",
