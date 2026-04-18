@@ -180,22 +180,40 @@ def inspect_operational_controls(binary: Path) -> Dict[str, Any]:
         mcp_only_claude_config = mcp_only_home / ".claude" / ".mcp.json"
         mcp_only_codex_instructions = mcp_only_home / ".codex" / "AGENTS.md"
         mcp_only_claude_settings = mcp_only_home / ".claude" / "settings.json"
+        config_default_home = home / "config-defaults"
+        (config_default_home / ".codex").mkdir(parents=True, exist_ok=True)
+        (config_default_home / ".claude").mkdir(parents=True, exist_ok=True)
+        (config_default_home / ".gemini").mkdir(parents=True, exist_ok=True)
+        config_default_gemini = config_default_home / ".gemini" / "settings.json"
+        config_default_codex_instructions = config_default_home / ".codex" / "AGENTS.md"
 
         set_idle = run_cmd([str(binary), "config", "set", "idle_store_timeout_ms", "1234"], home)
         get_idle = run_cmd([str(binary), "config", "get", "idle_store_timeout_ms"], home)
         set_update_disable = run_cmd([str(binary), "config", "set", "update_check_disable", "true"], home)
         get_update_disable = run_cmd([str(binary), "config", "get", "update_check_disable"], home)
+        set_install_scope = run_cmd([str(binary), "config", "set", "install_scope", "detected"], home)
+        get_install_scope = run_cmd([str(binary), "config", "get", "install_scope"], home)
+        set_install_extras = run_cmd([str(binary), "config", "set", "install_extras", "false"], home)
+        get_install_extras = run_cmd([str(binary), "config", "get", "install_extras"], home)
         config_list = run_cmd([str(binary), "config", "list"], home)
         reset_idle = run_cmd([str(binary), "config", "reset", "idle_store_timeout_ms"], home)
         idle_after_reset = run_cmd([str(binary), "config", "get", "idle_store_timeout_ms"], home)
         reset_update_disable = run_cmd([str(binary), "config", "reset", "update_check_disable"], home)
         update_disable_after_reset = run_cmd([str(binary), "config", "get", "update_check_disable"], home)
+        reset_install_scope = run_cmd([str(binary), "config", "reset", "install_scope"], home)
+        install_scope_after_reset = run_cmd([str(binary), "config", "get", "install_scope"], home)
+        reset_install_extras = run_cmd([str(binary), "config", "reset", "install_extras"], home)
+        install_extras_after_reset = run_cmd([str(binary), "config", "get", "install_extras"], home)
         install_shipped = run_cmd([str(binary), "install", "-y", "--force"], home)
         gemini_after_shipped_exists = gemini_settings.exists()
         install_detected = run_cmd([str(binary), "install", "-y", "--force", "--scope", "detected"], home)
         install_mcp_only = run_cmd([str(binary), "install", "-y", "--force", "--mcp-only"], mcp_only_home)
+        run_cmd([str(binary), "config", "set", "install_scope", "detected"], config_default_home)
+        run_cmd([str(binary), "config", "set", "install_extras", "false"], config_default_home)
+        install_from_config_defaults = run_cmd([str(binary), "install", "-y", "--force"], config_default_home)
 
         gemini_after_detected = file_text(gemini_settings)
+        config_default_gemini_text = file_text(config_default_gemini)
 
         return {
             "operational_contract": {
@@ -203,10 +221,18 @@ def inspect_operational_controls(binary: Path) -> Dict[str, Any]:
                 "idle_timeout_get_matches": get_idle.stdout.strip() == "1234",
                 "update_check_disable_set_success": set_update_disable.returncode == 0,
                 "update_check_disable_get_matches": get_update_disable.stdout.strip() == "true",
+                "install_scope_set_success": set_install_scope.returncode == 0,
+                "install_scope_get_matches": get_install_scope.stdout.strip() == "detected",
+                "install_extras_set_success": set_install_extras.returncode == 0,
+                "install_extras_get_matches": get_install_extras.stdout.strip() == "false",
                 "config_list_mentions_idle_timeout": contains_ci(config_list.stdout, "idle_store_timeout_ms = 1234"),
                 "config_list_mentions_update_check_disable": contains_ci(config_list.stdout, "update_check_disable = true"),
+                "config_list_mentions_install_scope": contains_ci(config_list.stdout, "install_scope = detected"),
+                "config_list_mentions_install_extras": contains_ci(config_list.stdout, "install_extras = false"),
                 "idle_timeout_reset_restores_default": idle_after_reset.stdout.strip() == "60000",
                 "update_check_disable_reset_restores_default": update_disable_after_reset.stdout.strip() == "false",
+                "install_scope_reset_restores_default": install_scope_after_reset.stdout.strip() == "shipped",
+                "install_extras_reset_restores_default": install_extras_after_reset.stdout.strip() == "true",
                 "default_scope_mentions_shipped": contains_ci(install_shipped.stdout, "Scope: shipped"),
                 "default_scope_skips_gemini": install_shipped.returncode == 0 and not gemini_after_shipped_exists,
                 "default_scope_writes_codex": str(binary) in file_text(codex_config),
@@ -218,6 +244,10 @@ def inspect_operational_controls(binary: Path) -> Dict[str, Any]:
                 "mcp_only_writes_claude_config": install_mcp_only.returncode == 0 and str(binary) in file_text(mcp_only_claude_config),
                 "mcp_only_skips_codex_instructions": not mcp_only_codex_instructions.exists(),
                 "mcp_only_skips_claude_hooks": not mcp_only_claude_settings.exists(),
+                "config_defaults_drive_scope": contains_ci(install_from_config_defaults.stdout, "Scope: detected"),
+                "config_defaults_drive_extras": contains_ci(install_from_config_defaults.stdout, "Extras: mcp-only"),
+                "config_defaults_write_gemini": install_from_config_defaults.returncode == 0 and str(binary) in config_default_gemini_text,
+                "config_defaults_skip_codex_instructions": not config_default_codex_instructions.exists(),
             },
         }
 

@@ -15,8 +15,10 @@ their defaults, and the verification path backing each claim.
 | `LOCALAPPDATA` / `XDG_CACHE_HOME` | env var | platform fallback | selected by config platform when `CBM_CACHE_DIR` is unset | `zig build test`, `bash scripts/run_cli_parity.sh --zig-only` |
 | `APPDATA` / `XDG_CONFIG_HOME` | env var | platform fallback | selected by config platform for roaming config roots | `bash scripts/run_cli_parity.sh --zig-only` |
 | `cbm cli --progress` | CLI flag | off | explicit flag only | `zig build`, `bash scripts/run_cli_parity.sh` |
-| `install` / `update` / `uninstall --scope` | CLI flag | `shipped` | explicit `--scope detected` broadens agent handling beyond the shipped surface | `zig build test`, `bash scripts/run_cli_parity.sh --zig-only` |
-| `install` / `update` / `uninstall --mcp-only` | CLI flag | extras managed | explicit `--mcp-only` keeps MCP entries while skipping instructions, skills, and hooks | `zig build test`, `bash scripts/run_cli_parity.sh --zig-only` |
+| `install_scope` | persisted config | `shipped` | config default for install/update/uninstall scope unless `--scope` is passed | `zig build test`, `bash scripts/run_cli_parity.sh --zig-only` |
+| `install_extras` | persisted config | `true` | config default for install/update/uninstall extras unless `--mcp-only` is passed | `zig build test`, `bash scripts/run_cli_parity.sh --zig-only` |
+| `install` / `update` / `uninstall --scope` | CLI flag | config default | explicit `--scope detected` broadens agent handling beyond the shipped surface | `zig build test`, `bash scripts/run_cli_parity.sh --zig-only` |
+| `install` / `update` / `uninstall --mcp-only` | CLI flag | config default | explicit `--mcp-only` keeps MCP entries while skipping instructions, skills, and hooks | `zig build test`, `bash scripts/run_cli_parity.sh --zig-only` |
 | `-y`, `-n`, `--dry-run`, `--force` | CLI flags | ask / off | explicit flag only | `bash scripts/run_cli_parity.sh` |
 
 Known intentional omissions in the current branch:

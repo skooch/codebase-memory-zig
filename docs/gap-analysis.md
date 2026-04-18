@@ -122,6 +122,8 @@ Current control-surface inventory from the Zig implementation:
 - persisted runtime controls added in this worktree
   - `idle_store_timeout_ms`
   - `update_check_disable`
+  - `install_scope`
+  - `install_extras`
 
 Known gaps this plan is targeting:
 
@@ -151,6 +153,10 @@ Phase 1 evidence:
   - default CLI mode manages MCP entries plus extras
   - `--mcp-only` keeps MCP entry changes while skipping instructions, skills,
     and hooks
+- the current branch now lets install defaults live in persisted config:
+  - `install_scope`
+  - `install_extras`
+  - CLI flags still override those defaults when supplied
 - the progress log, fixture placeholder, and current configuration matrix now
   live at
   [operational-controls-and-configurability-feature-cluster-progress.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/operational-controls-and-configurability-feature-cluster-progress.md)

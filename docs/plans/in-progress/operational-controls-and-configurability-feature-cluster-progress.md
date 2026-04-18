@@ -272,3 +272,52 @@ Remaining Phase 2 scope after this checkpoint:
 - hook behavior is now operator-controlled at install/update/uninstall time,
   but the repo still does not expose a broader persisted policy layer for those
   extras
+
+## Phase 2 Checkpoint: Persisted Install Defaults
+
+Fourth Phase 2 code slice on 2026-04-19:
+
+- `src/cli.zig`
+  - extended persisted config with:
+    - `install_scope`
+    - `install_extras`
+  - round-trip config coverage now proves both install defaults persist and
+    reload correctly
+- `src/main.zig`
+  - install/update/uninstall now use persisted config defaults when the user
+    does not pass `--scope` or `--mcp-only`
+  - CLI flags still take precedence over config values
+  - `cbm config list|get|set|reset` now manages the new install-default keys
+- `scripts/run_cli_parity.sh`
+  - now verifies:
+    - `config set|get|list|reset install_scope`
+    - `config set|get|list|reset install_extras`
+    - install behavior driven by config defaults without repeating CLI flags
+
+Verification for this slice:
+
+```sh
+zig build
+zig build test
+bash scripts/run_cli_parity.sh
+bash scripts/run_cli_parity.sh --update-golden
+bash scripts/run_cli_parity.sh --zig-only
+```
+
+Results:
+
+- `zig build` passed
+- `zig build test` passed
+- `bash scripts/run_cli_parity.sh` passed with zero Zig/C shared-contract
+  mismatches
+- `bash scripts/run_cli_parity.sh --zig-only` passed with `54` total checks
+  matching the golden snapshot
+
+Remaining Phase 2 scope after this checkpoint:
+
+- host bind/listen controls remain absent because the shipped server mode is
+  stdio-only
+- extension-mapping controls are still deferred
+- the operator can now control install scope and extras both by flag and by
+  persisted config, but there is still no broader non-CLI policy surface for
+  server/network behavior

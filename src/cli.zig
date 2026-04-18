@@ -11,6 +11,8 @@ pub const AppConfig = struct {
     auto_index_limit: usize = 50_000,
     idle_store_timeout_ms: usize = 60_000,
     update_check_disable: bool = false,
+    install_scope: InstallScope = .shipped,
+    install_extras: bool = true,
     download_url: ?[]u8 = null,
 
     pub fn deinit(self: *AppConfig, allocator: std.mem.Allocator) void {
@@ -117,6 +119,16 @@ fn scopeAllowsTarget(scope: InstallScope, target: AgentTarget) bool {
             else => false,
         },
     };
+}
+
+pub fn parseInstallScopeName(value: []const u8) ?InstallScope {
+    if (std.ascii.eqlIgnoreCase(value, "shipped") or std.ascii.eqlIgnoreCase(value, "shared")) {
+        return .shipped;
+    }
+    if (std.ascii.eqlIgnoreCase(value, "detected") or std.ascii.eqlIgnoreCase(value, "all")) {
+        return .detected;
+    }
+    return null;
 }
 
 fn runtimeCacheDirForPlatform(
@@ -268,6 +280,16 @@ pub fn loadConfigAtPath(allocator: std.mem.Allocator, path: []const u8) !AppConf
     if (parsed.value.object.get("update_check_disable")) |value| {
         if (value == .bool) config.update_check_disable = value.bool;
     }
+    if (parsed.value.object.get("install_scope")) |value| {
+        if (value == .string) {
+            if (parseInstallScopeName(value.string)) |scope| {
+                config.install_scope = scope;
+            }
+        }
+    }
+    if (parsed.value.object.get("install_extras")) |value| {
+        if (value == .bool) config.install_extras = value.bool;
+    }
     if (parsed.value.object.get("download_url")) |value| {
         if (value == .string and value.string.len > 0) {
             config.download_url = try allocator.dupe(u8, value.string);
@@ -293,6 +315,8 @@ pub fn saveConfigAtPath(allocator: std.mem.Allocator, path: []const u8, config: 
     try payload.writer(allocator).print("  \"auto_index_limit\": {d},\n", .{config.auto_index_limit});
     try payload.writer(allocator).print("  \"idle_store_timeout_ms\": {d},\n", .{config.idle_store_timeout_ms});
     try payload.writer(allocator).print("  \"update_check_disable\": {s},\n", .{if (config.update_check_disable) "true" else "false"});
+    try payload.writer(allocator).print("  \"install_scope\": {f},\n", .{std.json.fmt(@tagName(config.install_scope), .{})});
+    try payload.writer(allocator).print("  \"install_extras\": {s},\n", .{if (config.install_extras) "true" else "false"});
     try payload.appendSlice(allocator, "  \"download_url\": ");
     if (config.download_url) |download_url| {
         try payload.writer(allocator).print("{f}", .{std.json.fmt(download_url, .{})});
@@ -1857,6 +1881,8 @@ test "config roundtrip preserves values" {
         .auto_index_limit = 123,
         .idle_store_timeout_ms = 4321,
         .update_check_disable = true,
+        .install_scope = .detected,
+        .install_extras = false,
         .download_url = try allocator.dupe(u8, "https://example.com/cbm"),
     };
     defer config.deinit(allocator);
@@ -1868,6 +1894,8 @@ test "config roundtrip preserves values" {
     try std.testing.expectEqual(@as(usize, 123), loaded.auto_index_limit);
     try std.testing.expectEqual(@as(usize, 4321), loaded.idle_store_timeout_ms);
     try std.testing.expect(loaded.update_check_disable);
+    try std.testing.expectEqual(InstallScope.detected, loaded.install_scope);
+    try std.testing.expect(!loaded.install_extras);
     try std.testing.expectEqualStrings("https://example.com/cbm", loaded.download_url.?);
 }
 

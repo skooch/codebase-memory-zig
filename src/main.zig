@@ -429,12 +429,14 @@ fn runConfigCommand(allocator: std.mem.Allocator) !void {
     if (std.mem.eql(u8, action, "list") or std.mem.eql(u8, action, "ls")) {
         try printFile(
             stdout_file,
-            "auto_index = {s}\nauto_index_limit = {d}\nidle_store_timeout_ms = {d}\nupdate_check_disable = {s}\ndownload_url = {s}\n",
+            "auto_index = {s}\nauto_index_limit = {d}\nidle_store_timeout_ms = {d}\nupdate_check_disable = {s}\ninstall_scope = {s}\ninstall_extras = {s}\ndownload_url = {s}\n",
             .{
                 if (config.auto_index) "true" else "false",
                 config.auto_index_limit,
                 config.idle_store_timeout_ms,
                 if (config.update_check_disable) "true" else "false",
+                @tagName(config.install_scope),
+                if (config.install_extras) "true" else "false",
                 config.download_url orelse "",
             },
         );
@@ -491,17 +493,21 @@ fn runInstallCommand(allocator: std.mem.Allocator) !void {
     defer allocator.free(home);
     const binary_path = try std.fs.selfExePathAlloc(allocator);
     defer allocator.free(binary_path);
+    var config = try cli.loadConfig(allocator);
+    defer config.deinit(allocator);
 
     const report = try cli.installAgentConfigs(allocator, home, .{
         .binary_path = binary_path,
         .dry_run = parsed.dry_run,
         .force = parsed.force,
-        .scope = parsed.scope,
-        .include_extras = parsed.include_extras,
+        .scope = parsed.scope orelse config.install_scope,
+        .include_extras = parsed.include_extras orelse config.install_extras,
     });
-    try printInstallReport(allocator, stdout_file, home, binary_path, "Install", report, parsed.dry_run, parsed.scope, parsed.include_extras);
+    const scope = parsed.scope orelse config.install_scope;
+    const include_extras = parsed.include_extras orelse config.install_extras;
+    try printInstallReport(allocator, stdout_file, home, binary_path, "Install", report, parsed.dry_run, scope, include_extras);
     if (!report.detected.codex and !report.detected.claude and !parsed.force) {
-        if (parsed.scope == .shipped) {
+        if (scope == .shipped) {
             try stdout_file.writeAll("No shipped agents detected. Use --scope detected or --force to create config files.\n");
         } else {
             try stdout_file.writeAll("No supported agents detected. Use --force to create config files.\n");
@@ -526,12 +532,16 @@ fn runUninstallCommand(allocator: std.mem.Allocator) !void {
 
     const home = try cli.homeDir(allocator);
     defer allocator.free(home);
+    var config = try cli.loadConfig(allocator);
+    defer config.deinit(allocator);
+    const scope = parsed.scope orelse config.install_scope;
+    const include_extras = parsed.include_extras orelse config.install_extras;
     const report = try cli.uninstallAgentConfigs(allocator, home, .{
         .dry_run = parsed.dry_run,
-        .scope = parsed.scope,
-        .include_extras = parsed.include_extras,
+        .scope = scope,
+        .include_extras = include_extras,
     });
-    try printInstallReport(allocator, stdout_file, home, null, "Uninstall", report, parsed.dry_run, parsed.scope, parsed.include_extras);
+    try printInstallReport(allocator, stdout_file, home, null, "Uninstall", report, parsed.dry_run, scope, include_extras);
 }
 
 fn runUpdateCommand(allocator: std.mem.Allocator) !void {
@@ -559,12 +569,14 @@ fn runUpdateCommand(allocator: std.mem.Allocator) !void {
         .binary_path = binary_path,
         .dry_run = parsed.dry_run,
         .force = parsed.force,
-        .scope = parsed.scope,
-        .include_extras = parsed.include_extras,
+        .scope = parsed.scope orelse config.install_scope,
+        .include_extras = parsed.include_extras orelse config.install_extras,
     });
-    try printInstallReport(allocator, stdout_file, home, binary_path, "Update", report, parsed.dry_run, parsed.scope, parsed.include_extras);
+    const scope = parsed.scope orelse config.install_scope;
+    const include_extras = parsed.include_extras orelse config.install_extras;
+    try printInstallReport(allocator, stdout_file, home, binary_path, "Update", report, parsed.dry_run, scope, include_extras);
     if (!report.detected.codex and !report.detected.claude and !parsed.force) {
-        if (parsed.scope == .shipped) {
+        if (scope == .shipped) {
             try stdout_file.writeAll("No shipped agents detected. Use --scope detected or --force to create config files.\n");
         } else {
             try stdout_file.writeAll("No supported agents detected. Use --force to create config files.\n");
@@ -586,8 +598,8 @@ const ParsedActionFlags = struct {
     answer: AutoAnswer = .ask,
     dry_run: bool = false,
     force: bool = false,
-    scope: cli.InstallScope = .shipped,
-    include_extras: bool = true,
+    scope: ?cli.InstallScope = null,
+    include_extras: ?bool = null,
 };
 
 fn parseActionFlags(args: []const []const u8) !ParsedActionFlags {
@@ -603,24 +615,14 @@ fn parseActionFlags(args: []const []const u8) !ParsedActionFlags {
         if (std.mem.eql(u8, arg, "--scope")) {
             idx += 1;
             if (idx >= args.len) return error.InvalidArguments;
-            parsed.scope = parseInstallScope(args[idx]) orelse return error.InvalidArguments;
+            parsed.scope = cli.parseInstallScopeName(args[idx]) orelse return error.InvalidArguments;
             continue;
         }
         if (std.mem.startsWith(u8, arg, "--scope=")) {
-            parsed.scope = parseInstallScope(arg["--scope=".len..]) orelse return error.InvalidArguments;
+            parsed.scope = cli.parseInstallScopeName(arg["--scope=".len..]) orelse return error.InvalidArguments;
         }
     }
     return parsed;
-}
-
-fn parseInstallScope(value: []const u8) ?cli.InstallScope {
-    if (std.ascii.eqlIgnoreCase(value, "shipped") or std.ascii.eqlIgnoreCase(value, "shared")) {
-        return .shipped;
-    }
-    if (std.ascii.eqlIgnoreCase(value, "detected") or std.ascii.eqlIgnoreCase(value, "all")) {
-        return .detected;
-    }
-    return null;
 }
 
 fn collectSubcommandArgs(allocator: std.mem.Allocator, command_name: []const u8) ![][]const u8 {
@@ -739,6 +741,14 @@ fn writeConfigValue(stdout_file: std.fs.File, key: []const u8, config: cli.AppCo
         try printFile(stdout_file, "{s}\n", .{if (config.update_check_disable) "true" else "false"});
         return;
     }
+    if (std.mem.eql(u8, key, "install_scope")) {
+        try printFile(stdout_file, "{s}\n", .{@tagName(config.install_scope)});
+        return;
+    }
+    if (std.mem.eql(u8, key, "install_extras")) {
+        try printFile(stdout_file, "{s}\n", .{if (config.install_extras) "true" else "false"});
+        return;
+    }
     if (std.mem.eql(u8, key, "download_url")) {
         try printFile(stdout_file, "{s}\n", .{config.download_url orelse ""});
         return;
@@ -772,6 +782,18 @@ fn setConfigKey(allocator: std.mem.Allocator, config: *cli.AppConfig, key: []con
         };
         return;
     }
+    if (std.mem.eql(u8, key, "install_scope")) {
+        config.install_scope = cli.parseInstallScopeName(value) orelse {
+            std.process.exit(1);
+        };
+        return;
+    }
+    if (std.mem.eql(u8, key, "install_extras")) {
+        config.install_extras = parseBool(value) orelse {
+            std.process.exit(1);
+        };
+        return;
+    }
     if (std.mem.eql(u8, key, "download_url")) {
         if (config.download_url) |existing| allocator.free(existing);
         config.download_url = if (value.len == 0) null else try allocator.dupe(u8, value);
@@ -795,6 +817,14 @@ fn resetConfigKey(allocator: std.mem.Allocator, config: *cli.AppConfig, key: []c
     }
     if (std.mem.eql(u8, key, "update_check_disable")) {
         config.update_check_disable = false;
+        return;
+    }
+    if (std.mem.eql(u8, key, "install_scope")) {
+        config.install_scope = .shipped;
+        return;
+    }
+    if (std.mem.eql(u8, key, "install_extras")) {
+        config.install_extras = true;
         return;
     }
     if (std.mem.eql(u8, key, "download_url")) {
