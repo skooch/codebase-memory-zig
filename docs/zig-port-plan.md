@@ -124,14 +124,13 @@ The short version of that order is:
 2. discovery, indexing scope, and query semantics
 3. large-repo reliability and crash safety
 4. runtime lifecycle extras
-5. operational controls and configurability (in progress)
-6. release and setup packaging
-7. installer ecosystem parity
-8. operations script suite
-9. language coverage expansion
-10. hybrid type resolution
-11. broader language-support expansion
-12. broader semantic-graph expansion
+5. release and setup packaging
+6. installer ecosystem parity
+7. operations script suite
+8. language coverage expansion
+9. hybrid type resolution
+10. broader language-support expansion
+11. broader semantic-graph expansion
 
 ---
 

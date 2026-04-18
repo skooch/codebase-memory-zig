@@ -90,17 +90,22 @@ Completed in Plan 03:
 Completed in Plan 05:
 - Long-tail edge parity: `THROWS`/`RAISES` edges from throw statements (JS/TS/TSX). Verified end-to-end on the edge-parity fixture with RAISES resolving custom error classes. Out-of-scope edges: `OVERRIDE` (Go-only), `CONTAINS_PACKAGE` (never implemented in C), `WRITES` and `READS` (not proven original-overlap by the current C reference fixture).
 
-## In-Progress Plan: Operational Controls and Configurability
+## Implemented Plan: Operational Controls and Configurability
 
 Current control-surface inventory from the Zig implementation:
 
 - persisted config keys
   - `auto_index`
   - `auto_index_limit`
+  - `idle_store_timeout_ms`
+  - `update_check_disable`
+  - `install_scope`
+  - `install_extras`
   - `download_url`
 - path and config-root overrides
   - `CBM_CONFIG_PLATFORM`
   - `CBM_CACHE_DIR`
+  - `CBM_EXTENSION_MAP`
   - `LOCALAPPDATA`
   - `APPDATA`
   - `XDG_CACHE_HOME`
@@ -119,51 +124,39 @@ Current control-surface inventory from the Zig implementation:
   - installer action flags: `-y`, `-n`, `--dry-run`, `--force`
   - explicit installer scope: `--scope shipped|detected`
   - explicit side-effect control: `--mcp-only`
-- persisted runtime controls added in this worktree
+
+Completion evidence for this plan:
+
+- the plan is now archived at
+  [operational-controls-and-configurability-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/operational-controls-and-configurability-feature-cluster-plan.md)
+  and
+  [operational-controls-and-configurability-feature-cluster-progress.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/operational-controls-and-configurability-feature-cluster-progress.md)
+- the current branch proves persisted `config set|get|list|reset` handling for:
   - `idle_store_timeout_ms`
   - `update_check_disable`
   - `install_scope`
   - `install_extras`
-
-Known gaps this plan is targeting:
-
-- host bind/listen controls are not part of the current Zig operational
-  surface, so they need to be treated as absent rather than assumed.
-- installer scope is still effectively fixed to the currently shipped agent set
-  instead of exposing an explicit operator-controlled target matrix.
-- runtime and config knobs are spread across `src/cli.zig`, `src/main.zig`,
-  and `src/runtime_lifecycle.zig`, which makes precedence and verification less
-  obvious than it should be.
-- there is not yet a dedicated fixture-backed configuration lane under
-  `testdata/interop/configuration/` that exercises these knobs without touching
-  a real home directory.
-
-Phase 1 evidence:
-
-- the plan is now active at
-  [operational-controls-and-configurability-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/operational-controls-and-configurability-feature-cluster-plan.md)
-- the progress log and fixture placeholder now live at
-- the current branch now proves persisted `config set|get|list|reset` handling
-  for `idle_store_timeout_ms` and `update_check_disable` through the temp-home
-  `operational_contract` lane in `scripts/run_cli_parity.sh --zig-only`
-- the current branch now makes the CLI install/update/uninstall scope explicit:
+- the CLI now makes installer scope and side effects explicit:
   - default CLI scope is `shipped`
   - `--scope detected` is the explicit broader detected-agent path
-- the current branch now makes installer side effects explicit too:
   - default CLI mode manages MCP entries plus extras
   - `--mcp-only` keeps MCP entry changes while skipping instructions, skills,
     and hooks
-- the current branch now lets install defaults live in persisted config:
-  - `install_scope`
-  - `install_extras`
-  - CLI flags still override those defaults when supplied
-- the progress log, fixture placeholder, and current configuration matrix now
-  live at
-  [operational-controls-and-configurability-feature-cluster-progress.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/operational-controls-and-configurability-feature-cluster-progress.md)
-  ,
-  [configuration-matrix.md](/Users/skooch/projects/codebase-memory-zig/docs/configuration-matrix.md),
-  and
-  [testdata/interop/configuration/env-overrides/README.md](/Users/skooch/projects/codebase-memory-zig/testdata/interop/configuration/env-overrides/README.md)
+- extension remapping is now explicit and verified through env-only
+  `CBM_EXTENSION_MAP`, with the temp-home parity lane proving `.foo=python`
+  indexing and `search_graph` lookup
+- the fixture-backed configuration lane now lives under
+  `testdata/interop/configuration/` and `scripts/run_cli_parity.sh`, so these
+  controls no longer depend on a developer home directory
+
+Intentional omissions after completion:
+
+- host bind/listen controls remain absent because the shipped server mode is
+  stdio-only
+- the installer surface remains intentionally narrower than the original's
+  broader multi-agent ecosystem
+- extension remapping is explicit and verified, but remains env-only rather
+  than a richer persisted policy layer
 
 ## Implemented Plan: Windows, Installer, and Client Integration
 

@@ -23,11 +23,11 @@ Observed upstream pattern:
 - Many support issues would have been easier if the product clearly separated configuration knobs, runtime status output, and agent-specific side effects.
 
 ## Current Phase
-Phase 2
+Implemented
 
 ## File Map
-- Modify: `docs/plans/in-progress/operational-controls-and-configurability-feature-cluster-plan.md`
-- Create: `docs/plans/in-progress/operational-controls-and-configurability-feature-cluster-progress.md`
+- Modify: `docs/plans/implemented/operational-controls-and-configurability-feature-cluster-plan.md`
+- Create: `docs/plans/implemented/operational-controls-and-configurability-feature-cluster-progress.md`
 - Modify: `docs/gap-analysis.md`
 - Modify: `docs/port-comparison.md`
 - Modify: `docs/zig-port-plan.md`
@@ -45,20 +45,20 @@ Phase 2
 ### Phase 1: Inventory the Control Surface
 - [x] Capture every requested operational knob in `docs/gap-analysis.md`, separating installer scope, cache and path config, runtime trigger behavior, host binding, and query-default ergonomics.
 - [x] Add a configuration fixture area under `testdata/interop/configuration/` so env-var and config-file behavior can be tested without touching a real home directory.
-- [x] Record the exact CLI, config, and runtime verification commands in `docs/plans/in-progress/operational-controls-and-configurability-feature-cluster-progress.md`.
+- [x] Record the exact CLI, config, and runtime verification commands in `docs/plans/implemented/operational-controls-and-configurability-feature-cluster-progress.md`.
 - **Status:** complete
 
 ### Phase 2: Make the Knobs Explicit
-- [ ] Extend `src/cli.zig`, `src/main.zig`, `src/mcp.zig`, `src/runtime_lifecycle.zig`, and `src/discover.zig` so cache location, host binding, auto-index triggers, progress output, hook behavior, and extension mappings are controlled by explicit config or env surfaces instead of hidden defaults.
-- [ ] Add `docs/configuration-matrix.md` to document each supported knob, its default, its scope, and its verification path.
-- [ ] Update `scripts/run_cli_parity.sh` so the operational surfaces are exercised in temp-home fixtures rather than relying on developer machine state.
-- **Status:** pending
+- [x] Extend `src/cli.zig`, `src/main.zig`, `src/mcp.zig`, `src/runtime_lifecycle.zig`, and `src/discover.zig` so cache location, host binding, auto-index triggers, progress output, hook behavior, and extension mappings are controlled by explicit config or env surfaces instead of hidden defaults.
+- [x] Add `docs/configuration-matrix.md` to document each supported knob, its default, its scope, and its verification path.
+- [x] Update `scripts/run_cli_parity.sh` so the operational surfaces are exercised in temp-home fixtures rather than relying on developer machine state.
+- **Status:** complete
 
 ### Phase 3: Verify and Reclassify
-- [ ] Run `zig build`, `zig build test`, and `bash scripts/run_cli_parity.sh` with the new config fixtures until behavior is stable and reversible.
-- [ ] Update `docs/port-comparison.md` only where the Zig port now deliberately matches or intentionally diverges from the original operational controls.
-- [ ] Record remaining deferred knobs and rejected complexity in `docs/plans/in-progress/operational-controls-and-configurability-feature-cluster-progress.md`.
-- **Status:** pending
+- [x] Run `zig build`, `zig build test`, and `bash scripts/run_cli_parity.sh` with the new config fixtures until behavior is stable and reversible.
+- [x] Update `docs/port-comparison.md` only where the Zig port now deliberately matches or intentionally diverges from the original operational controls.
+- [x] Record remaining deferred knobs and rejected complexity in `docs/plans/implemented/operational-controls-and-configurability-feature-cluster-progress.md`.
+- **Status:** complete
 
 ## Decisions
 | Decision | Rationale |
@@ -69,3 +69,4 @@ Phase 2
 ## Errors
 | Error | Attempt | Resolution |
 |-------|---------|------------|
+| `search_graph(name_pattern=".*custom_hit.*")` returned zero results in the extension-map parity lane | The first fixture treated `name_pattern` like a regex filter. | Switched the lane to `name_pattern="custom_hit"` after confirming the store implements `LIKE` semantics, then reran the full verification set and refreshed the golden snapshot. |

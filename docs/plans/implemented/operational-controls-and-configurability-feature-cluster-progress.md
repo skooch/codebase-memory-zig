@@ -321,3 +321,90 @@ Remaining Phase 2 scope after this checkpoint:
 - the operator can now control install scope and extras both by flag and by
   persisted config, but there is still no broader non-CLI policy surface for
   server/network behavior
+
+## Phase 2 Checkpoint: Explicit Extension Mapping
+
+Fifth Phase 2 code slice on 2026-04-19:
+
+- `src/discover.zig`
+  - added explicit extension-map override handling through env-only
+    `CBM_EXTENSION_MAP`
+  - override resolution runs before the built-in extension table, so custom
+    extension-to-language mappings can participate in normal indexing and
+    extraction
+  - added focused unit coverage proving `.foo=python` resolves as expected
+- `scripts/run_cli_parity.sh`
+  - now seeds a temp-home repo containing `feature.foo`
+  - indexes that repo with `CBM_EXTENSION_MAP=.foo=python`
+  - verifies the mapped Python function can then be found via `search_graph`
+  - locks the harness to the actual `name_pattern` contract used by the store
+    instead of assuming regex semantics
+
+Verification for this slice:
+
+```sh
+zig build
+zig build test
+bash scripts/run_cli_parity.sh --update-golden
+bash scripts/run_cli_parity.sh --zig-only
+bash scripts/run_cli_parity.sh
+```
+
+Results:
+
+- `zig build` passed
+- `zig build test` passed
+- `bash scripts/run_cli_parity.sh --update-golden` refreshed the temp-home
+  golden snapshot with `extension_map_search_finds_symbol = true`
+- `bash scripts/run_cli_parity.sh --zig-only` passed with `56` total checks
+  matching the golden snapshot
+- `bash scripts/run_cli_parity.sh` passed with zero Zig/C shared-contract
+  mismatches
+
+Remaining intentional omissions after this checkpoint:
+
+- host bind/listen controls remain absent because the shipped server mode is
+  stdio-only
+- the installer surface remains intentionally narrower than the original's
+  broader multi-agent ecosystem
+- extension remapping is now explicit and verified, but it remains env-only
+  rather than a separate persisted policy layer
+
+## Phase 3 Completion
+
+Plan closeout on 2026-04-19:
+
+- `docs/configuration-matrix.md` now records the supported config/env/CLI
+  control surface and its precedence rules
+- `docs/gap-analysis.md` and `docs/port-comparison.md` now reflect the
+  completed operational-controls scope rather than treating it as still open
+- the plan backlog indexes now treat packaging as the next unopened work after
+  this implemented slice
+
+Final verification set:
+
+```sh
+bash -n scripts/run_cli_parity.sh
+zig build
+zig build test
+bash scripts/run_cli_parity.sh --update-golden
+bash scripts/run_cli_parity.sh --zig-only
+bash scripts/run_cli_parity.sh
+```
+
+Final results:
+
+- shell syntax check passed
+- `zig build` passed
+- `zig build test` passed
+- `bash scripts/run_cli_parity.sh --zig-only` passed with `56` checks
+- `bash scripts/run_cli_parity.sh` passed with zero Zig/C shared-contract
+  mismatches
+
+Deferred by decision, not by accident:
+
+- no host bind/listen config because the shipped server contract is stdio-only
+- no broader persisted server/network control layer beyond the current
+  config/env surfaces
+- no expansion of the shipped agent contract beyond the current explicit scope
+  and MCP-only controls

@@ -12,6 +12,7 @@ their defaults, and the verification path backing each claim.
 | `download_url` | persisted config | empty / unset | config file only | `zig build test` |
 | `CBM_CACHE_DIR` | env var | unset | highest priority runtime cache root | `bash scripts/run_cli_parity.sh --zig-only` |
 | `CBM_CONFIG_PLATFORM` | env var | host OS | overrides path-shape selection for fixture-backed config roots | `zig build test`, `bash scripts/run_cli_parity.sh --zig-only` |
+| `CBM_EXTENSION_MAP` | env var | unset | overrides built-in extension-to-language detection before indexing and extraction | `zig build test`, `bash scripts/run_cli_parity.sh --zig-only` |
 | `LOCALAPPDATA` / `XDG_CACHE_HOME` | env var | platform fallback | selected by config platform when `CBM_CACHE_DIR` is unset | `zig build test`, `bash scripts/run_cli_parity.sh --zig-only` |
 | `APPDATA` / `XDG_CONFIG_HOME` | env var | platform fallback | selected by config platform for roaming config roots | `bash scripts/run_cli_parity.sh --zig-only` |
 | `cbm cli --progress` | CLI flag | off | explicit flag only | `zig build`, `bash scripts/run_cli_parity.sh` |
@@ -25,4 +26,4 @@ Known intentional omissions in the current branch:
 
 - no host bind/listen control because the shipped server mode is stdio only
 - no broader installer-scope matrix beyond the currently shipped agent surface
-- no explicit hook-policy or extension-mapping config yet
+- no broader persisted hook-policy or extension-mapping layer beyond `install_extras` and env-only `CBM_EXTENSION_MAP`
