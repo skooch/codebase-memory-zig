@@ -173,6 +173,13 @@ def inspect_operational_controls(binary: Path) -> Dict[str, Any]:
         gemini_settings = home / ".gemini" / "settings.json"
         codex_config = home / ".codex" / "config.toml"
         claude_config = home / ".claude" / ".mcp.json"
+        mcp_only_home = home / "mcp-only"
+        (mcp_only_home / ".codex").mkdir(parents=True, exist_ok=True)
+        (mcp_only_home / ".claude").mkdir(parents=True, exist_ok=True)
+        mcp_only_codex_config = mcp_only_home / ".codex" / "config.toml"
+        mcp_only_claude_config = mcp_only_home / ".claude" / ".mcp.json"
+        mcp_only_codex_instructions = mcp_only_home / ".codex" / "AGENTS.md"
+        mcp_only_claude_settings = mcp_only_home / ".claude" / "settings.json"
 
         set_idle = run_cmd([str(binary), "config", "set", "idle_store_timeout_ms", "1234"], home)
         get_idle = run_cmd([str(binary), "config", "get", "idle_store_timeout_ms"], home)
@@ -186,6 +193,7 @@ def inspect_operational_controls(binary: Path) -> Dict[str, Any]:
         install_shipped = run_cmd([str(binary), "install", "-y", "--force"], home)
         gemini_after_shipped_exists = gemini_settings.exists()
         install_detected = run_cmd([str(binary), "install", "-y", "--force", "--scope", "detected"], home)
+        install_mcp_only = run_cmd([str(binary), "install", "-y", "--force", "--mcp-only"], mcp_only_home)
 
         gemini_after_detected = file_text(gemini_settings)
 
@@ -205,6 +213,11 @@ def inspect_operational_controls(binary: Path) -> Dict[str, Any]:
                 "default_scope_writes_claude": str(binary) in file_text(claude_config),
                 "detected_scope_mentions_detected": contains_ci(install_detected.stdout, "Scope: detected"),
                 "detected_scope_writes_gemini": install_detected.returncode == 0 and str(binary) in gemini_after_detected,
+                "mcp_only_mentions_mode": contains_ci(install_mcp_only.stdout, "Extras: mcp-only"),
+                "mcp_only_writes_codex_config": install_mcp_only.returncode == 0 and str(binary) in file_text(mcp_only_codex_config),
+                "mcp_only_writes_claude_config": install_mcp_only.returncode == 0 and str(binary) in file_text(mcp_only_claude_config),
+                "mcp_only_skips_codex_instructions": not mcp_only_codex_instructions.exists(),
+                "mcp_only_skips_claude_hooks": not mcp_only_claude_settings.exists(),
             },
         }
 

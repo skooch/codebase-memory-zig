@@ -222,3 +222,53 @@ Remaining Phase 2 scope after this checkpoint:
 - hook-policy and extension-mapping controls are still deferred
 - the CLI now has explicit scope control, but the broader multi-agent surface
   itself is still intentionally secondary to the shipped Codex/Claude contract
+
+## Phase 2 Checkpoint: MCP-Only Install Mode
+
+Third Phase 2 code slice on 2026-04-19:
+
+- `src/cli.zig`
+  - added explicit extras control to install/uninstall flows:
+    - extras managed by default
+    - `include_extras = false` for MCP-only operation
+  - kept MCP entry writes/removals intact while allowing instructions, skills,
+    and hooks to be skipped cleanly
+  - added regression coverage proving MCP-only installs still write Codex and
+    Claude MCP config while skipping Codex instructions plus Claude skills and
+    hooks
+- `src/main.zig`
+  - `install`, `update`, and `uninstall` now accept `--mcp-only`
+  - report output now makes the extras mode visible as either:
+    - `managed`
+    - `mcp-only`
+- `scripts/run_cli_parity.sh`
+  - now verifies MCP-only mode still writes the shared MCP config entries
+  - also verifies MCP-only mode skips Codex instructions and Claude hook state
+
+Verification for this slice:
+
+```sh
+zig build
+zig build test
+bash scripts/run_cli_parity.sh
+bash scripts/run_cli_parity.sh --update-golden
+bash scripts/run_cli_parity.sh --zig-only
+```
+
+Results:
+
+- `zig build` passed
+- `zig build test` passed
+- `bash scripts/run_cli_parity.sh` passed with zero Zig/C shared-contract
+  mismatches
+- `bash scripts/run_cli_parity.sh --zig-only` passed with `42` total checks
+  matching the golden snapshot
+
+Remaining Phase 2 scope after this checkpoint:
+
+- host bind/listen controls remain absent because the shipped server mode is
+  stdio-only
+- extension-mapping controls are still deferred
+- hook behavior is now operator-controlled at install/update/uninstall time,
+  but the repo still does not expose a broader persisted policy layer for those
+  extras

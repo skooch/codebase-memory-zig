@@ -11,6 +11,11 @@
     "idle_timeout_get_matches": true,
     "idle_timeout_reset_restores_default": true,
     "idle_timeout_set_success": true,
+    "mcp_only_mentions_mode": true,
+    "mcp_only_skips_claude_hooks": true,
+    "mcp_only_skips_codex_instructions": true,
+    "mcp_only_writes_claude_config": true,
+    "mcp_only_writes_codex_config": true,
     "update_check_disable_get_matches": true,
     "update_check_disable_reset_restores_default": true,
     "update_check_disable_set_success": true

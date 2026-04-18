@@ -118,6 +118,7 @@ Current control-surface inventory from the Zig implementation:
   - `cbm cli --progress`
   - installer action flags: `-y`, `-n`, `--dry-run`, `--force`
   - explicit installer scope: `--scope shipped|detected`
+  - explicit side-effect control: `--mcp-only`
 - persisted runtime controls added in this worktree
   - `idle_store_timeout_ms`
   - `update_check_disable`
@@ -146,6 +147,10 @@ Phase 1 evidence:
 - the current branch now makes the CLI install/update/uninstall scope explicit:
   - default CLI scope is `shipped`
   - `--scope detected` is the explicit broader detected-agent path
+- the current branch now makes installer side effects explicit too:
+  - default CLI mode manages MCP entries plus extras
+  - `--mcp-only` keeps MCP entry changes while skipping instructions, skills,
+    and hooks
 - the progress log, fixture placeholder, and current configuration matrix now
   live at
   [operational-controls-and-configurability-feature-cluster-progress.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/operational-controls-and-configurability-feature-cluster-progress.md)

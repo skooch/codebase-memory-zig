@@ -39,11 +39,13 @@ pub const InstallOptions = struct {
     dry_run: bool = false,
     force: bool = false,
     scope: InstallScope = .detected,
+    include_extras: bool = true,
 };
 
 pub const UninstallOptions = struct {
     dry_run: bool = false,
     scope: InstallScope = .detected,
+    include_extras: bool = true,
 };
 
 pub const InstallScope = enum {
@@ -1022,22 +1024,26 @@ pub fn installAgentConfigs(
     // Claude Code: MCP + skills + hooks + instructions (no instructions file in C ref for Claude itself)
     if (scopeAllowsTarget(options.scope, .claude) and (detected.claude or options.force)) {
         report.claude = try installClaudeConfig(allocator, home, options);
-        // Skills
-        const skills_dir = try std.fs.path.join(allocator, &.{ home, ".claude", "skills" });
-        defer allocator.free(skills_dir);
-        const sr = try installSkills(allocator, skills_dir, options.force, options.dry_run);
-        if (sr.installed > 0 or sr.old_removed) report.skills = .updated;
-        // Hooks
-        if (try upsertClaudeHooks(allocator, home, options.dry_run))
-            report.hooks = .updated;
+        if (options.include_extras) {
+            // Skills
+            const skills_dir = try std.fs.path.join(allocator, &.{ home, ".claude", "skills" });
+            defer allocator.free(skills_dir);
+            const sr = try installSkills(allocator, skills_dir, options.force, options.dry_run);
+            if (sr.installed > 0 or sr.old_removed) report.skills = .updated;
+            // Hooks
+            if (try upsertClaudeHooks(allocator, home, options.dry_run))
+                report.hooks = .updated;
+        }
     }
 
     // Codex: MCP + instructions
     if (scopeAllowsTarget(options.scope, .codex) and (detected.codex or options.force)) {
         report.codex = try installCodexConfig(allocator, home, options);
-        const ip = try std.fs.path.join(allocator, &.{ home, ".codex", "AGENTS.md" });
-        defer allocator.free(ip);
-        _ = try upsertInstructions(allocator, ip, agent_instructions_content, options.dry_run);
+        if (options.include_extras) {
+            const ip = try std.fs.path.join(allocator, &.{ home, ".codex", "AGENTS.md" });
+            defer allocator.free(ip);
+            _ = try upsertInstructions(allocator, ip, agent_instructions_content, options.dry_run);
+        }
     }
 
     // Gemini: MCP + hooks + instructions
@@ -1046,12 +1052,14 @@ pub fn installAgentConfigs(
             .config_parts = &.{ ".gemini", "settings.json" },
             .format = .mcp_servers,
         });
-        const ip = try std.fs.path.join(allocator, &.{ home, ".gemini", "GEMINI.md" });
-        defer allocator.free(ip);
-        _ = try upsertInstructions(allocator, ip, agent_instructions_content, options.dry_run);
-        const cp = try std.fs.path.join(allocator, &.{ home, ".gemini", "settings.json" });
-        defer allocator.free(cp);
-        try upsertGeminiHooks(allocator, cp, options.dry_run);
+        if (options.include_extras) {
+            const ip = try std.fs.path.join(allocator, &.{ home, ".gemini", "GEMINI.md" });
+            defer allocator.free(ip);
+            _ = try upsertInstructions(allocator, ip, agent_instructions_content, options.dry_run);
+            const cp = try std.fs.path.join(allocator, &.{ home, ".gemini", "settings.json" });
+            defer allocator.free(cp);
+            try upsertGeminiHooks(allocator, cp, options.dry_run);
+        }
     }
 
     // Zed: MCP only (platform-specific path)
@@ -1070,9 +1078,11 @@ pub fn installAgentConfigs(
             .config_parts = &.{ ".config", "opencode", "opencode.json" },
             .format = .opencode,
         });
-        const ip = try std.fs.path.join(allocator, &.{ home, ".config", "opencode", "AGENTS.md" });
-        defer allocator.free(ip);
-        _ = try upsertInstructions(allocator, ip, agent_instructions_content, options.dry_run);
+        if (options.include_extras) {
+            const ip = try std.fs.path.join(allocator, &.{ home, ".config", "opencode", "AGENTS.md" });
+            defer allocator.free(ip);
+            _ = try upsertInstructions(allocator, ip, agent_instructions_content, options.dry_run);
+        }
     }
 
     // Antigravity: MCP + instructions
@@ -1081,27 +1091,33 @@ pub fn installAgentConfigs(
             .config_parts = &.{ ".gemini", "antigravity", "mcp_config.json" },
             .format = .mcp_servers,
         });
-        const ip = try std.fs.path.join(allocator, &.{ home, ".gemini", "antigravity", "AGENTS.md" });
-        defer allocator.free(ip);
-        _ = try upsertInstructions(allocator, ip, agent_instructions_content, options.dry_run);
+        if (options.include_extras) {
+            const ip = try std.fs.path.join(allocator, &.{ home, ".gemini", "antigravity", "AGENTS.md" });
+            defer allocator.free(ip);
+            _ = try upsertInstructions(allocator, ip, agent_instructions_content, options.dry_run);
+        }
     }
 
     // KiloCode: MCP + instructions (platform-specific config path)
     if (scopeAllowsTarget(options.scope, .kilocode) and (detected.kilocode or options.force)) {
         report.kilocode = try installKilocodeConfig(allocator, home, options);
-        const ip = try std.fs.path.join(allocator, &.{ home, ".kilocode", "rules", "codebase-memory-mcp.md" });
-        defer allocator.free(ip);
-        _ = try upsertInstructions(allocator, ip, agent_instructions_content, options.dry_run);
+        if (options.include_extras) {
+            const ip = try std.fs.path.join(allocator, &.{ home, ".kilocode", "rules", "codebase-memory-mcp.md" });
+            defer allocator.free(ip);
+            _ = try upsertInstructions(allocator, ip, agent_instructions_content, options.dry_run);
+        }
     }
 
     // Aider: instructions only (no MCP config)
     if (scopeAllowsTarget(options.scope, .aider) and (detected.aider or options.force)) {
-        const ip = try std.fs.path.join(allocator, &.{ home, "CONVENTIONS.md" });
-        defer allocator.free(ip);
-        if (try upsertInstructions(allocator, ip, agent_instructions_content, options.dry_run)) {
-            report.aider = .updated;
-        } else {
-            report.aider = .unchanged;
+        if (options.include_extras) {
+            const ip = try std.fs.path.join(allocator, &.{ home, "CONVENTIONS.md" });
+            defer allocator.free(ip);
+            if (try upsertInstructions(allocator, ip, agent_instructions_content, options.dry_run)) {
+                report.aider = .updated;
+            } else {
+                report.aider = .unchanged;
+            }
         }
     }
 
@@ -1129,12 +1145,14 @@ pub fn uninstallAgentConfigs(
         report.claude = try uninstallClaudeConfig(allocator, home, options.dry_run);
     }
     if (scopeAllowsTarget(options.scope, .claude) and detected.claude) {
-        const skills_dir = try std.fs.path.join(allocator, &.{ home, ".claude", "skills" });
-        defer allocator.free(skills_dir);
-        const removed = try removeSkills(allocator, skills_dir, options.dry_run);
-        if (removed > 0) report.skills = .removed;
-        try removeClaudeHooks(allocator, home, options.dry_run);
-        report.hooks = .removed;
+        if (options.include_extras) {
+            const skills_dir = try std.fs.path.join(allocator, &.{ home, ".claude", "skills" });
+            defer allocator.free(skills_dir);
+            const removed = try removeSkills(allocator, skills_dir, options.dry_run);
+            if (removed > 0) report.skills = .removed;
+            try removeClaudeHooks(allocator, home, options.dry_run);
+            report.hooks = .removed;
+        }
     }
 
     // Codex
@@ -1142,9 +1160,11 @@ pub fn uninstallAgentConfigs(
         report.codex = try uninstallCodexConfig(allocator, home, options.dry_run);
     }
     if (scopeAllowsTarget(options.scope, .codex) and detected.codex) {
-        const ip = try std.fs.path.join(allocator, &.{ home, ".codex", "AGENTS.md" });
-        defer allocator.free(ip);
-        _ = try removeInstructions(allocator, ip, options.dry_run);
+        if (options.include_extras) {
+            const ip = try std.fs.path.join(allocator, &.{ home, ".codex", "AGENTS.md" });
+            defer allocator.free(ip);
+            _ = try removeInstructions(allocator, ip, options.dry_run);
+        }
     }
 
     // Gemini
@@ -1154,10 +1174,12 @@ pub fn uninstallAgentConfigs(
         if (try removeJsonMcpEntry(allocator, cp, "mcpServers", options.dry_run)) {
             report.gemini = .removed;
         }
-        try removeGeminiHooks(allocator, cp, options.dry_run);
-        const ip = try std.fs.path.join(allocator, &.{ home, ".gemini", "GEMINI.md" });
-        defer allocator.free(ip);
-        _ = try removeInstructions(allocator, ip, options.dry_run);
+        if (options.include_extras) {
+            try removeGeminiHooks(allocator, cp, options.dry_run);
+            const ip = try std.fs.path.join(allocator, &.{ home, ".gemini", "GEMINI.md" });
+            defer allocator.free(ip);
+            _ = try removeInstructions(allocator, ip, options.dry_run);
+        }
     }
 
     // Zed
@@ -1177,9 +1199,11 @@ pub fn uninstallAgentConfigs(
         if (try removeJsonMcpEntry(allocator, cp, "mcp", options.dry_run)) {
             report.opencode = .removed;
         }
-        const ip = try std.fs.path.join(allocator, &.{ home, ".config", "opencode", "AGENTS.md" });
-        defer allocator.free(ip);
-        _ = try removeInstructions(allocator, ip, options.dry_run);
+        if (options.include_extras) {
+            const ip = try std.fs.path.join(allocator, &.{ home, ".config", "opencode", "AGENTS.md" });
+            defer allocator.free(ip);
+            _ = try removeInstructions(allocator, ip, options.dry_run);
+        }
     }
 
     // Antigravity
@@ -1189,25 +1213,31 @@ pub fn uninstallAgentConfigs(
         if (try removeJsonMcpEntry(allocator, cp, "mcpServers", options.dry_run)) {
             report.antigravity = .removed;
         }
-        const ip = try std.fs.path.join(allocator, &.{ home, ".gemini", "antigravity", "AGENTS.md" });
-        defer allocator.free(ip);
-        _ = try removeInstructions(allocator, ip, options.dry_run);
+        if (options.include_extras) {
+            const ip = try std.fs.path.join(allocator, &.{ home, ".gemini", "antigravity", "AGENTS.md" });
+            defer allocator.free(ip);
+            _ = try removeInstructions(allocator, ip, options.dry_run);
+        }
     }
 
     // KiloCode
     if (scopeAllowsTarget(options.scope, .kilocode) and detected.kilocode) {
         report.kilocode = try uninstallKilocodeConfig(allocator, home, options.dry_run);
-        const ip = try std.fs.path.join(allocator, &.{ home, ".kilocode", "rules", "codebase-memory-mcp.md" });
-        defer allocator.free(ip);
-        _ = try removeInstructions(allocator, ip, options.dry_run);
+        if (options.include_extras) {
+            const ip = try std.fs.path.join(allocator, &.{ home, ".kilocode", "rules", "codebase-memory-mcp.md" });
+            defer allocator.free(ip);
+            _ = try removeInstructions(allocator, ip, options.dry_run);
+        }
     }
 
     // Aider
     if (scopeAllowsTarget(options.scope, .aider) and detected.aider) {
-        const ip = try std.fs.path.join(allocator, &.{ home, "CONVENTIONS.md" });
-        defer allocator.free(ip);
-        if (try removeInstructions(allocator, ip, options.dry_run)) {
-            report.aider = .removed;
+        if (options.include_extras) {
+            const ip = try std.fs.path.join(allocator, &.{ home, "CONVENTIONS.md" });
+            defer allocator.free(ip);
+            if (try removeInstructions(allocator, ip, options.dry_run)) {
+                report.aider = .removed;
+            }
         }
     }
 
@@ -2548,6 +2578,38 @@ test "install scope shipped skips non-shipped agents even with force" {
     const gemini_settings = try std.fs.path.join(allocator, &.{ home, ".gemini", "settings.json" });
     defer allocator.free(gemini_settings);
     try std.testing.expectError(error.FileNotFound, std.fs.cwd().access(gemini_settings, .{}));
+}
+
+test "mcp only install skips instructions skills and hooks" {
+    const allocator = std.testing.allocator;
+    const home = try std.fmt.allocPrint(allocator, "/tmp/cbm-home-mcp-only-{x}", .{std.crypto.random.int(u64)});
+    defer allocator.free(home);
+    defer std.fs.cwd().deleteTree(home) catch {};
+
+    const codex_dir = try std.fs.path.join(allocator, &.{ home, ".codex" });
+    defer allocator.free(codex_dir);
+    const claude_dir = try std.fs.path.join(allocator, &.{ home, ".claude" });
+    defer allocator.free(claude_dir);
+    try std.fs.cwd().makePath(codex_dir);
+    try std.fs.cwd().makePath(claude_dir);
+
+    const report = try installAgentConfigs(allocator, home, .{
+        .binary_path = "/tmp/cbm",
+        .force = true,
+        .include_extras = false,
+    });
+    try std.testing.expectEqual(InstallReport.Action.updated, report.codex);
+    try std.testing.expectEqual(InstallReport.Action.updated, report.claude);
+    try std.testing.expectEqual(InstallReport.Action.skipped, report.skills);
+    try std.testing.expectEqual(InstallReport.Action.skipped, report.hooks);
+
+    const codex_instructions = try std.fs.path.join(allocator, &.{ home, ".codex", "AGENTS.md" });
+    defer allocator.free(codex_instructions);
+    try std.testing.expectError(error.FileNotFound, std.fs.cwd().access(codex_instructions, .{}));
+
+    const claude_settings = try std.fs.path.join(allocator, &.{ home, ".claude", "settings.json" });
+    defer allocator.free(claude_settings);
+    try std.testing.expectError(error.FileNotFound, std.fs.cwd().access(claude_settings, .{}));
 }
 
 test "generic mcp json formats produce correct structure" {
