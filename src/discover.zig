@@ -312,6 +312,44 @@ fn languageForFileName(name: []const u8) ?Language {
     return null;
 }
 
+fn parseLanguageName(value: []const u8) ?Language {
+    inline for (@typeInfo(Language).@"enum".fields) |field| {
+        if (std.ascii.eqlIgnoreCase(value, field.name)) {
+            return @enumFromInt(field.value);
+        }
+    }
+    return null;
+}
+
+fn normalizeExtensionMatch(ext: []const u8, candidate: []const u8) bool {
+    if (candidate.len == 0) return false;
+    if (candidate[0] == '.') {
+        return std.ascii.eqlIgnoreCase(ext, candidate);
+    }
+    if (ext.len != candidate.len + 1 or ext[0] != '.') return false;
+    return std.ascii.eqlIgnoreCase(ext[1..], candidate);
+}
+
+fn languageForExtensionOverrideRaw(ext: []const u8, raw: []const u8) ?Language {
+    if (ext.len == 0) return null;
+    var entries = std.mem.splitScalar(u8, raw, ',');
+    while (entries.next()) |entry_raw| {
+        const entry = std.mem.trim(u8, entry_raw, " \t\r\n");
+        if (entry.len == 0) continue;
+        const eq_idx = std.mem.indexOfScalar(u8, entry, '=') orelse continue;
+        const key = std.mem.trim(u8, entry[0..eq_idx], " \t\r\n");
+        const value = std.mem.trim(u8, entry[eq_idx + 1 ..], " \t\r\n");
+        if (!normalizeExtensionMatch(ext, key)) continue;
+        return parseLanguageName(value);
+    }
+    return null;
+}
+
+fn languageForExtensionOverride(ext: []const u8) ?Language {
+    const raw = std.posix.getenv("CBM_EXTENSION_MAP") orelse return null;
+    return languageForExtensionOverrideRaw(ext, raw);
+}
+
 fn containsAny(haystack: []const u8, needle: []const []const u8) bool {
     for (needle) |n| {
         if (std.mem.indexOf(u8, haystack, n) != null) {
@@ -458,6 +496,7 @@ pub fn languageForPath(path: []const u8) ?Language {
 }
 
 pub fn languageForExtension(ext: []const u8) ?Language {
+    if (languageForExtensionOverride(ext)) |override| return override;
     const map = std.StaticStringMap(Language).initComptime(.{
         .{ ".go", .go },
         .{ ".py", .python },
@@ -542,6 +581,12 @@ test "extension detection" {
     try std.testing.expectEqual(Language.zig, languageForExtension(".zig").?);
     try std.testing.expectEqual(Language.python, languageForExtension(".py").?);
     try std.testing.expect(languageForExtension(".xyz") == null);
+}
+
+test "extension detection honors explicit env override map" {
+    try std.testing.expectEqual(Language.python, languageForExtensionOverrideRaw(".foo", ".foo=python,bar=typescript").?);
+    try std.testing.expectEqual(Language.typescript, languageForExtensionOverrideRaw(".bar", ".foo=python,bar=typescript").?);
+    try std.testing.expect(languageForExtensionOverrideRaw(".go", ".foo=python,bar=typescript") == null);
 }
 
 test "discover skips shared js ts config files in full mode" {

@@ -92,6 +92,15 @@ def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def parse_cli_json(text: str) -> Dict[str, Any]:
+    for line in reversed([ln.strip() for ln in text.splitlines() if ln.strip()]):
+        try:
+            return json.loads(line)
+        except json.JSONDecodeError:
+            continue
+    return {}
+
+
 def run_cmd(
     argv: List[str],
     home: Path,
@@ -186,6 +195,9 @@ def inspect_operational_controls(binary: Path) -> Dict[str, Any]:
         (config_default_home / ".gemini").mkdir(parents=True, exist_ok=True)
         config_default_gemini = config_default_home / ".gemini" / "settings.json"
         config_default_codex_instructions = config_default_home / ".codex" / "AGENTS.md"
+        extension_repo = home / "extension-map-repo"
+        extension_repo.mkdir(parents=True, exist_ok=True)
+        (extension_repo / "feature.foo").write_text("def custom_hit():\n    return 1\n")
 
         set_idle = run_cmd([str(binary), "config", "set", "idle_store_timeout_ms", "1234"], home)
         get_idle = run_cmd([str(binary), "config", "get", "idle_store_timeout_ms"], home)
@@ -211,9 +223,24 @@ def inspect_operational_controls(binary: Path) -> Dict[str, Any]:
         run_cmd([str(binary), "config", "set", "install_scope", "detected"], config_default_home)
         run_cmd([str(binary), "config", "set", "install_extras", "false"], config_default_home)
         install_from_config_defaults = run_cmd([str(binary), "install", "-y", "--force"], config_default_home)
+        extension_index = run_cmd(
+            [str(binary), "cli", "index_repository", json.dumps({"project_path": str(extension_repo)})],
+            home,
+            {"CBM_EXTENSION_MAP": ".foo=python"},
+        )
+        extension_search = run_cmd(
+            [str(binary), "cli", "search_graph", json.dumps({"project": "extension-map-repo", "name_pattern": "custom_hit"})],
+            home,
+            {"CBM_EXTENSION_MAP": ".foo=python"},
+        )
 
         gemini_after_detected = file_text(gemini_settings)
         config_default_gemini_text = file_text(config_default_gemini)
+        extension_index_payload = parse_cli_json(extension_index.stdout)
+        extension_search_payload = parse_cli_json(extension_search.stdout)
+        extension_search_total = 0
+        if isinstance(extension_search_payload.get("result"), dict):
+            extension_search_total = int(extension_search_payload["result"].get("total", 0) or 0)
 
         return {
             "operational_contract": {
@@ -248,6 +275,8 @@ def inspect_operational_controls(binary: Path) -> Dict[str, Any]:
                 "config_defaults_drive_extras": contains_ci(install_from_config_defaults.stdout, "Extras: mcp-only"),
                 "config_defaults_write_gemini": install_from_config_defaults.returncode == 0 and str(binary) in config_default_gemini_text,
                 "config_defaults_skip_codex_instructions": not config_default_codex_instructions.exists(),
+                "extension_map_index_succeeds": extension_index.returncode == 0 and isinstance(extension_index_payload.get("result"), dict),
+                "extension_map_search_finds_symbol": extension_search.returncode == 0 and extension_search_total > 0,
             },
         }
 
