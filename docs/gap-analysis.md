@@ -281,6 +281,24 @@ Phase 1 contract for this plan:
   - no signing, SBOM, provenance, or VirusTotal gates in the first slice
 - keep packaging separate from the already-implemented agent config behavior,
   which remains owned by the installer plans rather than the release plan
+
+Current evidence in this worktree:
+
+- `scripts/package-release.sh` now produces host release archives plus
+  `checksums.txt` from the Zig build output
+- `install.sh` now installs from release-style archives and verifies checksums
+  against a local file-backed release directory
+- `scripts/setup.sh` now supports both:
+  - packaged-release install via `install.sh`
+  - local `--from-source` builds from the current checkout
+
+Still open in this plan:
+
+- PowerShell packaging entrypoints are not yet added
+- `.github/workflows/release.yml` and broader CI release automation are not yet
+  present
+- Windows-specific verification is currently blocked by missing `pwsh` in the
+  local environment
 - Require live-process verification of the idle close/reopen cycle before
   upgrading the runtime-extras parity claim.
 

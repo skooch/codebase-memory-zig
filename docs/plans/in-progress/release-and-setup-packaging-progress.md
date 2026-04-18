@@ -116,3 +116,63 @@ Results:
   on `codex/release-setup-packaging`
 - upstream packaging surface captured and narrowed into a concrete Zig target
   before any build or script implementation changes
+
+## Phase 2 Checkpoint: Host Packaging And Unix Setup
+
+First packaging implementation slice on 2026-04-19:
+
+- added `scripts/package-release.sh`
+  - builds ReleaseSafe host or explicit-target archives
+  - emits release-style archive names plus `checksums.txt`
+  - includes the shell installer in Unix archives when present
+- added `install.sh`
+  - downloads a packaged release archive
+  - verifies checksums when available
+  - installs `cbm` into a chosen directory
+  - optionally runs `cbm install -y`
+- added `scripts/setup.sh`
+  - defaults to the packaged-release install path via `install.sh`
+  - supports `--from-source` to build and install the current checkout with
+    Zig instead of downloading a release archive
+- added `docs/install.md`
+  - records the current local packaging and install contract
+
+Verification for this slice:
+
+```sh
+bash scripts/bootstrap_worktree.sh /Users/skooch/projects/codebase-memory-zig
+bash -n install.sh scripts/setup.sh scripts/package-release.sh
+zig build
+bash scripts/package-release.sh --version 0.0.0-dev
+CBM_DOWNLOAD_URL="file:///Users/skooch/projects/worktrees/release-setup-packaging/dist/release" bash install.sh --dir /tmp/cbm-install --skip-config
+CBM_DOWNLOAD_URL="file:///Users/skooch/projects/worktrees/release-setup-packaging/dist/release" bash scripts/setup.sh --dir /tmp/cbm-setup --skip-config
+bash scripts/setup.sh --from-source --dir /tmp/cbm-source --skip-config
+command -v pwsh || true
+```
+
+Results:
+
+- `bash scripts/bootstrap_worktree.sh /Users/skooch/projects/codebase-memory-zig`
+  completed because this fresh worktree was missing vendored grammars
+- shell syntax checks passed
+- `zig build` passed
+- `bash scripts/package-release.sh --version 0.0.0-dev` produced:
+  - `dist/release/cbm-darwin-arm64.tar.gz`
+  - `dist/release/checksums.txt`
+- `bash install.sh --dir /tmp/cbm-install --skip-config` passed against the
+  local file-backed release directory
+- `bash scripts/setup.sh --dir /tmp/cbm-setup --skip-config` passed against
+  the same local release directory
+- `bash scripts/setup.sh --from-source --dir /tmp/cbm-source --skip-config`
+  passed against the current checkout
+- `pwsh` is not available in this environment, so PowerShell entrypoints remain
+  unimplemented and Windows verification stays open
+
+Remaining Phase 2 scope after this checkpoint:
+
+- add the PowerShell install and setup entrypoints:
+  - `install.ps1`
+  - `scripts/setup-windows.ps1`
+- add CI-oriented release automation in `.github/workflows/release.yml`
+- decide whether `build.zig` needs a dedicated release step beyond the current
+  `zig build --prefix` contract that `scripts/package-release.sh` already uses
