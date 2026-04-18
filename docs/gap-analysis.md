@@ -90,9 +90,9 @@ Completed in Plan 03:
 Completed in Plan 05:
 - Long-tail edge parity: `THROWS`/`RAISES` edges from throw statements (JS/TS/TSX). Verified end-to-end on the edge-parity fixture with RAISES resolving custom error classes. Out-of-scope edges: `OVERRIDE` (Go-only), `CONTAINS_PACKAGE` (never implemented in C), `WRITES` and `READS` (not proven original-overlap by the current C reference fixture).
 
-## In-Progress Plan: Windows, Installer, and Client Integration
+## Implemented Plan: Windows, Installer, and Client Integration
 
-Current matrix for the first slice:
+Current matrix for the completed slice:
 - runtime cache root selection
   - `CBM_CACHE_DIR`
   - Windows `LOCALAPPDATA`
@@ -113,18 +113,20 @@ Current matrix for the first slice:
   - one-shot `update_notice`
   - EOF and SIGTERM shutdown
 
-Known current-state baseline before this slice completes:
+Completion evidence:
 - `src.cli.runtimeCacheDir` now accepts an explicit config-platform override and
-  can resolve Windows `LOCALAPPDATA` and Unix `XDG_CACHE_HOME` roots in
-  addition to the existing `CBM_CACHE_DIR` / `HOME` fallback behavior.
+  resolves Windows `LOCALAPPDATA`, Unix `XDG_CACHE_HOME`, and the existing
+  `CBM_CACHE_DIR` / `HOME` fallback behavior through one shared helper layer.
 - `src.cli.detectAgents` and the Zed, VS Code, and KiloCode install helpers now
   route through shared config-platform path helpers instead of deriving paths
   only from the host OS tag, which makes Windows-layout checks reproducible on
   a non-Windows host.
 - `scripts/run_cli_parity.sh --zig-only` now seeds fixture-backed Windows
   layouts under `APPDATA` / `LOCALAPPDATA` and verifies the Zig installer and
-  runtime-config paths there, but the default compare mode is still limited to
-  the shared Codex/Claude contract.
+  runtime-config paths there.
+- `src.mcp.handleLine` now ignores no-`id` notifications, and the runtime
+  harness proves `notifications/initialized` stays silent while the first real
+  tool response still receives the one-shot update notice.
 
 ## Implemented Plan: Large-Repo Reliability and Crash Safety
 

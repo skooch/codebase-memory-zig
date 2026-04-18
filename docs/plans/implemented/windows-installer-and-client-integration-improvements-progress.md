@@ -102,14 +102,6 @@ Results:
   - SIGTERM shutdown
   - one-shot startup update notice
 
-Remaining gap before this plan can close:
-
-- the default compare mode in `scripts/run_cli_parity.sh` is still limited to
-  the shared Codex/Claude contract even though `--zig-only` now has a
-  fixture-backed Windows-layout lane
-- `docs/installer-matrix.md` and `docs/port-comparison.md` should not change
-  until that fixture-backed verification exists
-
 ## Phase 2 Checkpoint: Fixture-Backed Windows CLI Lane
 
 Second implementation slice on 2026-04-18:
@@ -139,3 +131,79 @@ Results:
 - refreshed the golden snapshot with the new `windows_contract`
 - `bash scripts/run_cli_parity.sh --zig-only` passed with `23` total checks
   matching the golden snapshot
+
+## Phase 2 Checkpoint: Silent Startup Notifications
+
+Third implementation slice on 2026-04-18:
+
+- `src/mcp.zig`
+  - now ignores JSON-RPC notifications with no `id` instead of trying to
+    dispatch them like normal requests
+  - adds focused regression coverage for silent notifications and for the
+    `notifications/initialized` path not stealing the one-shot update notice
+- `scripts/test_runtime_lifecycle.sh`
+  - now drives `initialize`, `notifications/initialized`, and `tools/list`
+  - verifies that the notification produces no response and that the first real
+    tool response still receives the startup update notice
+
+Verification for this slice:
+
+```sh
+zig build
+zig build test
+bash scripts/run_cli_parity.sh
+bash scripts/run_cli_parity.sh --zig-only
+bash scripts/test_runtime_lifecycle.sh
+```
+
+Results:
+
+- `zig build` passed
+- `zig build test` passed
+- `bash scripts/run_cli_parity.sh` passed with no Zig/C shared-contract
+  mismatches
+- `bash scripts/run_cli_parity.sh --zig-only` passed with `23` total checks
+  matching the golden snapshot
+- `bash scripts/test_runtime_lifecycle.sh` passed:
+  - clean EOF shutdown
+  - SIGTERM shutdown
+  - one-shot startup update notice
+  - silent `notifications/initialized`
+
+## Phase 3: Verify and Reclassify
+- [x] Run `zig build`, `zig build test`, `bash scripts/run_cli_parity.sh`, and
+  `bash scripts/test_runtime_lifecycle.sh` with the new Windows-style fixtures
+  until installer and startup behavior is stable.
+- [x] Update `docs/installer-matrix.md` and `docs/port-comparison.md` only for
+  the agent targets and startup paths that now have explicit evidence.
+- [x] Record remaining unsupported clients, packaging gaps, and trust-related
+  follow-ons in this progress file.
+- **Status:** complete
+
+## Phase 3 Completion Pass
+
+Final plan verification on 2026-04-18:
+
+```sh
+zig build
+zig build test
+bash scripts/run_cli_parity.sh
+bash scripts/run_cli_parity.sh --zig-only
+bash scripts/test_runtime_lifecycle.sh
+```
+
+Results:
+
+- `zig build` passed
+- `zig build test` passed
+- `bash scripts/run_cli_parity.sh` passed
+- `bash scripts/run_cli_parity.sh --zig-only` passed
+- `bash scripts/test_runtime_lifecycle.sh` passed
+
+Remaining intentional gaps:
+
+- shipped support scope remains Codex CLI plus Claude Code even though the repo
+  now has fixture-backed Windows-layout config-writer evidence for VS Code,
+  Zed, and KiloCode
+- packaging trust, signing, archive behavior, and setup-script parity remain
+  separate follow-on work rather than something this plan claims to finish

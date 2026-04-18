@@ -23,11 +23,11 @@ Observed upstream pattern:
 - The upstream project reduced support churn when it codified client-specific config shapes and path rules in temp-home tests instead of treating them as ad hoc installer branches.
 
 ## Current Phase
-Phase 2
+Implemented
 
 ## File Map
-- Modify: `docs/plans/in-progress/windows-installer-and-client-integration-improvements-plan.md`
-- Create: `docs/plans/in-progress/windows-installer-and-client-integration-improvements-progress.md`
+- Modify: `docs/plans/implemented/windows-installer-and-client-integration-improvements-plan.md`
+- Create: `docs/plans/implemented/windows-installer-and-client-integration-improvements-progress.md`
 - Modify: `docs/gap-analysis.md`
 - Modify: `docs/port-comparison.md`
 - Modify: `docs/zig-port-plan.md`
@@ -47,20 +47,20 @@ Phase 2
 ### Phase 1: Lock the Windows and Client Matrix
 - [x] Translate the upstream Windows and client reports into a concrete matrix in `docs/gap-analysis.md` that covers path normalization, shell quoting, binary discovery, config locations, and handshake ordering.
 - [x] Add fixture config files under `testdata/agent-comparison/windows-paths/` for the shared agent targets and the next client targets the Zig port may claim.
-- [x] Record exact temp-home, temp-config, and Windows-path verification commands in `docs/plans/in-progress/windows-installer-and-client-integration-improvements-progress.md`.
+- [x] Record exact temp-home, temp-config, and Windows-path verification commands in `docs/plans/implemented/windows-installer-and-client-integration-improvements-progress.md`.
 - **Status:** complete
 
 ### Phase 2: Normalize Installer and Startup Behavior
-- [ ] Extend `src/cli.zig`, `src/main.zig`, and `src/discover.zig` so path normalization, binary discovery, project-path validation, and config-file selection behave deterministically across Windows and shared Unix environments.
-- [ ] Tighten `src/mcp.zig` and `src/runtime_lifecycle.zig` so handshake ordering, startup notifications, process shutdown, and hook-trigger behavior are explicit and testable rather than inferred from one client’s happy path.
-- [ ] Update `scripts/run_cli_parity.sh` and `scripts/test_runtime_lifecycle.sh` so installer and runtime compatibility checks run from fixtures instead of live editor state.
-- **Status:** in progress
+- [x] Extend `src/cli.zig`, `src/main.zig`, and `src/discover.zig` so path normalization, binary discovery, project-path validation, and config-file selection behave deterministically across Windows and shared Unix environments.
+- [x] Tighten `src/mcp.zig` and `src/runtime_lifecycle.zig` so handshake ordering, startup notifications, process shutdown, and hook-trigger behavior are explicit and testable rather than inferred from one client’s happy path.
+- [x] Update `scripts/run_cli_parity.sh` and `scripts/test_runtime_lifecycle.sh` so installer and runtime compatibility checks run from fixtures instead of live editor state.
+- **Status:** complete
 
 ### Phase 3: Verify and Reclassify
-- [ ] Run `zig build`, `zig build test`, `bash scripts/run_cli_parity.sh`, and `bash scripts/test_runtime_lifecycle.sh` with the new Windows-style fixtures until installer and startup behavior is stable.
-- [ ] Update `docs/installer-matrix.md` and `docs/port-comparison.md` only for the agent targets and startup paths that now have explicit evidence.
-- [ ] Record remaining unsupported clients, packaging gaps, and trust-related follow-ons in `docs/plans/in-progress/windows-installer-and-client-integration-improvements-progress.md`.
-- **Status:** pending
+- [x] Run `zig build`, `zig build test`, `bash scripts/run_cli_parity.sh`, and `bash scripts/test_runtime_lifecycle.sh` with the new Windows-style fixtures until installer and startup behavior is stable.
+- [x] Update `docs/installer-matrix.md` and `docs/port-comparison.md` only for the agent targets and startup paths that now have explicit evidence.
+- [x] Record remaining unsupported clients, packaging gaps, and trust-related follow-ons in `docs/plans/implemented/windows-installer-and-client-integration-improvements-progress.md`.
+- **Status:** complete
 
 ## Decisions
 | Decision | Rationale |

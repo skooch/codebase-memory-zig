@@ -175,12 +175,12 @@ This section compares what kinds of graph entities the two systems are built to 
 | Capability | Original C | Zig Port | Status | Interoperable? | Notes |
 |-----------|------------|----------|--------|----------------|-------|
 | Default stdio MCP server | Yes | Yes | `Near parity` | Yes | This is the default mode in both entrypoints, and Zig now has explicit `1 MiB` request-line and `4 MiB` response-envelope guardrails validated by unit tests plus the runtime harness. |
-| Persistent runtime cache / DB | Yes | Yes | `Near parity` | Yes | Zig uses `CBM_CACHE_DIR` or `~/.cache/codebase-memory-zig`. |
+| Persistent runtime cache / DB | Yes | Yes | `Near parity` | Yes | Zig now proves cache-root selection through `CBM_CACHE_DIR`, Windows `LOCALAPPDATA`, Unix `XDG_CACHE_HOME`, and `HOME` fallback behavior via fixture-backed installer checks. |
 | Watcher-driven auto-reindex | Yes | Yes | `Near parity` | Yes | Both use git-based watcher logic. |
 | Startup auto-index | Yes | Yes | `Near parity` | Yes | Zig supports config-driven or env-driven startup auto-index. |
 | Previously indexed project watcher registration | Yes | Yes | `Near parity` | Yes | Explicitly wired in Zig Phase 6. |
 | UI runtime flags (`--ui`, `--port`) | Yes | No | `Cut` | No | Zig does not ship the UI server. |
-| Startup update notification | Yes | Yes, one-shot notice on the first post-initialize response | `Near parity` | Yes | Zig now starts an update check on `initialize`, preserves the pending notice until it can be injected safely, and covers the env-override plus one-shot behavior in the runtime harness. |
+| Startup update notification | Yes | Yes, one-shot notice on the first post-initialize response | `Near parity` | Yes | Zig now starts an update check on `initialize`, preserves the pending notice until it can be injected safely, and covers the env-override plus one-shot behavior in the runtime harness, including the `notifications/initialized` path staying silent before the first real tool response. |
 | Benchmarking / soak / security scripts | Present | Initial benchmark suite now present, but much narrower than the original script set | `Partial` | No | Zig now ships `scripts/run_benchmark_suite.sh` plus a local stress manifest that completed on `2026-04-18` with Zig cold-index medians of `1282.226 ms` on `self-repo` and `76.951 ms` on `sqlite-amalgamation`, but it still does not reproduce the original's broader benchmark, soak, and security script surface. |
 
 ## 7. CLI and Productization
@@ -194,7 +194,7 @@ This section compares what kinds of graph entities the two systems are built to 
 | `cli --progress` | Yes, rich progress sink | Yes, shared phase-aware parity stream for overlapping commands | `Near parity` | Yes | Verified by the interop harness temp-HOME CLI check, which now reports `cli_progress: match`. |
 | Auto-detected shared agent integrations | 10 agents total, including Codex CLI and Claude Code | 2 shared agents: Codex CLI and Claude Code | `Near parity` | Yes | The verified shared overlap is now green for the two agent targets this repo counts as current product scope; the original's broader 10-agent ecosystem remains a separate product-surface difference. |
 | Agent instructions / skills / hooks installation | Yes | No | `Deferred` | No | Original installer configures instruction files, skills, and reminders/hooks. |
-| Manual agent config support | Yes | Yes for the two shipped agent targets | `Near parity` | Yes | Zig writes the correct config files for Codex CLI and Claude Code. |
+| Manual agent config support | Yes | Yes for the two shipped agent targets | `Near parity` | Yes | Zig writes the correct config files for Codex CLI and Claude Code, and now has explicit fixture-backed Windows-layout config-writer evidence for VS Code, Zed, and KiloCode without expanding the shipped support claim beyond the two shared agent targets. |
 
 ## 8. Build, Packaging, and Repository Shape
 
