@@ -21,9 +21,11 @@ For the cross-bucket order that includes these improvement plans plus the
 remaining ready-to-go and productization plans, use
 [../README.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/README.md).
 
+Completed discovery/query contract work is archived at
+[../../implemented/discovery-indexing-scope-and-query-semantics-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/discovery-indexing-scope-and-query-semantics-improvements-plan.md).
+
 ## Active Improvement Plan
 
-- [discovery-indexing-scope-and-query-semantics-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/discovery-indexing-scope-and-query-semantics-improvements-plan.md)
 - [parser-accuracy-and-graph-fidelity-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/parser-accuracy-and-graph-fidelity-improvements-plan.md)
 
 ## Remaining Improvement Queue

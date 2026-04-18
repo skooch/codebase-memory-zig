@@ -312,19 +312,29 @@ def canonical_search_code(payload: Any) -> dict[str, Any]:
     if not isinstance(payload, dict):
         return {"total_results": 0, "results": []}
     results = payload.get("results", [])
-    if not isinstance(results, list):
-        return {"total_results": 0, "results": []}
     normalized: list[dict[str, str]] = []
-    for row in results:
-        if not isinstance(row, dict):
-            continue
-        normalized.append(
-            {
-                "file_path": normalize_path_for_manifest(str(row.get("file_path", row.get("file", "")))),
-                "name": str(row.get("name", row.get("node", ""))),
-                "label": str(row.get("label", "")),
-            }
-        )
+    if isinstance(results, list):
+        for row in results:
+            if not isinstance(row, dict):
+                continue
+            normalized.append(
+                {
+                    "file_path": normalize_path_for_manifest(str(row.get("file_path", row.get("file", "")))),
+                    "name": str(row.get("name", row.get("node", ""))),
+                    "label": str(row.get("label", "")),
+                }
+            )
+    if not normalized:
+        files = payload.get("files", [])
+        if isinstance(files, list):
+            normalized = [
+                {
+                    "file_path": normalize_path_for_manifest(str(path)),
+                    "name": "",
+                    "label": "",
+                }
+                for path in files
+            ]
     return {
         "total_results": int(payload.get("total_results", payload.get("total", len(normalized))) or 0),
         "results": normalized,
@@ -398,18 +408,37 @@ def canonical_manage_adr(payload: Any) -> dict[str, Any]:
     }
 
 
-def canonical_graph_schema(payload: Any) -> dict[str, list[str]]:
+def canonical_graph_schema(payload: Any) -> dict[str, Any]:
     if not isinstance(payload, dict):
-        return {"node_labels": [], "edge_types": []}
+        return {"node_labels": [], "edge_types": [], "languages": []}
     node_labels = payload.get("node_labels", [])
     edge_types = payload.get("edge_types", [])
+    languages = payload.get("languages", [])
     if not isinstance(node_labels, list):
         node_labels = []
     if not isinstance(edge_types, list):
         edge_types = []
+    if not isinstance(languages, list):
+        languages = []
+    def collect_strings(entries: Any, key: str) -> list[str]:
+        if not isinstance(entries, list):
+            return []
+        out: list[str] = []
+        for entry in entries:
+            if isinstance(entry, dict) and entry.get(key):
+                out.append(str(entry[key]))
+            elif isinstance(entry, str):
+                out.append(entry)
+        return sorted(set(out))
+
     return {
-        "node_labels": sorted(str(l) for l in node_labels),
-        "edge_types": sorted(str(t) for t in edge_types),
+        "node_labels": collect_strings(node_labels, "label"),
+        "edge_types": collect_strings(edge_types, "type"),
+        "languages": sorted(
+            str(entry.get("language", ""))
+            for entry in languages
+            if isinstance(entry, dict) and entry.get("language")
+        ),
     }
 
 
@@ -1066,6 +1095,14 @@ def check_assertions(tool_name: str, tool_payload: Any, assertions: list[dict[st
 
         if tool_name == "search_code":
             results = canonical_search_code(tool_payload or {})
+            if "total_results" in expected and results["total_results"] != expected["total_results"]:
+                failures.append(
+                    f"search_code total_results {results['total_results']} != {expected['total_results']}"
+                )
+            file_paths = {row["file_path"] for row in results["results"]}
+            missing_files = sorted(set(expected.get("required_files", [])).difference(file_paths))
+            if missing_files:
+                failures.append(f"search_code missing files {missing_files}")
             for required_result in expected.get("required_results", []):
                 if not isinstance(required_result, dict):
                     continue
@@ -1110,11 +1147,12 @@ def check_assertions(tool_name: str, tool_payload: Any, assertions: list[dict[st
 
         if tool_name == "get_graph_schema":
             schema = canonical_graph_schema(tool_payload or {})
-            for key in ("required_node_labels", "required_edge_types"):
+            for key in ("required_node_labels", "required_edge_types", "required_languages"):
                 expected_values = set(expected.get(key, []))
                 actual_key = {
                     "required_node_labels": "node_labels",
                     "required_edge_types": "edge_types",
+                    "required_languages": "languages",
                 }[key]
                 available_values = set(schema.get(actual_key, []))
                 missing = sorted(expected_values.difference(available_values))
@@ -1452,13 +1490,25 @@ def compare_golden_snapshot(
                 gld_labels = set(gld.get("node_labels", []))
                 cur_types = set(cur.get("edge_types", []))
                 gld_types = set(gld.get("edge_types", []))
+                cur_languages = set(cur.get("languages", []))
+                gld_languages = set(gld.get("languages", []))
                 added_labels = sorted(cur_labels - gld_labels)
                 removed_labels = sorted(gld_labels - cur_labels)
                 added_types = sorted(cur_types - gld_types)
                 removed_types = sorted(gld_types - cur_types)
+                added_languages = sorted(cur_languages - gld_languages)
+                removed_languages = sorted(gld_languages - cur_languages)
                 mismatches.append(
-                    "get_graph_schema[%d]: node_labels(added=%s removed=%s) edge_types(added=%s removed=%s)"
-                    % (i, added_labels, removed_labels, added_types, removed_types)
+                    "get_graph_schema[%d]: node_labels(added=%s removed=%s) edge_types(added=%s removed=%s) languages(added=%s removed=%s)"
+                    % (
+                        i,
+                        added_labels,
+                        removed_labels,
+                        added_types,
+                        removed_types,
+                        added_languages,
+                        removed_languages,
+                    )
                 )
 
     # get_code_snippet
@@ -1973,6 +2023,7 @@ def run_compare_mode(
                     has_mismatch = False
                     for index, assertion in enumerate(assertions.get("search_code", [])):
                         expected_rows = assertion.get("expect", {}).get("required_results", [])
+                        expected_files = assertion.get("expect", {}).get("required_files", [])
                         z_rows = canonical_search_code(z_entries[index]["payload"])
                         c_rows = canonical_search_code(c_entries[index]["payload"])
                         same_shape = z_rows == c_rows
@@ -1999,9 +2050,24 @@ def run_compare_mode(
                             )
                             if not z_match or not c_match:
                                 has_mismatch = True
+                        z_files = sorted({row["file_path"] for row in z_rows["results"]})
+                        c_files = sorted({row["file_path"] for row in c_rows["results"]})
+                        z_missing_files = sorted(set(expected_files).difference(z_files))
+                        c_missing_files = sorted(set(expected_files).difference(c_files))
+                        if z_missing_files or c_missing_files:
+                            has_mismatch = True
                         if not same_shape:
                             has_mismatch = True
-                        cases.append({"required_results": case_rows, "zig": z_rows, "c": c_rows})
+                        cases.append(
+                            {
+                                "required_results": case_rows,
+                                "required_files": expected_files,
+                                "zig_missing_files": z_missing_files,
+                                "c_missing_files": c_missing_files,
+                                "zig": z_rows,
+                                "c": c_rows,
+                            }
+                        )
                     if has_mismatch:
                         report["mismatches"].append(
                             {"fixture": fixture_id, "tool": scope, "category": "search_code_contract"}

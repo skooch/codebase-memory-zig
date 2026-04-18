@@ -2152,6 +2152,105 @@
           }
         ]
       }
+    },
+    {
+      "id": "discovery-scope",
+      "path": "testdata/interop/discovery-scope",
+      "project": "discovery-scope",
+      "language": "typescript",
+      "scope_tools": [
+        "index_repository",
+        "search_graph",
+        "search_code",
+        "get_graph_schema",
+        "list_projects"
+      ],
+      "assertions": {
+        "index_repository": {
+          "expect": {
+            "nodes_min": 4,
+            "edges_min": 3
+          }
+        },
+        "search_graph": [
+          {
+            "args": {
+              "project": "discovery-scope",
+              "label": "Function"
+            },
+            "expect": {
+              "required_names": [
+                "scopeVisible"
+              ]
+            }
+          }
+        ],
+        "search_code": [
+          {
+            "args": {
+              "project": "discovery-scope",
+              "pattern": "scopeVisible",
+              "mode": "files",
+              "limit": 20
+            },
+            "expect": {
+              "total_results": 1,
+              "required_files": [
+                "src/index.ts"
+              ]
+            }
+          },
+          {
+            "args": {
+              "project": "discovery-scope",
+              "pattern": "ghostIgnoredHit",
+              "mode": "files",
+              "limit": 20
+            },
+            "expect": {
+              "total_results": 0
+            }
+          },
+          {
+            "args": {
+              "project": "discovery-scope",
+              "pattern": "generatedBundleHit",
+              "mode": "files",
+              "limit": 20
+            },
+            "expect": {
+              "total_results": 0
+            }
+          },
+          {
+            "args": {
+              "project": "discovery-scope",
+              "pattern": "ghostNestedHit",
+              "mode": "files",
+              "limit": 20
+            },
+            "expect": {
+              "total_results": 0
+            }
+          }
+        ],
+        "get_graph_schema": [
+          {
+            "args": {},
+            "expect": {
+              "required_node_labels": [
+                "File",
+                "Function",
+                "Module",
+                "Project"
+              ],
+              "required_edge_types": [
+                "DEFINES"
+              ]
+            }
+          }
+        ]
+      }
     }
   ]
 }

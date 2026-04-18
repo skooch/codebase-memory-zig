@@ -8,9 +8,6 @@ currently active plans that have moved into `docs/plans/in-progress/`.
 
 ## Active Now
 
-- [discovery-indexing-scope-and-query-semantics-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/discovery-indexing-scope-and-query-semantics-improvements-plan.md)
-  - Active in `/Users/skooch/projects/worktrees/discovery-scope-query` on
-    `codex/discovery-scope-query`.
 - [parser-accuracy-and-graph-fidelity-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/parser-accuracy-and-graph-fidelity-improvements-plan.md)
   - Earlier correctness slice still exists in `docs/plans/in-progress/`.
 
@@ -72,7 +69,5 @@ currently active plans that have moved into `docs/plans/in-progress/`.
 
 ## Start Here
 
-The current active plan in this worktree is
-[discovery-indexing-scope-and-query-semantics-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/discovery-indexing-scope-and-query-semantics-improvements-plan.md).
-When it finishes, the next plan to start is
+The next unopened plan remains
 [large-repo-reliability-and-crash-safety-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/large-repo-reliability-and-crash-safety-improvements-plan.md).
