@@ -89,6 +89,26 @@ zig build run -- cli index_repository '{"project_path":"testdata/interop/accurac
 zig build run -- cli trace_call_path '{"project":"typescript-import-cases","function_name":"run","direction":"out","depth":4}'
 ```
 
+## Initial Baseline Probe
+
+Controlled probe run on 2026-04-18 after bootstrapping the worktree:
+
+- Python fixture:
+  - `index_repository` returned `nodes=10`, `edges=12`
+  - `HANDLES` query returned only `health_check -> /health`
+- TypeScript fixture:
+  - `index_repository` returned `nodes=12`, `edges=16`
+  - `search_graph` returned `run`, `localOnly`, `markStart`, `parsePayload`,
+    and `handleRequest`
+  - `trace_call_path(function_name=\"run\")` resolved outbound `CALLS` edges to
+    `markStart`, `parsePayload`, and `handleRequest`
+
+What this means:
+- the first Python false-route guard and the first TypeScript alias-resolution
+  guard are green already
+- Phase 2 should now target a sharper red case around ownership drift or
+  framework-specific attachment instead of changing extraction blindly
+
 ## Phases
 
 ### Phase 1: Lock the Accuracy Contract
