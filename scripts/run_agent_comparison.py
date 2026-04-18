@@ -24,6 +24,63 @@ KEY_ALIASES = {
 }
 
 
+def normalized_stderr_lines(stderr: str) -> list[str]:
+    return [line.strip() for line in stderr.splitlines() if line.strip()]
+
+
+def extract_error_info(result: dict[str, Any]) -> dict[str, Any]:
+    payload = result.get("payload")
+    payload_reason = ""
+    payload_code: int | None = None
+    if isinstance(payload, dict) and payload.get("__error__"):
+        payload_reason = str(payload["__error__"])
+    elif isinstance(payload, dict) and isinstance(payload.get("error"), dict):
+        payload_error = payload["error"]
+        payload_code = int(payload_error["code"]) if isinstance(payload_error.get("code"), int) else None
+        payload_reason = str(payload_error.get("message") or payload_error)
+
+    stderr_lines = normalized_stderr_lines(str(result.get("stderr", "")))
+    returncode = int(result.get("returncode", 0))
+    return {
+        "present": bool(returncode != 0 or payload_reason),
+        "returncode": returncode,
+        "payload_code": payload_code,
+        "payload_reason": payload_reason or None,
+        "stderr_summary": (stderr_lines[-1] if stderr_lines else None),
+        "stderr_tail": stderr_lines[-5:],
+    }
+
+
+def compare_error_info(original: dict[str, Any], hybrid: dict[str, Any]) -> dict[str, Any]:
+    if not original["present"] and not hybrid["present"]:
+        return {"status": "none"}
+
+    if original["present"] != hybrid["present"]:
+        return {
+            "status": "mismatch",
+            "differences": ["presence"],
+            "original": original,
+            "hybrid": hybrid,
+        }
+
+    differences: list[str] = []
+    if original.get("payload_code") != hybrid.get("payload_code"):
+        differences.append("payload_code")
+    if original.get("payload_reason") != hybrid.get("payload_reason"):
+        differences.append("payload_reason")
+    if original.get("stderr_summary") != hybrid.get("stderr_summary"):
+        differences.append("stderr_summary")
+    if original.get("returncode") != hybrid.get("returncode"):
+        differences.append("returncode")
+
+    return {
+        "status": ("match" if not differences else "mismatch"),
+        "differences": differences,
+        "original": original,
+        "hybrid": hybrid,
+    }
+
+
 def iter_field_values(payload: Any, keys: set[str]) -> list[str]:
     values: list[str] = []
 
@@ -41,9 +98,40 @@ def iter_field_values(payload: Any, keys: set[str]) -> list[str]:
     return values
 
 
-def grade_payload(payload: Any, expect: dict[str, Any]) -> dict[str, Any]:
-    if isinstance(payload, dict) and payload.get("__error__"):
-        return {"status": "FAIL", "score": 0.0, "details": {"reason": payload.get("__error__")}}
+def grade_payload(payload: Any, expect: dict[str, Any], error: dict[str, Any]) -> dict[str, Any]:
+    if expect.get("expect_error"):
+        if not error.get("present"):
+            return {"status": "FAIL", "score": 0.0, "details": {"reason": "expected error"}}
+
+        required_error_substrings = [str(item) for item in expect.get("error_substrings", [])]
+        if not required_error_substrings:
+            return {"status": "PASS", "score": 1.0, "details": {"error": error}}
+
+        haystack = " ".join(
+            part
+            for part in [
+                str(error.get("payload_reason") or ""),
+                str(error.get("stderr_summary") or ""),
+                " ".join(str(line) for line in error.get("stderr_tail", [])),
+            ]
+            if part
+        )
+        missing = [item for item in required_error_substrings if item not in haystack]
+        passed = len(required_error_substrings) - len(missing)
+        if not missing:
+            return {"status": "PASS", "score": 1.0, "details": {"missing_error_substrings": missing}}
+        if passed > 0:
+            return {"status": "PARTIAL", "score": round(passed / len(required_error_substrings), 3), "details": {"missing_error_substrings": missing}}
+        return {"status": "FAIL", "score": 0.0, "details": {"missing_error_substrings": missing}}
+
+    if error.get("present"):
+        return {
+            "status": "FAIL",
+            "score": 0.0,
+            "details": {
+                "reason": error.get("payload_reason") or error.get("stderr_summary") or "command failed",
+            },
+        }
 
     checks = 0
     passed = 0
@@ -156,14 +244,116 @@ def run_agent(
         )
 
     payload = measurements[-1].get("payload")
+    error = extract_error_info(measurements[-1])
     return {
         "tool": task_tool,
         "args": task_args,
         "payload": payload,
-        "grade": grade_payload(payload, dict(task.get("expect", {}))),
+        "error": error,
+        "grade": grade_payload(payload, dict(task.get("expect", {})), error),
         "summary": summarize_measurements(measurements),
         "measurements": measurements,
     }
+
+
+def build_error_summary(tasks: list[dict[str, Any]]) -> dict[str, int]:
+    summary = {
+        "original_errors": 0,
+        "hybrid_errors": 0,
+        "matches": 0,
+        "mismatches": 0,
+    }
+    for task in tasks:
+        if task["original"]["error"]["present"]:
+            summary["original_errors"] += 1
+        if task["hybrid"]["error"]["present"]:
+            summary["hybrid_errors"] += 1
+        status = task.get("error_comparison", {}).get("status")
+        if status == "match":
+            summary["matches"] += 1
+        elif status == "mismatch":
+            summary["mismatches"] += 1
+    return summary
+
+
+def build_session_steps(repo: dict[str, Any], label: str) -> list[dict[str, Any]]:
+    index_result = repo["index"][label]
+    steps = [
+        {
+            "id": "index-repository",
+            "prompt": "Index the repository before running the explorer session.",
+            "tool": "index_repository",
+            "args": {},
+            "payload": index_result.get("payload"),
+            "error": extract_error_info(index_result),
+            "returncode": index_result.get("returncode"),
+            "elapsed_ms": round(float(index_result.get("elapsed_ms", 0.0)), 3),
+        }
+    ]
+    for task in repo["tasks"]:
+        result = task[label]
+        steps.append(
+            {
+                "id": task["id"],
+                "prompt": task.get("prompt", ""),
+                "tool": task["tool"],
+                "args": result["args"],
+                "expect": task.get("expect", {}),
+                "grade": result["grade"],
+                "summary": result["summary"],
+                "error": result["error"],
+                "payload": result["payload"],
+            }
+        )
+    return steps
+
+
+def write_session_artifacts(repos: list[dict[str, Any]], report_dir: Path) -> None:
+    sessions_dir = report_dir / "sessions"
+    for repo in repos:
+        repo_dir = sessions_dir / str(repo["id"])
+        repo_dir.mkdir(parents=True, exist_ok=True)
+
+        original_path = repo_dir / "original.json"
+        hybrid_path = repo_dir / "hybrid.json"
+        comparison_path = repo_dir / "comparison.json"
+
+        original_doc = {
+            "repo": repo["id"],
+            "path": repo["path"],
+            "implementation": "original",
+            "steps": build_session_steps(repo, "original"),
+        }
+        hybrid_doc = {
+            "repo": repo["id"],
+            "path": repo["path"],
+            "implementation": "hybrid",
+            "steps": build_session_steps(repo, "hybrid"),
+        }
+        comparison_doc = {
+            "repo": repo["id"],
+            "path": repo["path"],
+            "error_summary": repo["error_summary"],
+            "tasks": [
+                {
+                    "id": task["id"],
+                    "tool": task["tool"],
+                    "winner": task["winner"],
+                    "error_comparison": task["error_comparison"],
+                }
+                for task in repo["tasks"]
+            ],
+        }
+
+        original_path.write_text(json.dumps(original_doc, indent=2))
+        hybrid_path.write_text(json.dumps(hybrid_doc, indent=2))
+        comparison_path.write_text(json.dumps(comparison_doc, indent=2))
+
+        repo["session_artifacts"] = {
+            "original": str(original_path),
+            "hybrid": str(hybrid_path),
+            "comparison": str(comparison_path),
+        }
 
 
 def run_repo(
@@ -229,6 +419,7 @@ def run_repo(
                     "original": original,
                     "hybrid": hybrid,
                     "winner": choose_winner(original, hybrid),
+                    "error_comparison": compare_error_info(original["error"], hybrid["error"]),
                 }
             )
 
@@ -241,6 +432,7 @@ def run_repo(
                 "hybrid": index_results["hybrid"],
             },
             "tasks": tasks,
+            "error_summary": build_error_summary(tasks),
         }
 
 
@@ -260,20 +452,23 @@ def write_markdown(report: dict[str, Any], out_path: Path) -> None:
         f"- Hybrid wins: `{overall['hybrid_wins']}`",
         f"- Original wins: `{overall['original_wins']}`",
         f"- Ties: `{overall['ties']}`",
+        f"- Error matches: `{overall['error_matches']}`",
+        f"- Error mismatches: `{overall['error_mismatches']}`",
         "",
-        "| Repo | Task | Tool | Original Grade | Hybrid Grade | Original Median (ms) | Hybrid Median (ms) | Winner |",
-        "|------|------|------|----------------|--------------|---------------------:|-------------------:|--------|",
+        "| Repo | Task | Tool | Original Grade | Hybrid Grade | Error Parity | Original Median (ms) | Hybrid Median (ms) | Winner |",
+        "|------|------|------|----------------|--------------|--------------|---------------------:|-------------------:|--------|",
     ]
 
     for repo in report["repos"]:
         for task in repo["tasks"]:
             lines.append(
-                "| {repo} | {task_id} | {tool} | {orig_grade} | {hybrid_grade} | {orig_ms} | {hybrid_ms} | {winner} |".format(
+                "| {repo} | {task_id} | {tool} | {orig_grade} | {hybrid_grade} | {error_status} | {orig_ms} | {hybrid_ms} | {winner} |".format(
                     repo=repo["id"],
                     task_id=task["id"],
                     tool=task["tool"],
                     orig_grade=task["original"]["grade"]["status"],
                     hybrid_grade=task["hybrid"]["grade"]["status"],
+                    error_status=task.get("error_comparison", {}).get("status", "none"),
                     orig_ms=task["original"]["summary"].get("median_ms", "n/a"),
                     hybrid_ms=task["hybrid"]["summary"].get("median_ms", "n/a"),
                     winner=task["winner"],
@@ -293,22 +488,39 @@ def write_markdown(report: dict[str, Any], out_path: Path) -> None:
                 hybrid=repo["index"]["hybrid"]["elapsed_ms"],
             )
         )
+        lines.append(
+            "- Error summary: `original={orig}` `hybrid={hybrid}` `matches={matches}` `mismatches={mismatches}`".format(
+                orig=repo["error_summary"]["original_errors"],
+                hybrid=repo["error_summary"]["hybrid_errors"],
+                matches=repo["error_summary"]["matches"],
+                mismatches=repo["error_summary"]["mismatches"],
+            )
+        )
+        if repo.get("session_artifacts"):
+            lines.append(
+                "- Session artifacts: `original={orig}` `hybrid={hybrid}` `comparison={comparison}`".format(
+                    orig=repo["session_artifacts"]["original"],
+                    hybrid=repo["session_artifacts"]["hybrid"],
+                    comparison=repo["session_artifacts"]["comparison"],
+                )
+            )
         lines.extend(
             [
                 "",
-                "| Task | Tool | Original | Hybrid | Winner |",
-                "|------|------|----------|--------|--------|",
+                "| Task | Tool | Original | Hybrid | Error Parity | Winner |",
+                "|------|------|----------|--------|--------------|--------|",
             ]
         )
         for task in repo["tasks"]:
             lines.append(
-                "| {task_id} | {tool} | {orig} ({orig_ms} ms) | {hybrid} ({hybrid_ms} ms) | {winner} |".format(
+                "| {task_id} | {tool} | {orig} ({orig_ms} ms) | {hybrid} ({hybrid_ms} ms) | {error_status} | {winner} |".format(
                     task_id=task["id"],
                     tool=task["tool"],
                     orig=task["original"]["grade"]["status"],
                     hybrid=task["hybrid"]["grade"]["status"],
                     orig_ms=task["original"]["summary"].get("median_ms", "n/a"),
                     hybrid_ms=task["hybrid"]["summary"].get("median_ms", "n/a"),
+                    error_status=task.get("error_comparison", {}).get("status", "none"),
                     winner=task["winner"],
                 )
             )
@@ -324,6 +536,8 @@ def build_summary(repos: list[dict[str, Any]]) -> dict[str, int]:
         "hybrid_wins": 0,
         "original_wins": 0,
         "ties": 0,
+        "error_matches": 0,
+        "error_mismatches": 0,
     }
     for repo in repos:
         for task in repo["tasks"]:
@@ -334,6 +548,11 @@ def build_summary(repos: list[dict[str, Any]]) -> dict[str, int]:
                 summary["original_wins"] += 1
             else:
                 summary["ties"] += 1
+            error_status = task.get("error_comparison", {}).get("status")
+            if error_status == "match":
+                summary["error_matches"] += 1
+            elif error_status == "mismatch":
+                summary["error_mismatches"] += 1
     return summary
 
 
@@ -422,6 +641,7 @@ def main() -> int:
         )
         for repo in manifest.get("repos", [])
     ]
+    write_session_artifacts(repos, report_dir)
     report = {
         "manifest": str(manifest_path),
         "manifest_sources": sources,

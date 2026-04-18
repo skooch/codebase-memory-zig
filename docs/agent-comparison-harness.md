@@ -21,6 +21,12 @@ Each suite file defines one or more repositories with:
 - `warmup_runs` and `measured_runs`
 - `tasks`: shared agent-style prompts, MCP tool name, tool args, and scoring expectations
 
+Each repo run is also treated as a recorded explorer session:
+
+- the harness indexes once per implementation
+- runs the task list in order against that indexed runtime
+- writes per-implementation session transcripts plus a task-level error comparison file
+
 Run it with:
 
 ```sh
@@ -49,12 +55,21 @@ Outputs:
 
 - `.agent_comparison_reports/agent_comparison_report.json`
 - `.agent_comparison_reports/agent_comparison_report.md`
+- `.agent_comparison_reports/sessions/<repo-id>/original.json`
+- `.agent_comparison_reports/sessions/<repo-id>/hybrid.json`
+- `.agent_comparison_reports/sessions/<repo-id>/comparison.json`
 
 Scoring rules:
 
 - `PASS`: the implementation met every expectation for the task
 - `PARTIAL`: it returned a useful result but missed one or more expected fields or facts
 - `FAIL`: it failed the task or returned an error payload
+
+Error assertions:
+
+- add `"expect_error": true` inside a task's `expect` object to require a failure instead of a success payload
+- optional `"error_substrings"` lets the suite require specific stderr or payload fragments
+- the report marks each task with `Error Parity` so mismatched failures are obvious even when both implementations score `FAIL`
 
 Winner selection:
 

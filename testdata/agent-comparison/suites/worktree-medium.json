@@ -5,20 +5,20 @@
     {
       "id": "worktree-medium",
       "path": ".",
-      "project": "cbm-zig-hybrid-serving",
+      "project": "agent-session-parity",
       "warmup_runs": 1,
       "measured_runs": 1,
       "notes": [
-        "Local worktree scenario to validate the hybrid routing path on a larger repository."
+        "Local worktree scenario to validate a recorded explorer session on a larger repository.",
+        "The final step intentionally requests a missing symbol so the report compares shared error behavior instead of only successful lookups."
       ],
       "tasks": [
         {
           "id": "find-query-router",
-          "prompt": "Find the QueryRouter implementation entry point.",
-          "tool": "search_code",
+          "prompt": "Use the codebase explorer to find the QueryRouter symbol that fronts the query routing path.",
+          "tool": "search_graph",
           "args": {
-            "pattern": "QueryRouter",
-            "mode": "compact",
+            "name_pattern": "QueryRouter",
             "limit": 10
           },
           "expect": {
@@ -27,10 +27,6 @@
             ],
             "required_files": [
               "src/query_router.zig"
-            ],
-            "required_keys": [
-              "results",
-              "total"
             ]
           }
         },
@@ -53,6 +49,21 @@
           }
         },
         {
+          "id": "trace-search-code-payload",
+          "prompt": "Trace the call path around searchCodePayload to confirm how the query router reaches it.",
+          "tool": "trace_call_path",
+          "args": {
+            "start_node_name_hint": "searchCodePayload",
+            "direction": "inbound",
+            "depth": 1
+          },
+          "expect": {
+            "required_substrings": [
+              "searchCodePayload"
+            ]
+          }
+        },
+        {
           "id": "summarize-architecture",
           "prompt": "Summarize the architecture with packages, hotspots, and entry points.",
           "tool": "get_architecture",
@@ -70,6 +81,17 @@
               "hotspots",
               "entry_points"
             ]
+          }
+        },
+        {
+          "id": "missing-symbol-error",
+          "prompt": "Try to open a missing symbol and record the error for parity comparison.",
+          "tool": "get_code_snippet",
+          "args": {
+            "qualified_name": "definitelyMissingSymbolForParity"
+          },
+          "expect": {
+            "expect_error": true
           }
         }
       ]
