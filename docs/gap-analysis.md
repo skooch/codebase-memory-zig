@@ -61,6 +61,11 @@ Completed after the readiness gate:
   - `install`, `uninstall`, `update`, and `config`
   - `cli --progress`
   - installer support for Codex CLI and Claude Code
+- Operational script baseline:
+  - Zig-only benchmark wrapper suitable for CI or local worktrees
+  - reproducible soak suite for repeated index and query cycles
+  - repo-owned static security audit suite
+  - maintainer operations docs and CI workflow wiring
 - Shared Phase 2 protocol/query parity slice:
   - `tools/list`
   - `cli --progress`
@@ -206,6 +211,72 @@ Intentional residual delta after completion:
   flow
 - Claude skill packaging remains consolidated into one `codebase-memory` skill
   rather than the original multi-skill layout
+
+## Implemented Plan: Operations Script Suite
+
+Current operations surface for the completed slice:
+- benchmark entrypoint
+  - `scripts/run_benchmark_suite.sh`
+  - `scripts/run_benchmark_suite.py`
+  - `--zig-only`, `--manifest`, and `--report-dir` support for CI-safe runs
+- soak entrypoint
+  - `scripts/run_soak_suite.sh`
+  - generated local git repo with repeated index, `search_graph`, and
+    `get_architecture` cycles
+  - machine-readable reports under `.soak_reports/`
+- static audit entrypoint
+  - `scripts/run_security_audit.sh`
+  - portable shell, URL, installer-pattern, and destructive-command checks
+  - machine-readable reports under `.security_reports/`
+- maintainer and CI wiring
+  - `docs/operations.md`
+  - `.github/workflows/ops-checks.yml`
+
+Completion evidence:
+- the plan is now archived at
+  [09-operations-script-suite-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/09-operations-script-suite-plan.md)
+  and
+  [09-operations-script-suite-progress.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/09-operations-script-suite-progress.md)
+- `scripts/run_benchmark_suite.sh` now runs in `--zig-only` mode without
+  requiring the sibling C binary, which makes the existing benchmark harness
+  safe for CI and peer worktrees
+- `scripts/run_soak_suite.sh` now generates a local temporary repo, mutates it
+  across iterations, and proves repeated Zig-only index and query cycles
+- `scripts/run_security_audit.sh` now gives this repo a portable static audit
+  layer for shell entrypoints, runtime URLs, download-and-exec patterns, and
+  destructive command guards
+- `.github/workflows/ops-checks.yml` now exercises benchmark, soak, and static
+  audit entrypoints on GitHub Actions, and `docs/operations.md` documents the
+  supported maintainer flow
+
+Completion verification on 2026-04-19:
+- `bash -n scripts/run_benchmark_suite.sh scripts/run_soak_suite.sh scripts/run_security_audit.sh`
+- `python3 -m py_compile scripts/run_benchmark_suite.py`
+- `ruby -e 'require "yaml"; YAML.load_file(".github/workflows/ops-checks.yml"); puts "ok"'`
+- `zig build`
+- `zig build test`
+- `bash scripts/run_benchmark_suite.sh --zig-only --manifest testdata/bench/stress-manifest.json --report-dir .benchmark_reports/ops`
+- `bash scripts/run_soak_suite.sh --iterations 4 --report-dir .soak_reports/ops`
+- `bash scripts/run_security_audit.sh .security_reports/ops`
+
+Observed results:
+- benchmark medians
+  - `self-repo`: `1340.308 ms`
+  - `sqlite-amalgamation`: `72.769 ms`
+- soak report
+  - index median: `55.428 ms`
+  - index p95: `303.966 ms`
+  - `search_graph` median: `11.075 ms`
+  - `get_architecture` median: `11.684 ms`
+- security audit report
+  - check count: `17`
+  - failure count: `0`
+
+Intentional residual delta after completion:
+- no binary-string audit layer equivalent to the original's post-build script
+- no runtime network-trace audit layer
+- no fuzz harnesses in the Zig repo today
+- no nightly or multi-hour soak tier beyond the reproducible local suite
 
 ## Implemented Plan: Windows, Installer, and Client Integration
 
@@ -445,6 +516,9 @@ Deferred or optional future slices:
 - Productization beyond the current contract:
   - binary self-replacement parity in `update`
   - any future installer side effects beyond the now-verified ten-agent matrix
+  - broader post-build security layers beyond the implemented static audit
+    suite
+  - nightly or multi-hour soak tiers beyond the implemented local soak suite
 
 ### Recommended Sequencing
 

@@ -15,18 +15,15 @@ Everything left in `docs/plans/new/` is optional follow-on work.
 
 ## Recommended Execution Order
 
-1. [09-operations-script-suite-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/ready-to-go/09-operations-script-suite-plan.md)
-   - Operational credibility belongs after the runtime, packaging, and install
-     contracts stop moving.
-2. [07-language-coverage-expansion-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/ready-to-go/07-language-coverage-expansion-plan.md)
+1. [07-language-coverage-expansion-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/ready-to-go/07-language-coverage-expansion-plan.md)
    - This is the first concrete parser-backed language-expansion tranche.
-3. [08-hybrid-type-resolution-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/ready-to-go/08-hybrid-type-resolution-plan.md)
+2. [08-hybrid-type-resolution-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/ready-to-go/08-hybrid-type-resolution-plan.md)
    - Hybrid resolution is higher risk and should land only after the repo has a
      stronger parser-backed baseline and cleaner runtime semantics.
-4. [language-support-expansion-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/language-support-expansion-feature-cluster-plan.md)
+3. [language-support-expansion-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/language-support-expansion-feature-cluster-plan.md)
    - Use this as the broader post-tranche language queue after Plan 07 proves
      the next parser-backed slice.
-5. [semantic-graph-expansion-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/semantic-graph-expansion-feature-cluster-plan.md)
+4. [semantic-graph-expansion-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/semantic-graph-expansion-feature-cluster-plan.md)
    - Keep higher-order graph expansion last, after graph correctness, scale,
      and language posture are stronger.
 
@@ -42,6 +39,9 @@ Everything left in `docs/plans/new/` is optional follow-on work.
   is complete, which clears packaging as the next active productization step.
 - [release-and-setup-packaging-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/release-and-setup-packaging-plan.md)
   landed before the completed installer-ecosystem plan.
+- [09-operations-script-suite-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/09-operations-script-suite-plan.md)
+  is complete, which closes the bounded repo-owned operations credibility
+  slice before the remaining language-expansion work.
 - [semantic-graph-expansion-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/semantic-graph-expansion-feature-cluster-plan.md)
   assumes the discovery/query, reliability, and language contracts are already
   firmer than they are today.
@@ -49,4 +49,4 @@ Everything left in `docs/plans/new/` is optional follow-on work.
 ## Start Here
 
 The next unopened plan is
-[09-operations-script-suite-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/ready-to-go/09-operations-script-suite-plan.md).
+[07-language-coverage-expansion-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/ready-to-go/07-language-coverage-expansion-plan.md).

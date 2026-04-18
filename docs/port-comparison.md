@@ -181,7 +181,7 @@ This section compares what kinds of graph entities the two systems are built to 
 | Previously indexed project watcher registration | Yes | Yes | `Near parity` | Yes | Explicitly wired in Zig Phase 6. |
 | UI runtime flags (`--ui`, `--port`) | Yes | No | `Cut` | No | Zig does not ship the UI server. |
 | Startup update notification | Yes | Yes, one-shot notice on the first post-initialize response | `Near parity` | Yes | Zig now starts an update check on `initialize`, preserves the pending notice until it can be injected safely, and covers the env-override plus one-shot behavior in the runtime harness, including the `notifications/initialized` path staying silent before the first real tool response. |
-| Benchmarking / soak / security scripts | Present | Initial benchmark suite now present, but much narrower than the original script set | `Partial` | No | Zig now ships `scripts/run_benchmark_suite.sh` plus a local stress manifest that completed on `2026-04-18` with Zig cold-index medians of `1282.226 ms` on `self-repo` and `76.951 ms` on `sqlite-amalgamation`, but it still does not reproduce the original's broader benchmark, soak, and security script surface. |
+| Benchmarking / soak / security scripts | Present | Repo-owned benchmark, soak, and static audit scripts plus CI wiring | `Near parity` | No | Zig now ships `scripts/run_benchmark_suite.sh`, `scripts/run_soak_suite.sh`, `scripts/run_security_audit.sh`, maintainer docs, and `.github/workflows/ops-checks.yml`. Verified on `2026-04-19`: Zig-only benchmark medians were `1340.308 ms` on `self-repo` and `72.769 ms` on `sqlite-amalgamation`, the soak suite reported `303.966 ms` p95 indexing over four iterations, and the static audit passed `17` checks with `0` failures. Remaining original-only layers are binary-string auditing, runtime network-trace auditing, fuzzing, and longer-duration soak coverage. |
 
 ## 7. CLI and Productization
 
@@ -203,7 +203,7 @@ This section compares what kinds of graph entities the two systems are built to 
 | Primary build system | Make + shell scripts | `zig build` | `Partial` | No | Both are buildable, but the Zig repo has not yet reproduced the original’s packaging/release scaffolding. |
 | Setup scripts | Yes (`scripts/setup.sh`, `setup-windows.ps1`) | Yes (`install.sh`, `install.ps1`, `scripts/setup.sh`, `scripts/setup-windows.ps1`) | `Near parity` | Yes | Zig now verifies both shell and PowerShell entrypoints against local packaged archives, while keeping the scope on the standard binary rather than the original's broader UI release set. |
 | UI asset embedding | Yes | No | `Cut` | No | Tied to the UI subsystem. |
-| Security / audit / benchmark script set | Broad script suite | Not present | `Deferred` | No | Not part of the completed Zig target contract. |
+| Security / audit / benchmark script set | Broad script suite | Bounded repo-owned benchmark, soak, and static audit suite | `Near parity` | No | Zig now provides reproducible local and CI entrypoints for benchmark, soak, and static audit coverage. It still intentionally stops short of the original's binary-string, network-trace, fuzz, and multi-hour soak layers. |
 | Interop harness against the original | Not applicable | Yes | `Near parity` | No | This is a Zig-side advantage for tracking compatibility over time. |
 
 ## 9. What the Zig Port Can Truthfully Claim Today
