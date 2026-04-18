@@ -252,9 +252,9 @@ Phase 1 contract for this plan:
   runtime DB; the original C runtime's per-project cached-store topology is an
   internal implementation difference rather than a contract requirement here.
 
-## In-Progress Plan: Release And Setup Packaging
+## Implemented Plan: Release And Setup Packaging
 
-Current upstream packaging surface that the Zig repo still lacks:
+Completed packaging surface in the Zig repo:
 
 - release artifacts published as versioned archives instead of only local
   `zig build` output
@@ -268,37 +268,29 @@ Current upstream packaging surface that the Zig repo still lacks:
   - `.github/workflows/release.yml`
 - end-user install documentation describing archives, checksums, and setup flow
 
-Phase 1 contract for this plan:
+Completion evidence for this plan:
 
-- overlap the standard binary distribution story from the original:
-  - release archives
-  - checksums
-  - install scripts
-  - setup scripts
-  - repo-owned release workflow
-- keep the scope narrower than the original's broader release pipeline:
-  - no UI variant packaging
-  - no signing, SBOM, provenance, or VirusTotal gates in the first slice
-- keep packaging separate from the already-implemented agent config behavior,
-  which remains owned by the installer plans rather than the release plan
+- the plan is now archived at
+  [release-and-setup-packaging-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/release-and-setup-packaging-plan.md)
+  and
+  [release-and-setup-packaging-progress.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/release-and-setup-packaging-progress.md)
+- `build.zig` now exposes `zig build release` for a ReleaseSafe installable
+  binary target
+- `scripts/package-release.sh` now produces release-style archives plus
+  `checksums.txt`, including a verified Windows zip artifact
+- `install.sh`, `install.ps1`, `scripts/setup.sh`, and
+  `scripts/setup-windows.ps1` now verify and install the packaged binary from a
+  release directory or build it from source
+- `.github/workflows/release.yml` now assembles those artifacts into a draft
+  GitHub release
+- `docs/install.md` now documents the standard-binary release/install contract
 
-Current evidence in this worktree:
+Intentional omissions after completion:
 
-- `scripts/package-release.sh` now produces host release archives plus
-  `checksums.txt` from the Zig build output
-- `install.sh` now installs from release-style archives and verifies checksums
-  against a local file-backed release directory
-- `scripts/setup.sh` now supports both:
-  - packaged-release install via `install.sh`
-  - local `--from-source` builds from the current checkout
-
-Still open in this plan:
-
-- PowerShell packaging entrypoints are not yet added
-- `.github/workflows/release.yml` and broader CI release automation are not yet
-  present
-- Windows-specific verification is currently blocked by missing `pwsh` in the
-  local environment
+- no UI variant packaging
+- no signing, SBOM, provenance, or VirusTotal stages in this slice
+- packaging remains separate from broader agent-ecosystem expansion, which is
+  still owned by the installer backlog
 - Require live-process verification of the idle close/reopen cycle before
   upgrading the runtime-extras parity claim.
 

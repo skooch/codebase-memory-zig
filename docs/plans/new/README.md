@@ -43,7 +43,7 @@ Everything left in `docs/plans/new/` is optional follow-on work.
   [installer-ecosystem-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/installer-ecosystem-parity-plan.md).
 - [operational-controls-and-configurability-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/operational-controls-and-configurability-feature-cluster-plan.md)
   is complete, which clears packaging as the next active productization step.
-- [release-and-setup-packaging-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/release-and-setup-packaging-plan.md)
+- [release-and-setup-packaging-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/release-and-setup-packaging-plan.md)
   should land before [installer-ecosystem-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/installer-ecosystem-parity-plan.md).
 - [semantic-graph-expansion-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/semantic-graph-expansion-feature-cluster-plan.md)
   assumes the discovery/query, reliability, and language contracts are already
@@ -51,8 +51,5 @@ Everything left in `docs/plans/new/` is optional follow-on work.
 
 ## Start Here
 
-The active plan is
-[release-and-setup-packaging-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/release-and-setup-packaging-plan.md).
-
-The next unopened plan after that is
+The next unopened plan is
 [installer-ecosystem-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/installer-ecosystem-parity-plan.md).

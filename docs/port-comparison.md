@@ -68,7 +68,7 @@ It is intentionally not a wish list. It describes:
 | Readiness gate | Reference side of the interop harness | Completed and passing: `Strict matches: 58`, `Diagnostic-only comparisons: 9`, `Mismatches: 0` | `Near parity` | Yes | The first-gate harness is green; the expanded full harness now reports 24 fixtures, 186 comparisons, 105 strict matches, 24 diagnostic-only comparisons, 8 known non-route/non-config mismatches, and `cli_progress: match`. |
 | Broader post-readiness target | Everything in the original project | Current target contract only; long-tail parity moved to deferred backlog | `Partial` | No | See `docs/plans/implemented/post-readiness-zig-port-execution-plan.md`. |
 | Built-in graph UI | Yes, optional UI binary / HTTP server | No | `Cut` | No | Original has `src/ui/*` and `--ui` flags. Zig intentionally does not port the UI. |
-| Release/install packaging | Prebuilt release artifacts plus setup scripts and install scripts | Source-build oriented repo with `zig build`; no release/install script set in the Zig repo | `Partial` | No | The Zig repo has a working CLI installer layer but not the original’s packaging/distribution surface. |
+| Release/install packaging | Prebuilt release artifacts plus setup scripts and install scripts | Standard `cbm` release archives, checksums, install scripts, setup scripts, install docs, and a repo-owned release workflow | `Near parity` | Yes | The Zig repo now proves standard-binary packaging for macOS and Windows artifacts. UI variants plus signing/attestation remain intentionally narrower than the original pipeline. |
 
 ## 2. MCP Protocol and Tool Surface
 
@@ -201,7 +201,7 @@ This section compares what kinds of graph entities the two systems are built to 
 | Capability | Original C | Zig Port | Status | Interoperable? | Notes |
 |-----------|------------|----------|--------|----------------|-------|
 | Primary build system | Make + shell scripts | `zig build` | `Partial` | No | Both are buildable, but the Zig repo has not yet reproduced the original’s packaging/release scaffolding. |
-| Setup scripts | Yes (`scripts/setup.sh`, `setup-windows.ps1`) | No equivalent setup scripts in this repo | `Partial` | No | The Zig repo’s install path is through the binary’s own CLI commands. |
+| Setup scripts | Yes (`scripts/setup.sh`, `setup-windows.ps1`) | Yes (`install.sh`, `install.ps1`, `scripts/setup.sh`, `scripts/setup-windows.ps1`) | `Near parity` | Yes | Zig now verifies both shell and PowerShell entrypoints against local packaged archives, while keeping the scope on the standard binary rather than the original's broader UI release set. |
 | UI asset embedding | Yes | No | `Cut` | No | Tied to the UI subsystem. |
 | Security / audit / benchmark script set | Broad script suite | Not present | `Deferred` | No | Not part of the completed Zig target contract. |
 | Interop harness against the original | Not applicable | Yes | `Near parity` | No | This is a Zig-side advantage for tracking compatibility over time. |
