@@ -29,6 +29,17 @@ pub const GraphBufferError = error{
     DuplicateEdge,
 };
 
+pub const GraphLimitError = error{
+    GraphTooLarge,
+};
+
+pub const GraphSizeLimit = struct {
+    max_nodes: usize = 1_000_000,
+    max_edges: usize = 4_000_000,
+};
+
+pub const default_graph_size_limit = GraphSizeLimit{};
+
 fn ownedNodeFromSlices(
     allocator: std.mem.Allocator,
     label: []const u8,
@@ -296,9 +307,23 @@ pub const GraphBuffer = struct {
     }
 
     pub fn loadFromStore(self: *GraphBuffer, db: *store.Store) !void {
+        return self.loadFromStoreWithLimits(db, default_graph_size_limit);
+    }
+
+    pub fn loadFromStoreWithLimits(
+        self: *GraphBuffer,
+        db: *store.Store,
+        limit: GraphSizeLimit,
+    ) !void {
+        const size = try db.getProjectGraphSize(self.project);
+        try ensureGraphWithinLimits(self.project, size.nodes, size.edges, limit);
+
+        try self.nodes_by_id.ensureTotalCapacity(self.allocator, size.nodes);
+        try self.edges.ensureTotalCapacity(self.allocator, size.edges);
+
         const stored_nodes = try db.searchNodes(.{
             .project = self.project,
-            .limit = 1_000_000,
+            .limit = @max(size.nodes, 1),
         });
         defer db.freeNodes(stored_nodes);
 
@@ -471,9 +496,29 @@ pub const GraphBuffer = struct {
         );
     }
 
+    pub fn ensureWithinLimits(self: *const GraphBuffer, limit: GraphSizeLimit) GraphLimitError!void {
+        try ensureGraphWithinLimits(
+            self.project,
+            self.nodeCount(),
+            self.edgeCount(),
+            limit,
+        );
+    }
+
     pub fn dumpToStore(self: *const GraphBuffer, db: *store.Store) !void {
+        return self.dumpToStoreWithLimits(db, default_graph_size_limit);
+    }
+
+    pub fn dumpToStoreWithLimits(
+        self: *const GraphBuffer,
+        db: *store.Store,
+        limit: GraphSizeLimit,
+    ) !void {
+        try self.ensureWithinLimits(limit);
+
         var existing_nodes = std.AutoHashMap(i64, i64).init(self.allocator);
         defer existing_nodes.deinit();
+        try existing_nodes.ensureTotalCapacity(@as(u32, @intCast(self.nodeCount())));
 
         for (self.nodes_by_id.items) |node| {
             const node_for_db = store.Node{
@@ -518,6 +563,28 @@ pub const GraphBuffer = struct {
     }
 };
 
+fn ensureGraphWithinLimits(
+    project: []const u8,
+    node_count: usize,
+    edge_count: usize,
+    limit: GraphSizeLimit,
+) GraphLimitError!void {
+    if (node_count > limit.max_nodes) {
+        std.log.warn(
+            "graph for {s} exceeds node limit: {} > {}",
+            .{ project, node_count, limit.max_nodes },
+        );
+        return GraphLimitError.GraphTooLarge;
+    }
+    if (edge_count > limit.max_edges) {
+        std.log.warn(
+            "graph for {s} exceeds edge limit: {} > {}",
+            .{ project, edge_count, limit.max_edges },
+        );
+        return GraphLimitError.GraphTooLarge;
+    }
+}
+
 test "graph buffer basic ops" {
     var gb = GraphBuffer.init(std.testing.allocator, "test-project");
     defer gb.deinit();
@@ -552,6 +619,53 @@ test "graph buffer basic ops" {
     const self_edge = try gb.insertEdge(id1, id1, "CALLS");
     try std.testing.expect(self_edge > 0);
     try std.testing.expectEqual(@as(usize, 2), gb.edgeCount());
+}
+
+test "graph buffer rejects oversized store loads before allocating" {
+    var db = try store.Store.openMemory(std.testing.allocator);
+    defer db.deinit();
+
+    try db.upsertProject("test-project", "/tmp/test-project");
+    _ = try db.upsertNode(.{
+        .project = "test-project",
+        .label = "Function",
+        .name = "foo",
+        .qualified_name = "test.foo",
+        .file_path = "src/main.zig",
+        .start_line = 1,
+        .end_line = 2,
+    });
+
+    var gb = GraphBuffer.init(std.testing.allocator, "test-project");
+    defer gb.deinit();
+
+    try std.testing.expectError(
+        error.GraphTooLarge,
+        gb.loadFromStoreWithLimits(&db, .{
+            .max_nodes = 0,
+            .max_edges = 10,
+        }),
+    );
+}
+
+test "graph buffer rejects oversized dumps before writing" {
+    var db = try store.Store.openMemory(std.testing.allocator);
+    defer db.deinit();
+
+    var gb = GraphBuffer.init(std.testing.allocator, "test-project");
+    defer gb.deinit();
+
+    _ = try gb.upsertNode("Function", "foo", "test.foo", "src/main.zig", 1, 2);
+    _ = try gb.upsertNode("Function", "bar", "test.bar", "src/main.zig", 3, 4);
+
+    try std.testing.expectError(
+        error.GraphTooLarge,
+        gb.dumpToStoreWithLimits(&db, .{
+            .max_nodes = 1,
+            .max_edges = 10,
+        }),
+    );
+    try std.testing.expectEqual(@as(i32, 0), try db.countNodes("test-project"));
 }
 
 fn graphBufferNodeInsertAllocationFailureImpl(allocator: std.mem.Allocator) !void {

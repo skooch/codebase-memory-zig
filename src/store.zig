@@ -66,6 +66,11 @@ pub const ProjectStatus = struct {
     };
 };
 
+pub const ProjectGraphSize = struct {
+    nodes: usize = 0,
+    edges: usize = 0,
+};
+
 pub const NodeDegree = struct {
     callers: i32 = 0,
     callees: i32 = 0,
@@ -1099,6 +1104,13 @@ pub const Store = struct {
         const rc = c.sqlite3_step(stmt);
         if (rc != c.SQLITE_ROW) return StoreError.SqlError;
         return @intCast(c.sqlite3_column_int64(stmt, 0));
+    }
+
+    pub fn getProjectGraphSize(self: *Store, project: []const u8) !ProjectGraphSize {
+        return .{
+            .nodes = @intCast(try self.countNodes(project)),
+            .edges = @intCast(try self.countEdges(project)),
+        };
     }
 
     // --- Edge CRUD -------------------------------------------------------

@@ -5,9 +5,10 @@
 
 const std = @import("std");
 const discover = @import("discover.zig");
-const GraphBuffer = @import("graph_buffer.zig").GraphBuffer;
-const BufferNode = @import("graph_buffer.zig").BufferNode;
-const GraphBufferError = @import("graph_buffer.zig").GraphBufferError;
+const graph_buffer = @import("graph_buffer.zig");
+const GraphBuffer = graph_buffer.GraphBuffer;
+const BufferNode = graph_buffer.BufferNode;
+const GraphBufferError = graph_buffer.GraphBufferError;
 const extractor = @import("extractor.zig");
 const minhash = @import("minhash.zig");
 const Registry = @import("registry.zig").Registry;
@@ -28,6 +29,7 @@ pub const PipelineError = error{
     Cancelled,
     DiscoveryFailed,
     OutOfMemory,
+    GraphTooLarge,
 } || store.StoreError;
 
 pub const PipelineContext = struct {
@@ -83,10 +85,6 @@ pub const Pipeline = struct {
             return;
         }
 
-        try db.beginImmediate();
-        var committed = false;
-        errdefer if (!committed) db.rollback() catch {};
-
         const stored_hashes = try db.getFileHashes(self.project_name);
         defer db.freeFileHashes(stored_hashes);
         if (stored_hashes.len > 0 and
@@ -95,20 +93,16 @@ pub const Pipeline = struct {
             const used_incremental = self.runIncremental(db, discovered_files, stored_hashes) catch |err| switch (err) {
                 error.Cancelled => return PipelineError.Cancelled,
                 error.OutOfMemory => return PipelineError.OutOfMemory,
+                error.GraphTooLarge => return PipelineError.GraphTooLarge,
                 error.SqlError => return PipelineError.SqlError,
                 error.OpenFailed => return PipelineError.OpenFailed,
                 error.NotFound => return PipelineError.NotFound,
                 else => return PipelineError.DiscoveryFailed,
             };
             if (used_incremental) {
-                try db.commit();
-                committed = true;
                 return;
             }
         }
-
-        try db.deleteProject(self.project_name);
-        try db.upsertProject(self.project_name, self.repo_path);
 
         var gb = GraphBuffer.init(self.allocator, self.project_name);
         defer gb.deinit();
@@ -117,21 +111,12 @@ pub const Pipeline = struct {
         defer reg.deinit();
 
         var extractions = std.ArrayList(OwnedExtraction).empty;
-        defer {
-            for (extractions.items) |owned| {
-                extractor.freeFileExtraction(owned.allocator, owned.extraction);
-                if (owned.arena) |arena| {
-                    const backing = arena.child_allocator;
-                    arena.deinit();
-                    backing.destroy(arena);
-                }
-            }
-            extractions.deinit(self.allocator);
-        }
+        defer freeOwnedExtractions(self.allocator, &extractions);
 
         try collectExtractions(self, discovered_files, &gb, &reg, &extractions);
 
         try resolveExtractions(&gb, &reg, extractions.items, &self.cancelled);
+        freeOwnedExtractions(self.allocator, &extractions);
 
         if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
         _ = test_tagging.runPass(self.allocator, &gb) catch |err| {
@@ -159,6 +144,13 @@ pub const Pipeline = struct {
         };
 
         if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
+        try gb.ensureWithinLimits(graph_buffer.default_graph_size_limit);
+
+        try db.beginImmediate();
+        var committed = false;
+        errdefer if (!committed) db.rollback() catch {};
+        try db.deleteProject(self.project_name);
+        try db.upsertProject(self.project_name, self.repo_path);
         try gb.dumpToStore(db);
 
         if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
@@ -199,8 +191,13 @@ pub const Pipeline = struct {
         defer freeFileClassification(self.allocator, classification);
 
         if (classification.changed_files.len == 0 and classification.deleted_paths.len == 0) {
+            try db.beginImmediate();
+            var committed = false;
+            errdefer if (!committed) db.rollback() catch {};
             try db.upsertProject(self.project_name, self.repo_path);
             try persistFileHashes(db, self.project_name, discovered_files);
+            try db.commit();
+            committed = true;
             std.log.info("pipeline incremental: no changes for {s}", .{self.project_name});
             return true;
         }
@@ -221,21 +218,12 @@ pub const Pipeline = struct {
         try seedRegistryFromGraphBuffer(&gb, &reg);
 
         var extractions = std.ArrayList(OwnedExtraction).empty;
-        defer {
-            for (extractions.items) |owned| {
-                extractor.freeFileExtraction(owned.allocator, owned.extraction);
-                if (owned.arena) |arena| {
-                    const backing = arena.child_allocator;
-                    arena.deinit();
-                    backing.destroy(arena);
-                }
-            }
-            extractions.deinit(self.allocator);
-        }
+        defer freeOwnedExtractions(self.allocator, &extractions);
 
         try collectExtractions(self, classification.changed_files, &gb, &reg, &extractions);
 
         try resolveExtractions(&gb, &reg, extractions.items, &self.cancelled);
+        freeOwnedExtractions(self.allocator, &extractions);
 
         if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
         _ = test_tagging.runPass(self.allocator, &gb) catch |err| {
@@ -263,6 +251,11 @@ pub const Pipeline = struct {
         };
 
         if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
+        try gb.ensureWithinLimits(graph_buffer.default_graph_size_limit);
+
+        try db.beginImmediate();
+        var committed = false;
+        errdefer if (!committed) db.rollback() catch {};
         try db.deleteProject(self.project_name);
         try db.upsertProject(self.project_name, self.repo_path);
         try gb.dumpToStore(db);
@@ -283,6 +276,8 @@ pub const Pipeline = struct {
             "pipeline incremental graph buffer: {} nodes, {} edges",
             .{ gb.nodeCount(), gb.edgeCount() },
         );
+        try db.commit();
+        committed = true;
         return true;
     }
 
@@ -294,6 +289,22 @@ pub const Pipeline = struct {
         self.allocator.free(discovered_files);
     }
 };
+
+fn freeOwnedExtractions(
+    allocator: std.mem.Allocator,
+    extractions: *std.ArrayList(OwnedExtraction),
+) void {
+    for (extractions.items) |owned| {
+        extractor.freeFileExtraction(owned.allocator, owned.extraction);
+        if (owned.arena) |arena| {
+            const backing = arena.child_allocator;
+            arena.deinit();
+            backing.destroy(arena);
+        }
+    }
+    extractions.deinit(allocator);
+    extractions.* = .empty;
+}
 
 fn extractFile(
     allocator: std.mem.Allocator,

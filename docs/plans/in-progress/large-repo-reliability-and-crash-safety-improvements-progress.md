@@ -124,6 +124,52 @@ Results:
   - SIGTERM shutdown
   - one-shot startup update notice
 
+Second Phase 2 code slice on 2026-04-18:
+
+- `src/pipeline.zig`
+  - moved the SQLite `BEGIN IMMEDIATE` window out of extraction and graph-pass
+    work so the writer lock now covers only project replacement, graph dump,
+    file-hash persistence, and search-index refresh
+  - releases owned extraction arenas immediately after resolution instead of
+    holding them until after store writes and search-index refresh
+- `src/graph_buffer.zig`
+  - added explicit graph-size limits for store load and dump paths
+  - rejects oversized stored or in-memory graphs before bulk allocation or
+    SQLite writes begin
+  - added regression tests for oversized load and dump rejection
+- `src/store.zig`
+  - added a `getProjectGraphSize` helper so the graph-buffer preflight can use
+    explicit persisted node and edge counts instead of the old implicit
+    `searchNodes(limit=1_000_000)` assumption
+
+Verification for this slice:
+
+```sh
+zig build test
+bash scripts/test_runtime_lifecycle.sh
+bash scripts/run_benchmark_suite.sh testdata/bench/stress-manifest.json
+```
+
+Results:
+
+- `zig build test` passed
+- `bash scripts/test_runtime_lifecycle.sh` passed:
+  - clean EOF shutdown
+  - SIGTERM shutdown
+  - one-shot startup update notice
+- `bash scripts/run_benchmark_suite.sh testdata/bench/stress-manifest.json`
+  passed and rewrote `.benchmark_reports/benchmark_report.{json,md}`
+  - `self-repo` Zig cold-index median: `1174.283 ms`
+  - `sqlite-amalgamation` Zig cold-index median: `84.273 ms`
+  - both local stress lanes completed after the transaction-window reduction and
+    graph-size preflight checks
+
+What remains in Phase 2 after this slice:
+
+- explicit oversized-response and timeout behavior beyond request-line framing
+- any remaining runtime-lifecycle status/backpressure cleanup under sustained
+  load
+
 What remains in Phase 2 after this slice:
 
 - pipeline/graph-buffer/store memory and transaction guardrails
