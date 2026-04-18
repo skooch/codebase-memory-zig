@@ -11,9 +11,12 @@ const usage =
     \\
     \\Commands:
     \\  cli <tool> [json]       Run a single tool call
-    \\  install [-y|-n]         Install MCP config for Codex CLI and Claude Code
-    \\  uninstall [-y|-n]       Remove installed MCP config entries
-    \\  update [-y|-n]          Refresh installed agent config to current binary path
+    \\  install [-y|-n] [--scope shipped|detected]
+    \\                         Install MCP config for the selected agent scope
+    \\  uninstall [-y|-n] [--scope shipped|detected]
+    \\                         Remove installed MCP config entries for the selected scope
+    \\  update [-y|-n] [--scope shipped|detected]
+    \\                         Refresh installed agent config to current binary path
     \\  config <list|get|set>   Manage runtime configuration
     \\
     \\Options:
@@ -475,7 +478,10 @@ fn runInstallCommand(allocator: std.mem.Allocator) !void {
     const args = try collectSubcommandArgs(allocator, "install");
     defer freeArgList(allocator, args);
 
-    const parsed = parseActionFlags(args);
+    const parsed = parseActionFlags(args) catch {
+        try stdout_file.writeAll("Usage: cbm install [-y|-n] [--dry-run] [--force] [--scope shipped|detected]\n");
+        std.process.exit(1);
+    };
     if (!try confirmAction("Install MCP configs for detected agents?", parsed.answer)) {
         try stdout_file.writeAll("Install cancelled.\n");
         std.process.exit(1);
@@ -490,10 +496,15 @@ fn runInstallCommand(allocator: std.mem.Allocator) !void {
         .binary_path = binary_path,
         .dry_run = parsed.dry_run,
         .force = parsed.force,
+        .scope = parsed.scope,
     });
-    try printInstallReport(allocator, stdout_file, home, binary_path, "Install", report, parsed.dry_run);
+    try printInstallReport(allocator, stdout_file, home, binary_path, "Install", report, parsed.dry_run, parsed.scope);
     if (!report.detected.codex and !report.detected.claude and !parsed.force) {
-        try stdout_file.writeAll("No supported agents detected. Use --force to create config files.\n");
+        if (parsed.scope == .shipped) {
+            try stdout_file.writeAll("No shipped agents detected. Use --scope detected or --force to create config files.\n");
+        } else {
+            try stdout_file.writeAll("No supported agents detected. Use --force to create config files.\n");
+        }
         std.process.exit(1);
     }
 }
@@ -503,7 +514,10 @@ fn runUninstallCommand(allocator: std.mem.Allocator) !void {
     const args = try collectSubcommandArgs(allocator, "uninstall");
     defer freeArgList(allocator, args);
 
-    const parsed = parseActionFlags(args);
+    const parsed = parseActionFlags(args) catch {
+        try stdout_file.writeAll("Usage: cbm uninstall [-y|-n] [--dry-run] [--force] [--scope shipped|detected]\n");
+        std.process.exit(1);
+    };
     if (!try confirmAction("Remove installed MCP configs from supported agents?", parsed.answer)) {
         try stdout_file.writeAll("Uninstall cancelled.\n");
         std.process.exit(1);
@@ -511,8 +525,11 @@ fn runUninstallCommand(allocator: std.mem.Allocator) !void {
 
     const home = try cli.homeDir(allocator);
     defer allocator.free(home);
-    const report = try cli.uninstallAgentConfigs(allocator, home, parsed.dry_run);
-    try printInstallReport(allocator, stdout_file, home, null, "Uninstall", report, parsed.dry_run);
+    const report = try cli.uninstallAgentConfigs(allocator, home, .{
+        .dry_run = parsed.dry_run,
+        .scope = parsed.scope,
+    });
+    try printInstallReport(allocator, stdout_file, home, null, "Uninstall", report, parsed.dry_run, parsed.scope);
 }
 
 fn runUpdateCommand(allocator: std.mem.Allocator) !void {
@@ -520,7 +537,10 @@ fn runUpdateCommand(allocator: std.mem.Allocator) !void {
     const args = try collectSubcommandArgs(allocator, "update");
     defer freeArgList(allocator, args);
 
-    const parsed = parseActionFlags(args);
+    const parsed = parseActionFlags(args) catch {
+        try stdout_file.writeAll("Usage: cbm update [-y|-n] [--dry-run] [--force] [--scope shipped|detected]\n");
+        std.process.exit(1);
+    };
     if (!try confirmAction("Refresh installed MCP configs to the current binary path?", parsed.answer)) {
         try stdout_file.writeAll("Update cancelled.\n");
         std.process.exit(1);
@@ -537,10 +557,15 @@ fn runUpdateCommand(allocator: std.mem.Allocator) !void {
         .binary_path = binary_path,
         .dry_run = parsed.dry_run,
         .force = parsed.force,
+        .scope = parsed.scope,
     });
-    try printInstallReport(allocator, stdout_file, home, binary_path, "Update", report, parsed.dry_run);
+    try printInstallReport(allocator, stdout_file, home, binary_path, "Update", report, parsed.dry_run, parsed.scope);
     if (!report.detected.codex and !report.detected.claude and !parsed.force) {
-        try stdout_file.writeAll("No supported agents detected. Use --force to create config files.\n");
+        if (parsed.scope == .shipped) {
+            try stdout_file.writeAll("No shipped agents detected. Use --scope detected or --force to create config files.\n");
+        } else {
+            try stdout_file.writeAll("No supported agents detected. Use --force to create config files.\n");
+        }
         std.process.exit(1);
     }
     if (config.download_url) |_| {
@@ -558,17 +583,39 @@ const ParsedActionFlags = struct {
     answer: AutoAnswer = .ask,
     dry_run: bool = false,
     force: bool = false,
+    scope: cli.InstallScope = .shipped,
 };
 
-fn parseActionFlags(args: []const []const u8) ParsedActionFlags {
+fn parseActionFlags(args: []const []const u8) !ParsedActionFlags {
     var parsed = ParsedActionFlags{};
-    for (args) |arg| {
+    var idx: usize = 0;
+    while (idx < args.len) : (idx += 1) {
+        const arg = args[idx];
         if (std.mem.eql(u8, arg, "-y") or std.mem.eql(u8, arg, "--yes")) parsed.answer = .yes;
         if (std.mem.eql(u8, arg, "-n") or std.mem.eql(u8, arg, "--no")) parsed.answer = .no;
         if (std.mem.eql(u8, arg, "--dry-run")) parsed.dry_run = true;
         if (std.mem.eql(u8, arg, "--force")) parsed.force = true;
+        if (std.mem.eql(u8, arg, "--scope")) {
+            idx += 1;
+            if (idx >= args.len) return error.InvalidArguments;
+            parsed.scope = parseInstallScope(args[idx]) orelse return error.InvalidArguments;
+            continue;
+        }
+        if (std.mem.startsWith(u8, arg, "--scope=")) {
+            parsed.scope = parseInstallScope(arg["--scope=".len..]) orelse return error.InvalidArguments;
+        }
     }
     return parsed;
+}
+
+fn parseInstallScope(value: []const u8) ?cli.InstallScope {
+    if (std.ascii.eqlIgnoreCase(value, "shipped") or std.ascii.eqlIgnoreCase(value, "shared")) {
+        return .shipped;
+    }
+    if (std.ascii.eqlIgnoreCase(value, "detected") or std.ascii.eqlIgnoreCase(value, "all")) {
+        return .detected;
+    }
+    return null;
 }
 
 fn collectSubcommandArgs(allocator: std.mem.Allocator, command_name: []const u8) ![][]const u8 {
@@ -635,6 +682,7 @@ fn printInstallReport(
     label: []const u8,
     report: cli.InstallReport,
     dry_run: bool,
+    scope: cli.InstallScope,
 ) !void {
     const codex_path = try cli.codexConfigPath(allocator, home);
     defer allocator.free(codex_path);
@@ -644,6 +692,7 @@ fn printInstallReport(
     defer allocator.free(claude_legacy_path);
 
     try printFile(stdout_file, "{s}{s}\n", .{ label, if (dry_run) " (dry run)" else "" });
+    try printFile(stdout_file, "Scope: {s}\n", .{@tagName(scope)});
     try stdout_file.writeAll("Detected agents:");
     if (!report.detected.codex and !report.detected.claude) {
         try stdout_file.writeAll(" none\n");

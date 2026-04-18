@@ -15,6 +15,7 @@ their defaults, and the verification path backing each claim.
 | `LOCALAPPDATA` / `XDG_CACHE_HOME` | env var | platform fallback | selected by config platform when `CBM_CACHE_DIR` is unset | `zig build test`, `bash scripts/run_cli_parity.sh --zig-only` |
 | `APPDATA` / `XDG_CONFIG_HOME` | env var | platform fallback | selected by config platform for roaming config roots | `bash scripts/run_cli_parity.sh --zig-only` |
 | `cbm cli --progress` | CLI flag | off | explicit flag only | `zig build`, `bash scripts/run_cli_parity.sh` |
+| `install` / `update` / `uninstall --scope` | CLI flag | `shipped` | explicit `--scope detected` broadens agent handling beyond the shipped surface | `zig build test`, `bash scripts/run_cli_parity.sh --zig-only` |
 | `-y`, `-n`, `--dry-run`, `--force` | CLI flags | ask / off | explicit flag only | `bash scripts/run_cli_parity.sh` |
 
 Known intentional omissions in the current branch:

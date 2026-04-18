@@ -117,6 +117,7 @@ Current control-surface inventory from the Zig implementation:
   - `cbm config list|get|set|reset`
   - `cbm cli --progress`
   - installer action flags: `-y`, `-n`, `--dry-run`, `--force`
+  - explicit installer scope: `--scope shipped|detected`
 - persisted runtime controls added in this worktree
   - `idle_store_timeout_ms`
   - `update_check_disable`
@@ -142,6 +143,9 @@ Phase 1 evidence:
 - the current branch now proves persisted `config set|get|list|reset` handling
   for `idle_store_timeout_ms` and `update_check_disable` through the temp-home
   `operational_contract` lane in `scripts/run_cli_parity.sh --zig-only`
+- the current branch now makes the CLI install/update/uninstall scope explicit:
+  - default CLI scope is `shipped`
+  - `--scope detected` is the explicit broader detected-agent path
 - the progress log, fixture placeholder, and current configuration matrix now
   live at
   [operational-controls-and-configurability-feature-cluster-progress.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/operational-controls-and-configurability-feature-cluster-progress.md)

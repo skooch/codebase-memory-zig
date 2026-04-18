@@ -38,6 +38,17 @@ pub const InstallOptions = struct {
     binary_path: []const u8,
     dry_run: bool = false,
     force: bool = false,
+    scope: InstallScope = .detected,
+};
+
+pub const UninstallOptions = struct {
+    dry_run: bool = false,
+    scope: InstallScope = .detected,
+};
+
+pub const InstallScope = enum {
+    detected,
+    shipped,
 };
 
 pub const InstallReport = struct {
@@ -63,6 +74,19 @@ pub const InstallReport = struct {
     };
 };
 
+const AgentTarget = enum {
+    codex,
+    claude,
+    gemini,
+    zed,
+    opencode,
+    antigravity,
+    aider,
+    kilocode,
+    vscode,
+    openclaw,
+};
+
 const ConfigPlatform = enum {
     windows,
     macos,
@@ -80,6 +104,16 @@ fn currentConfigPlatform() ConfigPlatform {
         .windows => .windows,
         .macos => .macos,
         else => .unix,
+    };
+}
+
+fn scopeAllowsTarget(scope: InstallScope, target: AgentTarget) bool {
+    return switch (scope) {
+        .detected => true,
+        .shipped => switch (target) {
+            .codex, .claude => true,
+            else => false,
+        },
     };
 }
 
@@ -986,7 +1020,7 @@ pub fn installAgentConfigs(
     var report = InstallReport{ .detected = detected };
 
     // Claude Code: MCP + skills + hooks + instructions (no instructions file in C ref for Claude itself)
-    if (detected.claude or options.force) {
+    if (scopeAllowsTarget(options.scope, .claude) and (detected.claude or options.force)) {
         report.claude = try installClaudeConfig(allocator, home, options);
         // Skills
         const skills_dir = try std.fs.path.join(allocator, &.{ home, ".claude", "skills" });
@@ -999,7 +1033,7 @@ pub fn installAgentConfigs(
     }
 
     // Codex: MCP + instructions
-    if (detected.codex or options.force) {
+    if (scopeAllowsTarget(options.scope, .codex) and (detected.codex or options.force)) {
         report.codex = try installCodexConfig(allocator, home, options);
         const ip = try std.fs.path.join(allocator, &.{ home, ".codex", "AGENTS.md" });
         defer allocator.free(ip);
@@ -1007,7 +1041,7 @@ pub fn installAgentConfigs(
     }
 
     // Gemini: MCP + hooks + instructions
-    if (detected.gemini or options.force) {
+    if (scopeAllowsTarget(options.scope, .gemini) and (detected.gemini or options.force)) {
         report.gemini = try installGenericJsonConfig(allocator, home, options, .{
             .config_parts = &.{ ".gemini", "settings.json" },
             .format = .mcp_servers,
@@ -1021,17 +1055,17 @@ pub fn installAgentConfigs(
     }
 
     // Zed: MCP only (platform-specific path)
-    if (detected.zed or options.force) {
+    if (scopeAllowsTarget(options.scope, .zed) and (detected.zed or options.force)) {
         report.zed = try installZedConfig(allocator, home, options);
     }
 
     // VS Code: MCP only (platform-specific path)
-    if (detected.vscode or options.force) {
+    if (scopeAllowsTarget(options.scope, .vscode) and (detected.vscode or options.force)) {
         report.vscode = try installVscodeConfig(allocator, home, options);
     }
 
     // OpenCode: MCP + instructions
-    if (detected.opencode or options.force) {
+    if (scopeAllowsTarget(options.scope, .opencode) and (detected.opencode or options.force)) {
         report.opencode = try installGenericJsonConfig(allocator, home, options, .{
             .config_parts = &.{ ".config", "opencode", "opencode.json" },
             .format = .opencode,
@@ -1042,7 +1076,7 @@ pub fn installAgentConfigs(
     }
 
     // Antigravity: MCP + instructions
-    if (detected.antigravity or options.force) {
+    if (scopeAllowsTarget(options.scope, .antigravity) and (detected.antigravity or options.force)) {
         report.antigravity = try installGenericJsonConfig(allocator, home, options, .{
             .config_parts = &.{ ".gemini", "antigravity", "mcp_config.json" },
             .format = .mcp_servers,
@@ -1053,7 +1087,7 @@ pub fn installAgentConfigs(
     }
 
     // KiloCode: MCP + instructions (platform-specific config path)
-    if (detected.kilocode or options.force) {
+    if (scopeAllowsTarget(options.scope, .kilocode) and (detected.kilocode or options.force)) {
         report.kilocode = try installKilocodeConfig(allocator, home, options);
         const ip = try std.fs.path.join(allocator, &.{ home, ".kilocode", "rules", "codebase-memory-mcp.md" });
         defer allocator.free(ip);
@@ -1061,7 +1095,7 @@ pub fn installAgentConfigs(
     }
 
     // Aider: instructions only (no MCP config)
-    if (detected.aider or options.force) {
+    if (scopeAllowsTarget(options.scope, .aider) and (detected.aider or options.force)) {
         const ip = try std.fs.path.join(allocator, &.{ home, "CONVENTIONS.md" });
         defer allocator.free(ip);
         if (try upsertInstructions(allocator, ip, agent_instructions_content, options.dry_run)) {
@@ -1072,7 +1106,7 @@ pub fn installAgentConfigs(
     }
 
     // OpenClaw: MCP only
-    if (detected.openclaw or options.force) {
+    if (scopeAllowsTarget(options.scope, .openclaw) and (detected.openclaw or options.force)) {
         report.openclaw = try installGenericJsonConfig(allocator, home, options, .{
             .config_parts = &.{ ".openclaw", "openclaw.json" },
             .format = .mcp_servers,
@@ -1085,99 +1119,103 @@ pub fn installAgentConfigs(
 pub fn uninstallAgentConfigs(
     allocator: std.mem.Allocator,
     home: []const u8,
-    dry_run: bool,
+    options: UninstallOptions,
 ) !InstallReport {
     const detected = detectAgents(allocator, home);
     var report = InstallReport{ .detected = detected };
 
     // Claude Code
-    report.claude = try uninstallClaudeConfig(allocator, home, dry_run);
-    if (detected.claude) {
+    if (scopeAllowsTarget(options.scope, .claude)) {
+        report.claude = try uninstallClaudeConfig(allocator, home, options.dry_run);
+    }
+    if (scopeAllowsTarget(options.scope, .claude) and detected.claude) {
         const skills_dir = try std.fs.path.join(allocator, &.{ home, ".claude", "skills" });
         defer allocator.free(skills_dir);
-        const removed = try removeSkills(allocator, skills_dir, dry_run);
+        const removed = try removeSkills(allocator, skills_dir, options.dry_run);
         if (removed > 0) report.skills = .removed;
-        try removeClaudeHooks(allocator, home, dry_run);
+        try removeClaudeHooks(allocator, home, options.dry_run);
         report.hooks = .removed;
     }
 
     // Codex
-    report.codex = try uninstallCodexConfig(allocator, home, dry_run);
-    if (detected.codex) {
+    if (scopeAllowsTarget(options.scope, .codex)) {
+        report.codex = try uninstallCodexConfig(allocator, home, options.dry_run);
+    }
+    if (scopeAllowsTarget(options.scope, .codex) and detected.codex) {
         const ip = try std.fs.path.join(allocator, &.{ home, ".codex", "AGENTS.md" });
         defer allocator.free(ip);
-        _ = try removeInstructions(allocator, ip, dry_run);
+        _ = try removeInstructions(allocator, ip, options.dry_run);
     }
 
     // Gemini
-    if (detected.gemini) {
+    if (scopeAllowsTarget(options.scope, .gemini) and detected.gemini) {
         const cp = try std.fs.path.join(allocator, &.{ home, ".gemini", "settings.json" });
         defer allocator.free(cp);
-        if (try removeJsonMcpEntry(allocator, cp, "mcpServers", dry_run)) {
+        if (try removeJsonMcpEntry(allocator, cp, "mcpServers", options.dry_run)) {
             report.gemini = .removed;
         }
-        try removeGeminiHooks(allocator, cp, dry_run);
+        try removeGeminiHooks(allocator, cp, options.dry_run);
         const ip = try std.fs.path.join(allocator, &.{ home, ".gemini", "GEMINI.md" });
         defer allocator.free(ip);
-        _ = try removeInstructions(allocator, ip, dry_run);
+        _ = try removeInstructions(allocator, ip, options.dry_run);
     }
 
     // Zed
-    if (detected.zed) {
-        report.zed = try uninstallZedConfig(allocator, home, dry_run);
+    if (scopeAllowsTarget(options.scope, .zed) and detected.zed) {
+        report.zed = try uninstallZedConfig(allocator, home, options.dry_run);
     }
 
     // VS Code
-    if (detected.vscode) {
-        report.vscode = try uninstallVscodeConfig(allocator, home, dry_run);
+    if (scopeAllowsTarget(options.scope, .vscode) and detected.vscode) {
+        report.vscode = try uninstallVscodeConfig(allocator, home, options.dry_run);
     }
 
     // OpenCode
-    if (detected.opencode) {
+    if (scopeAllowsTarget(options.scope, .opencode) and detected.opencode) {
         const cp = try std.fs.path.join(allocator, &.{ home, ".config", "opencode", "opencode.json" });
         defer allocator.free(cp);
-        if (try removeJsonMcpEntry(allocator, cp, "mcp", dry_run)) {
+        if (try removeJsonMcpEntry(allocator, cp, "mcp", options.dry_run)) {
             report.opencode = .removed;
         }
         const ip = try std.fs.path.join(allocator, &.{ home, ".config", "opencode", "AGENTS.md" });
         defer allocator.free(ip);
-        _ = try removeInstructions(allocator, ip, dry_run);
+        _ = try removeInstructions(allocator, ip, options.dry_run);
     }
 
     // Antigravity
-    if (detected.antigravity) {
+    if (scopeAllowsTarget(options.scope, .antigravity) and detected.antigravity) {
         const cp = try std.fs.path.join(allocator, &.{ home, ".gemini", "antigravity", "mcp_config.json" });
         defer allocator.free(cp);
-        if (try removeJsonMcpEntry(allocator, cp, "mcpServers", dry_run)) {
+        if (try removeJsonMcpEntry(allocator, cp, "mcpServers", options.dry_run)) {
             report.antigravity = .removed;
         }
         const ip = try std.fs.path.join(allocator, &.{ home, ".gemini", "antigravity", "AGENTS.md" });
         defer allocator.free(ip);
-        _ = try removeInstructions(allocator, ip, dry_run);
+        _ = try removeInstructions(allocator, ip, options.dry_run);
     }
 
     // KiloCode
-    if (detected.kilocode) {
-        report.kilocode = try uninstallKilocodeConfig(allocator, home, dry_run);
+    if (scopeAllowsTarget(options.scope, .kilocode) and detected.kilocode) {
+        report.kilocode = try uninstallKilocodeConfig(allocator, home, options.dry_run);
         const ip = try std.fs.path.join(allocator, &.{ home, ".kilocode", "rules", "codebase-memory-mcp.md" });
         defer allocator.free(ip);
-        _ = try removeInstructions(allocator, ip, dry_run);
+        _ = try removeInstructions(allocator, ip, options.dry_run);
     }
 
     // Aider
-    if (detected.aider) {
+    if (scopeAllowsTarget(options.scope, .aider) and detected.aider) {
         const ip = try std.fs.path.join(allocator, &.{ home, "CONVENTIONS.md" });
         defer allocator.free(ip);
-        if (try removeInstructions(allocator, ip, dry_run)) {
+        if (try removeInstructions(allocator, ip, options.dry_run)) {
             report.aider = .removed;
         }
     }
 
     // OpenClaw
-    if (detected.openclaw) {
+    if (scopeAllowsTarget(options.scope, .openclaw) and detected.openclaw) {
         const cp = try std.fs.path.join(allocator, &.{ home, ".openclaw", "openclaw.json" });
         defer allocator.free(cp);
-        if (try removeJsonMcpEntry(allocator, cp, "mcpServers", dry_run)) {
+        if (try removeJsonMcpEntry(allocator, cp, "mcpServers", options.dry_run)) {
             report.openclaw = .removed;
         }
     }
@@ -2024,7 +2062,7 @@ test "uninstall dry run keeps supported agent config entries" {
         .force = true,
     });
 
-    const report = try uninstallAgentConfigs(allocator, home, true);
+    const report = try uninstallAgentConfigs(allocator, home, .{ .dry_run = true });
     try std.testing.expectEqual(InstallReport.Action.removed, report.codex);
     try std.testing.expectEqual(InstallReport.Action.removed, report.claude);
 
@@ -2330,7 +2368,7 @@ test "gemini install and uninstall roundtrip" {
     try std.testing.expect(std.mem.indexOf(u8, contents, "BeforeTool") != null);
 
     // Uninstall
-    const uninstall = try uninstallAgentConfigs(allocator, home, false);
+    const uninstall = try uninstallAgentConfigs(allocator, home, .{});
     try std.testing.expectEqual(InstallReport.Action.removed, uninstall.gemini);
 }
 
@@ -2434,7 +2472,7 @@ test "aider install is instructions only" {
     try std.testing.expect(std.mem.indexOf(u8, contents, "Knowledge Graph") != null);
 
     // Uninstall
-    const uninstall = try uninstallAgentConfigs(allocator, home, false);
+    const uninstall = try uninstallAgentConfigs(allocator, home, .{});
     // Aider is not detected (PATH check, not home dir), so removal is skipped
     try std.testing.expectEqual(InstallReport.Action.skipped, uninstall.aider);
 }
@@ -2486,6 +2524,30 @@ test "claude install writes skills and hooks" {
     defer allocator.free(settings);
     try std.testing.expect(std.mem.indexOf(u8, settings, "PreToolUse") != null);
     try std.testing.expect(std.mem.indexOf(u8, settings, "SessionStart") != null);
+}
+
+test "install scope shipped skips non-shipped agents even with force" {
+    const allocator = std.testing.allocator;
+    const home = try std.fmt.allocPrint(allocator, "/tmp/cbm-home-scope-shipped-{x}", .{std.crypto.random.int(u64)});
+    defer allocator.free(home);
+    defer std.fs.cwd().deleteTree(home) catch {};
+
+    const gemini_dir = try std.fs.path.join(allocator, &.{ home, ".gemini" });
+    defer allocator.free(gemini_dir);
+    try std.fs.cwd().makePath(gemini_dir);
+
+    const report = try installAgentConfigs(allocator, home, .{
+        .binary_path = "/tmp/cbm",
+        .force = true,
+        .scope = .shipped,
+    });
+    try std.testing.expectEqual(InstallReport.Action.updated, report.codex);
+    try std.testing.expectEqual(InstallReport.Action.updated, report.claude);
+    try std.testing.expectEqual(InstallReport.Action.skipped, report.gemini);
+
+    const gemini_settings = try std.fs.path.join(allocator, &.{ home, ".gemini", "settings.json" });
+    defer allocator.free(gemini_settings);
+    try std.testing.expectError(error.FileNotFound, std.fs.cwd().access(gemini_settings, .{}));
 }
 
 test "generic mcp json formats produce correct structure" {

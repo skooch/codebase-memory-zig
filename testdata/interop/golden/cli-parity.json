@@ -2,6 +2,12 @@
   "operational_contract": {
     "config_list_mentions_idle_timeout": true,
     "config_list_mentions_update_check_disable": true,
+    "default_scope_mentions_shipped": true,
+    "default_scope_skips_gemini": true,
+    "default_scope_writes_claude": true,
+    "default_scope_writes_codex": true,
+    "detected_scope_mentions_detected": true,
+    "detected_scope_writes_gemini": true,
     "idle_timeout_get_matches": true,
     "idle_timeout_reset_restores_default": true,
     "idle_timeout_set_success": true,

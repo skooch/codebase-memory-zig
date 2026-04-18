@@ -171,3 +171,54 @@ Remaining Phase 2 scope after this checkpoint:
 - host bind/listen controls remain absent because the shipped server mode is
   stdio-only
 - hook-policy and extension-mapping controls are still deferred
+
+## Phase 2 Checkpoint: Explicit Installer Scope
+
+Second Phase 2 code slice on 2026-04-19:
+
+- `src/cli.zig`
+  - added explicit install scopes:
+    - `detected`
+    - `shipped`
+  - kept the lower-level install library broad by default while allowing the
+    CLI to choose a narrower shipped scope
+  - added regression coverage proving shipped scope skips non-shipped agents
+    even when `--force` is used
+- `src/main.zig`
+  - `install`, `update`, and `uninstall` now accept `--scope shipped|detected`
+  - the CLI defaults that scope to `shipped`, which matches the currently
+    claimed product surface
+  - report output now makes the chosen scope visible
+- `scripts/run_cli_parity.sh`
+  - now verifies the default CLI install scope stays `shipped`
+  - also verifies `--scope detected` is the explicit escape hatch for the
+    broader detected-agent path
+  - keeps the Windows-layout broad-agent lane explicit by using
+    `--scope detected`
+
+Verification for this slice:
+
+```sh
+zig build
+zig build test
+bash scripts/run_cli_parity.sh
+bash scripts/run_cli_parity.sh --update-golden
+bash scripts/run_cli_parity.sh --zig-only
+```
+
+Results:
+
+- `zig build` passed
+- `zig build test` passed
+- `bash scripts/run_cli_parity.sh` passed with zero Zig/C shared-contract
+  mismatches
+- `bash scripts/run_cli_parity.sh --zig-only` passed with `37` total checks
+  matching the golden snapshot
+
+Remaining Phase 2 scope after this checkpoint:
+
+- host bind/listen controls remain absent because the shipped server mode is
+  stdio-only
+- hook-policy and extension-mapping controls are still deferred
+- the CLI now has explicit scope control, but the broader multi-agent surface
+  itself is still intentionally secondary to the shipped Codex/Claude contract

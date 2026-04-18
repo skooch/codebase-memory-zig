@@ -136,7 +136,7 @@ def inspect_windows_layout(binary: Path, fixture_root: Path) -> Dict[str, Any]:
             "LOCALAPPDATA": str(localappdata),
         }
 
-        install = run_cmd([str(binary), "install", "-y", "--force"], home, env, use_default_cache=False)
+        install = run_cmd([str(binary), "install", "-y", "--force", "--scope", "detected"], home, env, use_default_cache=False)
         config_set = run_cmd(
             [str(binary), "config", "set", "auto_index", "true"],
             home,
@@ -169,6 +169,10 @@ def inspect_operational_controls(binary: Path) -> Dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix="cbm-cli-config-") as tmp:
         home = Path(tmp)
         home.mkdir(parents=True, exist_ok=True)
+        (home / ".gemini").mkdir(parents=True, exist_ok=True)
+        gemini_settings = home / ".gemini" / "settings.json"
+        codex_config = home / ".codex" / "config.toml"
+        claude_config = home / ".claude" / ".mcp.json"
 
         set_idle = run_cmd([str(binary), "config", "set", "idle_store_timeout_ms", "1234"], home)
         get_idle = run_cmd([str(binary), "config", "get", "idle_store_timeout_ms"], home)
@@ -179,6 +183,11 @@ def inspect_operational_controls(binary: Path) -> Dict[str, Any]:
         idle_after_reset = run_cmd([str(binary), "config", "get", "idle_store_timeout_ms"], home)
         reset_update_disable = run_cmd([str(binary), "config", "reset", "update_check_disable"], home)
         update_disable_after_reset = run_cmd([str(binary), "config", "get", "update_check_disable"], home)
+        install_shipped = run_cmd([str(binary), "install", "-y", "--force"], home)
+        gemini_after_shipped_exists = gemini_settings.exists()
+        install_detected = run_cmd([str(binary), "install", "-y", "--force", "--scope", "detected"], home)
+
+        gemini_after_detected = file_text(gemini_settings)
 
         return {
             "operational_contract": {
@@ -190,6 +199,12 @@ def inspect_operational_controls(binary: Path) -> Dict[str, Any]:
                 "config_list_mentions_update_check_disable": contains_ci(config_list.stdout, "update_check_disable = true"),
                 "idle_timeout_reset_restores_default": idle_after_reset.stdout.strip() == "60000",
                 "update_check_disable_reset_restores_default": update_disable_after_reset.stdout.strip() == "false",
+                "default_scope_mentions_shipped": contains_ci(install_shipped.stdout, "Scope: shipped"),
+                "default_scope_skips_gemini": install_shipped.returncode == 0 and not gemini_after_shipped_exists,
+                "default_scope_writes_codex": str(binary) in file_text(codex_config),
+                "default_scope_writes_claude": str(binary) in file_text(claude_config),
+                "detected_scope_mentions_detected": contains_ci(install_detected.stdout, "Scope: detected"),
+                "detected_scope_writes_gemini": install_detected.returncode == 0 and str(binary) in gemini_after_detected,
             },
         }
 
