@@ -9,6 +9,10 @@ const c = if (builtin.os.tag == .windows) struct {} else @cImport({
 const update_check_url = "https://api.github.com/repos/DeusData/codebase-memory-mcp/releases/latest";
 var shutdown_requested = std.atomic.Value(bool).init(false);
 
+pub const RuntimeLifecycleError = error{
+    ResponseTooLarge,
+};
+
 pub const RuntimeLifecycle = struct {
     allocator: std.mem.Allocator,
     current_version: []const u8,
@@ -57,11 +61,19 @@ pub const RuntimeLifecycle = struct {
     }
 
     pub fn injectUpdateNotice(self: *RuntimeLifecycle, response_json: []const u8) ![]const u8 {
+        return self.injectUpdateNoticeBounded(response_json, std.math.maxInt(usize));
+    }
+
+    pub fn injectUpdateNoticeBounded(
+        self: *RuntimeLifecycle,
+        response_json: []const u8,
+        max_bytes: usize,
+    ) ![]const u8 {
         const notice = self.takeNotice() orelse return response_json;
-        defer self.allocator.free(notice);
 
         const marker = ",\"result\":{";
         const marker_index = std.mem.indexOf(u8, response_json, marker) orelse {
+            self.restoreNotice(notice);
             return response_json;
         };
         const object_start = marker_index + marker.len;
@@ -69,16 +81,25 @@ pub const RuntimeLifecycle = struct {
         const notice_json = try std.json.Stringify.valueAlloc(self.allocator, notice, .{});
         defer self.allocator.free(notice_json);
 
+        const needs_comma = object_start < response_json.len and response_json[object_start] != '}';
+        const projected_len = response_json.len + "\"update_notice\":".len + notice_json.len + @as(usize, if (needs_comma) 1 else 0);
+        if (projected_len > max_bytes) {
+            self.allocator.free(response_json);
+            self.restoreNotice(notice);
+            return RuntimeLifecycleError.ResponseTooLarge;
+        }
+
         var out = std.ArrayList(u8).empty;
         errdefer out.deinit(self.allocator);
         try out.appendSlice(self.allocator, response_json[0..object_start]);
         try out.appendSlice(self.allocator, "\"update_notice\":");
         try out.appendSlice(self.allocator, notice_json);
-        if (object_start < response_json.len and response_json[object_start] != '}') {
+        if (needs_comma) {
             try out.append(self.allocator, ',');
         }
         try out.appendSlice(self.allocator, response_json[object_start..]);
         self.allocator.free(response_json);
+        defer self.allocator.free(notice);
         return out.toOwnedSlice(self.allocator);
     }
 
@@ -88,6 +109,15 @@ pub const RuntimeLifecycle = struct {
         const notice = self.update_notice orelse return null;
         self.update_notice = null;
         return notice;
+    }
+
+    fn restoreNotice(self: *RuntimeLifecycle, notice: []u8) void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        if (self.update_notice) |existing| {
+            self.allocator.free(existing);
+        }
+        self.update_notice = notice;
     }
 
     fn storeNoticeIfNewer(self: *RuntimeLifecycle, latest_raw: []const u8) !void {
@@ -233,4 +263,41 @@ test "injectUpdateNotice prepends one-shot result metadata" {
     const unchanged = try runtime.injectUpdateNotice(second);
     defer std.testing.allocator.free(unchanged);
     try std.testing.expectEqualStrings(injected, unchanged);
+}
+
+test "injectUpdateNotice preserves notice when response cannot accept it" {
+    var runtime = RuntimeLifecycle.init(std.testing.allocator, "0.0.0");
+    defer runtime.deinit();
+
+    try runtime.storeNoticeIfNewer("9.9.9");
+    const error_response = try std.testing.allocator.dupe(u8, "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-1}}");
+    const unchanged = try runtime.injectUpdateNotice(error_response);
+    defer std.testing.allocator.free(unchanged);
+    try std.testing.expectEqualStrings(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-1}}",
+        unchanged,
+    );
+
+    const success_response = try std.testing.allocator.dupe(u8, "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"project\":\"demo\"}}");
+    const injected = try runtime.injectUpdateNotice(success_response);
+    defer std.testing.allocator.free(injected);
+    try std.testing.expect(std.mem.indexOf(u8, injected, "\"update_notice\":\"Update available:") != null);
+}
+
+test "injectUpdateNoticeBounded restores notice when cap is exceeded" {
+    var runtime = RuntimeLifecycle.init(std.testing.allocator, "0.0.0");
+    defer runtime.deinit();
+
+    try runtime.storeNoticeIfNewer("9.9.9");
+
+    const capped_response = try std.testing.allocator.dupe(u8, "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"project\":\"demo\"}}");
+    try std.testing.expectError(
+        RuntimeLifecycleError.ResponseTooLarge,
+        runtime.injectUpdateNoticeBounded(capped_response, 32),
+    );
+
+    const uncapped_response = try std.testing.allocator.dupe(u8, "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"project\":\"demo\"}}");
+    const injected = try runtime.injectUpdateNoticeBounded(uncapped_response, std.math.maxInt(usize));
+    defer std.testing.allocator.free(injected);
+    try std.testing.expect(std.mem.indexOf(u8, injected, "\"update_notice\":\"Update available:") != null);
 }

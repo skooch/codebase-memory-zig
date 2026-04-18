@@ -30,6 +30,8 @@ const watcher = @import("watcher.zig");
 
 const Store = store.Store;
 const max_request_line_bytes = 1024 * 1024;
+const max_response_bytes = 4 * 1024 * 1024;
+const response_too_large_code: i64 = -32001;
 
 const SupportedTool = enum {
     index_repository,
@@ -239,7 +241,10 @@ pub const McpServer = struct {
             const response = try self.successResponse(request.value.id, payload);
             if (response) |owned_response| {
                 if (self.lifecycle_ref) |lifecycle| {
-                    const updated_response = try lifecycle.injectUpdateNotice(owned_response);
+                    const updated_response = lifecycle.injectUpdateNoticeBounded(owned_response, max_response_bytes) catch |err| switch (err) {
+                        error.ResponseTooLarge => return self.errorResponse(request.value.id, response_too_large_code, "Response too large"),
+                        else => return err,
+                    };
                     return updated_response;
                 }
                 return owned_response;
@@ -256,7 +261,10 @@ pub const McpServer = struct {
             const response = try self.dispatchToolCall(request.value.id, call_request);
             if (response) |owned_response| {
                 if (self.lifecycle_ref) |lifecycle| {
-                    const updated_response = try lifecycle.injectUpdateNotice(owned_response);
+                    const updated_response = lifecycle.injectUpdateNoticeBounded(owned_response, max_response_bytes) catch |err| switch (err) {
+                        error.ResponseTooLarge => return self.errorResponse(request.value.id, response_too_large_code, "Response too large"),
+                        else => return err,
+                    };
                     return updated_response;
                 }
                 return owned_response;
@@ -880,7 +888,10 @@ pub const McpServer = struct {
         try response.appendSlice(self.allocator, ",\"result\":");
         try response.appendSlice(self.allocator, payload);
         try response.appendSlice(self.allocator, "}");
-        return try response.toOwnedSlice(self.allocator);
+        const owned = try response.toOwnedSlice(self.allocator);
+        if (owned.len <= max_response_bytes) return owned;
+        self.allocator.free(owned);
+        return self.errorResponse(request_id, response_too_large_code, "Response too large");
     }
 
     fn errorResponse(self: *McpServer, request_id: ?std.json.Value, code: i64, message: []const u8) !?[]const u8 {
@@ -1250,6 +1261,23 @@ test "tools/list advertises manage_adr" {
     )).?;
     defer std.testing.allocator.free(response);
     try std.testing.expect(std.mem.indexOf(u8, response, "\"manage_adr\"") != null);
+}
+
+test "successResponse converts oversized payloads into deterministic errors" {
+    var s = try store.Store.openMemory(std.testing.allocator);
+    defer s.deinit();
+    var srv = McpServer.init(std.testing.allocator, &s);
+    defer srv.deinit();
+
+    const payload = try std.testing.allocator.alloc(u8, max_response_bytes + 1);
+    defer std.testing.allocator.free(payload);
+    @memset(payload, 'a');
+
+    const response = (try srv.successResponse(.{ .integer = 1 }, payload)).?;
+    defer std.testing.allocator.free(response);
+
+    try std.testing.expect(std.mem.indexOf(u8, response, "\"error\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, response, "\"Response too large\"") != null);
 }
 
 test "list_projects returns projects wrapper" {
