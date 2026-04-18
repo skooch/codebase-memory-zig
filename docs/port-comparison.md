@@ -161,11 +161,13 @@ This section compares what kinds of graph entities the two systems are built to 
 | Capability | Original C | Zig Port | Status | Interoperable? | Notes |
 |-----------|------------|----------|--------|----------------|-------|
 | Extension / filename detection | Broad, documented as 66 languages | Broad language enum and extension mapping in `src/discover.zig`, plus explicit env-only `CBM_EXTENSION_MAP` overrides | `Near parity` | Yes | Zig detects far more languages than it currently parses deeply, and the operational-controls parity lane now proves `.foo=python` remapping end to end. |
-| Tree-sitter-backed definitions across the full language set | Yes | No | `Partial` | No | This is one of the major deliberate scope reductions in the Zig port. |
+| Tree-sitter-backed definitions across the full language set | Yes | Parser-backed for the verified Python, JavaScript, TypeScript, TSX, Rust, Zig, Go, and Java tranche, but not the full original language set | `Partial` | No | The Zig port now has a broader parser-backed tranche, but it still does not reproduce the original's full language breadth. |
 | Tree-sitter-backed definitions for Python | Yes | Yes | `Near parity` | Yes | Covered by readiness and extractor tests. |
 | Tree-sitter-backed definitions for JavaScript | Yes | Yes | `Near parity` | Yes | Covered by readiness and extractor tests. |
 | Tree-sitter-backed definitions for TypeScript / TSX | Yes | Yes | `Near parity` | Yes | Covered by readiness and extractor tests. |
 | Tree-sitter-backed definitions for Rust | Yes | Yes | `Near parity` | Yes | Covered by readiness and extractor tests. |
+| Tree-sitter-backed definitions for Go | Yes | Yes | `Near parity` | No | Zig now extracts Go functions, methods, structs, and interfaces with fixture-backed `go-basic` / `go-parity` coverage and green zig-only goldens. The scoped C compare still shows query-result deltas on `go-parity`, so this row is not yet a strict shared-parity claim. |
+| Tree-sitter-backed definitions for Java | Yes | Yes | `Near parity` | No | Zig now extracts Java classes, interfaces, constructors, and methods with the new `java-basic` fixture green in zig-only mode. The scoped C compare still shows query-result deltas on `java-basic`, so this row remains a verified Zig expansion rather than a strict shared-parity claim. |
 | Tree-sitter-backed definitions for Zig | Not a headline original language, but supported in the port target | Yes | `Near parity` | No | Zig is a first-class target language in the port. |
 | Fallback heuristics for non-target languages | Broad AST extraction in original | Heuristic symbol extraction fallback in Zig | `Partial` | No | Zig intentionally keeps heuristics for unsupported deep-parser languages. |
 | Hybrid type/LSP resolution for Go, C, C++ | Yes | No | `Deferred` | No | Explicit original differentiator not currently ported. |

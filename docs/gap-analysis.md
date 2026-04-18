@@ -27,13 +27,16 @@ Completed now:
   - `delete_project`
   - `index_status`
   - `detect_changes`
-- Parser-backed definition extraction is working for the readiness languages:
+- Parser-backed definition extraction is working for the readiness languages
+  plus the first follow-on expansion tranche:
   - Python
   - JavaScript
   - TypeScript
   - TSX
   - Rust
   - Zig
+  - Go
+  - Java
 - The first-gate fixture harness baseline is:
   - `Strict matches: 58`
   - `Diagnostic-only comparisons: 9`
@@ -66,6 +69,11 @@ Completed after the readiness gate:
   - reproducible soak suite for repeated index and query cycles
   - repo-owned static security audit suite
   - maintainer operations docs and CI workflow wiring
+- Parser-backed language-expansion tranche:
+  - Go functions, methods, structs, and interfaces
+  - Java classes, interfaces, constructors, and methods
+  - scoped zig-only interop goldens for `go-basic`, `go-parity`, and
+    `java-basic`
 - Shared Phase 2 protocol/query parity slice:
   - `tools/list`
   - `cli --progress`
@@ -94,6 +102,64 @@ Completed in Plan 03:
 
 Completed in Plan 05:
 - Long-tail edge parity: `THROWS`/`RAISES` edges from throw statements (JS/TS/TSX). Verified end-to-end on the edge-parity fixture with RAISES resolving custom error classes. Out-of-scope edges: `OVERRIDE` (Go-only), `CONTAINS_PACKAGE` (never implemented in C), `WRITES` and `READS` (not proven original-overlap by the current C reference fixture).
+
+## Implemented Plan: Language Coverage Expansion
+
+Current parser-backed expansion tranche:
+- Go
+  - functions
+  - methods with receiver ownership
+  - struct definitions
+  - interface definitions
+  - import parsing
+- Java
+  - classes
+  - interfaces
+  - constructors
+  - methods
+  - import parsing
+- fixture surface
+  - upgraded `go-basic`
+  - upgraded `go-parity`
+  - new `java-basic`
+
+Completion evidence:
+- the plan is now archived at
+  [07-language-coverage-expansion-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/07-language-coverage-expansion-plan.md)
+  and
+  [07-language-coverage-expansion-progress.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/07-language-coverage-expansion-progress.md)
+- `build.zig` now compiles vendored Go and Java parsers, and
+  `scripts/fetch_grammars.sh` now fetches those grammar sources for fresh
+  clones
+- `src/extractor.zig` now uses tree-sitter for Go and Java definitions,
+  including Go receiver ownership and Java constructor or method ownership
+- the interop manifest now has a Java fixture under
+  `testdata/interop/language-expansion/java-basic`, and the Go goldens now
+  capture non-empty graph facts instead of empty diagnostic snapshots
+
+Completion verification on 2026-04-19:
+- `bash scripts/bootstrap_worktree.sh /Users/skooch/projects/codebase-memory-zig`
+- `zig build`
+- `zig build test`
+- scoped zig-only interop subset for `go-basic`, `go-parity`, and `java-basic`
+- scoped Zig-vs-C interop subset for `go-basic`, `go-parity`, and `java-basic`
+
+Observed results:
+- scoped zig-only goldens:
+  - `go-basic`: pass
+  - `go-parity`: pass
+  - `java-basic`: pass
+- scoped Zig-vs-C compare:
+  - `go-basic`: pass
+  - `go-parity`: query-result deltas only
+  - `java-basic`: query-result deltas only
+
+Intentional residual delta after completion:
+- hybrid type or LSP resolution for Go, C, and C++ remains deferred
+- C++, R, Svelte, and Vue parser-backed expansion remain deferred
+- the new Go and Java fixtures are verified Zig-side additions, but not yet a
+  strict shared-parity claim because scoped C compare still has query-result
+  deltas
 
 ## Implemented Plan: Operational Controls and Configurability
 
@@ -506,6 +572,9 @@ Deferred or optional future slices:
   - broader traversal and query-analysis parity beyond the current shared `detect_changes` contract
 - Indexing/runtime expansion:
   - deeper usage/type-ref extraction parity beyond the current daily-use slice
+- Language expansion beyond the implemented first tranche:
+  - hybrid type/LSP resolution for Go, C, and C++
+  - broader parser-backed families beyond Go and Java
 - Metadata and enrichment:
   - git-history coupling — now implemented (subprocess `git log`, `FILE_CHANGES_WITH` edges)
   - long-tail edges — now implemented: `THROWS`/`RAISES` (JS/TS/TSX throw statements), decorator-backed `HANDLES`, and route-linked `DATA_FLOWS`; remaining or out-of-scope gaps: `OVERRIDE` (Go-only), `WRITES`/`READS` (not proven original-overlap by the current C reference fixture)
