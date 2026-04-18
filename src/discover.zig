@@ -346,7 +346,8 @@ fn languageForExtensionOverrideRaw(ext: []const u8, raw: []const u8) ?Language {
 }
 
 fn languageForExtensionOverride(ext: []const u8) ?Language {
-    const raw = std.posix.getenv("CBM_EXTENSION_MAP") orelse return null;
+    const raw = std.process.getEnvVarOwned(std.heap.c_allocator, "CBM_EXTENSION_MAP") catch return null;
+    defer std.heap.c_allocator.free(raw);
     return languageForExtensionOverrideRaw(ext, raw);
 }
 

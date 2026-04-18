@@ -108,6 +108,7 @@ if [ "${#TARGETS[@]}" -eq 0 ]; then
 fi
 
 mkdir -p "$OUTPUT_DIR"
+OUTPUT_DIR="$(cd "$OUTPUT_DIR" && pwd)"
 rm -f "${OUTPUT_DIR}/checksums.txt"
 
 WORK_ROOT="$(mktemp -d)"
@@ -126,8 +127,7 @@ EOF
 
     (
         cd "$ROOT_DIR"
-        zig build \
-            -Doptimize=ReleaseSafe \
+        zig build release \
             -Dversion="$VERSION" \
             -Dtarget="$target" \
             --prefix "$prefix_dir" \

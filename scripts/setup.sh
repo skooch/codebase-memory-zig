@@ -66,7 +66,7 @@ PREFIX_DIR="${BUILD_ROOT}/prefix"
 
 (
     cd "$ROOT_DIR"
-    zig build -Doptimize=ReleaseSafe --prefix "$PREFIX_DIR"
+    zig build release --prefix "$PREFIX_DIR"
 )
 
 BIN_PATH="${PREFIX_DIR}/bin/cbm"

@@ -1,43 +1,10 @@
 const std = @import("std");
 
-pub fn build(b: *std.Build) void {
-    const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
-
-    const version = b.option([]const u8, "version", "Application version string") orelse "dev";
-
-    const options = b.addOptions();
-    options.addOption([]const u8, "version", version);
-
-    // -- Tree-sitter (zig package) -------------------------------------------
-
-    const ts_dep = b.dependency("tree_sitter", .{
-        .target = target,
-        .optimize = optimize,
-    });
-    const tree_sitter_mod = ts_dep.module("tree_sitter");
-
-    // -- SQLite C flags -------------------------------------------------------
-
-    const sqlite_flags: []const []const u8 = &.{
-        "-DSQLITE_THREADSAFE=1",
-        "-DSQLITE_ENABLE_FTS5=1",
-        "-DSQLITE_OMIT_LOAD_EXTENSION=1",
-        "-DSQLITE_DQS=0",
-        "-DSQLITE_DEFAULT_MEMSTATUS=0",
-        "-DSQLITE_DEFAULT_WAL_SYNCHRONOUS=1",
-    };
-
-    // -- Library module: "cbm" -----------------------------------------------
-
-    const mod = b.addModule("cbm", .{
-        .root_source_file = b.path("src/root.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{
-            .{ .name = "tree_sitter", .module = tree_sitter_mod },
-        },
-    });
+fn configureCbmModule(
+    b: *std.Build,
+    mod: *std.Build.Module,
+    sqlite_flags: []const []const u8,
+) void {
     mod.addIncludePath(b.path("vendored/sqlite3"));
     mod.addIncludePath(b.path("vendored/tree_sitter"));
     mod.addIncludePath(b.path("vendored/grammars/rust"));
@@ -95,9 +62,51 @@ pub fn build(b: *std.Build) void {
         .flags = sqlite_flags,
     });
     mod.link_libc = true;
+}
 
-    // -- Executable -----------------------------------------------------------
+fn createCbmModule(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    sqlite_flags: []const []const u8,
+    public_name: ?[]const u8,
+) *std.Build.Module {
+    const ts_dep = b.dependency("tree_sitter", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const tree_sitter_mod = ts_dep.module("tree_sitter");
 
+    const mod = if (public_name) |name|
+        b.addModule(name, .{
+            .root_source_file = b.path("src/root.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "tree_sitter", .module = tree_sitter_mod },
+            },
+        })
+    else
+        b.createModule(.{
+            .root_source_file = b.path("src/root.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "tree_sitter", .module = tree_sitter_mod },
+            },
+        });
+
+    configureCbmModule(b, mod, sqlite_flags);
+    return mod;
+}
+
+fn addCbmExecutable(
+    b: *std.Build,
+    mod: *std.Build.Module,
+    options: *std.Build.Step.Options,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) *std.Build.Step.Compile {
     const exe = b.addExecutable(.{
         .name = "cbm",
         .root_module = b.createModule(.{
@@ -111,8 +120,46 @@ pub fn build(b: *std.Build) void {
     });
     exe.root_module.addIncludePath(b.path("vendored/sqlite3"));
     exe.root_module.addOptions("build_options", options);
+    return exe;
+}
+
+pub fn build(b: *std.Build) void {
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+
+    const version = b.option([]const u8, "version", "Application version string") orelse "dev";
+
+    const options = b.addOptions();
+    options.addOption([]const u8, "version", version);
+
+    // -- Tree-sitter (zig package) -------------------------------------------
+
+    // -- SQLite C flags -------------------------------------------------------
+
+    const sqlite_flags: []const []const u8 = &.{
+        "-DSQLITE_THREADSAFE=1",
+        "-DSQLITE_ENABLE_FTS5=1",
+        "-DSQLITE_OMIT_LOAD_EXTENSION=1",
+        "-DSQLITE_DQS=0",
+        "-DSQLITE_DEFAULT_MEMSTATUS=0",
+        "-DSQLITE_DEFAULT_WAL_SYNCHRONOUS=1",
+    };
+
+    // -- Library module: "cbm" -----------------------------------------------
+
+    const mod = createCbmModule(b, target, optimize, sqlite_flags, "cbm");
+    const release_mod = createCbmModule(b, target, .ReleaseSafe, sqlite_flags, null);
+
+    // -- Executable -----------------------------------------------------------
+
+    const exe = addCbmExecutable(b, mod, options, target, optimize);
 
     b.installArtifact(exe);
+
+    const release_exe = addCbmExecutable(b, release_mod, options, target, .ReleaseSafe);
+    const install_release = b.addInstallArtifact(release_exe, .{});
+    const release_step = b.step("release", "Install the ReleaseSafe cbm binary");
+    release_step.dependOn(&install_release.step);
 
     // -- Run step -------------------------------------------------------------
 

@@ -1,0 +1,118 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version to package and publish
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  package-macos:
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - name: Cache vendored grammars
+        uses: actions/cache@v4
+        with:
+          path: |
+            vendored/grammars
+            vendored/tree_sitter
+          key: grammars-${{ hashFiles('scripts/fetch_grammars.sh') }}
+
+      - name: Fetch tree-sitter grammars
+        run: bash scripts/fetch_grammars.sh
+
+      - name: Package macOS archives
+        run: |
+          bash scripts/package-release.sh \
+            --version "${{ inputs.version }}" \
+            --output-dir dist/release-macos \
+            --target aarch64-macos \
+            --target x86_64-macos
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: dist/release-macos/*
+
+  package-cross:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - name: Cache vendored grammars
+        uses: actions/cache@v4
+        with:
+          path: |
+            vendored/grammars
+            vendored/tree_sitter
+          key: grammars-${{ hashFiles('scripts/fetch_grammars.sh') }}
+
+      - name: Fetch tree-sitter grammars
+        run: bash scripts/fetch_grammars.sh
+
+      - name: Package Linux and Windows archives
+        run: |
+          bash scripts/package-release.sh \
+            --version "${{ inputs.version }}" \
+            --output-dir dist/release-cross \
+            --target x86_64-linux-musl \
+            --target aarch64-linux-musl \
+            --target x86_64-windows-gnu
+
+      - name: Upload Linux and Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-cross
+          path: dist/release-cross/*
+
+  publish:
+    needs:
+      - package-macos
+      - package-cross
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-macos
+          path: artifacts/macos
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-cross
+          path: artifacts/cross
+
+      - name: Assemble release files
+        run: |
+          mkdir -p release
+          find artifacts -type f \( -name '*.tar.gz' -o -name '*.zip' \) -exec cp {} release/ \;
+          cat artifacts/*/checksums.txt > release/checksums.txt
+          ls -la release
+
+      - name: Create draft GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh release create "$VERSION" release/* --draft --generate-notes --title "$VERSION"

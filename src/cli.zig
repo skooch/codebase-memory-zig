@@ -97,8 +97,13 @@ const ConfigPlatform = enum {
     unix,
 };
 
-fn currentConfigPlatform() ConfigPlatform {
-    if (std.posix.getenv("CBM_CONFIG_PLATFORM")) |override| {
+fn envVarOwnedOrNull(allocator: std.mem.Allocator, name: []const u8) ?[]u8 {
+    return std.process.getEnvVarOwned(allocator, name) catch null;
+}
+
+fn currentConfigPlatform(allocator: std.mem.Allocator) ConfigPlatform {
+    if (envVarOwnedOrNull(allocator, "CBM_CONFIG_PLATFORM")) |override| {
+        defer allocator.free(override);
         if (std.ascii.eqlIgnoreCase(override, "windows")) return .windows;
         if (std.ascii.eqlIgnoreCase(override, "macos")) return .macos;
         if (std.ascii.eqlIgnoreCase(override, "linux")) return .unix;
@@ -217,13 +222,21 @@ fn kilocodeConfigPathForPlatform(
 }
 
 pub fn runtimeCacheDir(allocator: std.mem.Allocator) ![]u8 {
+    const home = envVarOwnedOrNull(allocator, "HOME");
+    defer if (home) |value| allocator.free(value);
+    const cache_dir = envVarOwnedOrNull(allocator, "CBM_CACHE_DIR");
+    defer if (cache_dir) |value| allocator.free(value);
+    const localappdata = envVarOwnedOrNull(allocator, "LOCALAPPDATA");
+    defer if (localappdata) |value| allocator.free(value);
+    const xdg_cache_home = envVarOwnedOrNull(allocator, "XDG_CACHE_HOME");
+    defer if (xdg_cache_home) |value| allocator.free(value);
     return runtimeCacheDirForPlatform(
         allocator,
-        std.posix.getenv("HOME"),
-        currentConfigPlatform(),
-        std.posix.getenv("CBM_CACHE_DIR"),
-        std.posix.getenv("LOCALAPPDATA"),
-        std.posix.getenv("XDG_CACHE_HOME"),
+        home,
+        currentConfigPlatform(allocator),
+        cache_dir,
+        localappdata,
+        xdg_cache_home,
     );
 }
 
@@ -348,18 +361,22 @@ fn executableOnPath(allocator: std.mem.Allocator, name: []const u8) bool {
 
 /// Return the platform-specific application config directory prefix.
 fn appConfigPrefix(allocator: std.mem.Allocator, home: []const u8) ?[]u8 {
+    const appdata = envVarOwnedOrNull(allocator, "APPDATA");
+    defer if (appdata) |value| allocator.free(value);
+    const xdg_config_home = envVarOwnedOrNull(allocator, "XDG_CONFIG_HOME");
+    defer if (xdg_config_home) |value| allocator.free(value);
     return appConfigPrefixForPlatform(
         allocator,
         home,
-        currentConfigPlatform(),
-        std.posix.getenv("APPDATA"),
-        std.posix.getenv("XDG_CONFIG_HOME"),
+        currentConfigPlatform(allocator),
+        appdata,
+        xdg_config_home,
     ) catch null;
 }
 
 pub fn detectAgents(allocator: std.mem.Allocator, home: []const u8) AgentSet {
     var agents = AgentSet{};
-    const platform = currentConfigPlatform();
+    const platform = currentConfigPlatform(allocator);
 
     agents.claude = pathExists(home, ".claude");
     agents.codex = pathExists(home, ".codex");
@@ -1672,12 +1689,16 @@ fn installZedConfig(
     home: []const u8,
     options: InstallOptions,
 ) !InstallReport.Action {
+    const appdata = envVarOwnedOrNull(allocator, "APPDATA");
+    defer if (appdata) |value| allocator.free(value);
+    const xdg_config_home = envVarOwnedOrNull(allocator, "XDG_CONFIG_HOME");
+    defer if (xdg_config_home) |value| allocator.free(value);
     const config_path = try zedConfigPathForPlatform(
         allocator,
         home,
-        currentConfigPlatform(),
-        std.posix.getenv("APPDATA"),
-        std.posix.getenv("XDG_CONFIG_HOME"),
+        currentConfigPlatform(allocator),
+        appdata,
+        xdg_config_home,
     );
     defer allocator.free(config_path);
 
@@ -1700,12 +1721,16 @@ fn uninstallZedConfig(
     home: []const u8,
     dry_run: bool,
 ) !InstallReport.Action {
+    const appdata = envVarOwnedOrNull(allocator, "APPDATA");
+    defer if (appdata) |value| allocator.free(value);
+    const xdg_config_home = envVarOwnedOrNull(allocator, "XDG_CONFIG_HOME");
+    defer if (xdg_config_home) |value| allocator.free(value);
     const config_path = try zedConfigPathForPlatform(
         allocator,
         home,
-        currentConfigPlatform(),
-        std.posix.getenv("APPDATA"),
-        std.posix.getenv("XDG_CONFIG_HOME"),
+        currentConfigPlatform(allocator),
+        appdata,
+        xdg_config_home,
     );
     defer allocator.free(config_path);
 
@@ -1720,12 +1745,16 @@ fn installVscodeConfig(
     home: []const u8,
     options: InstallOptions,
 ) !InstallReport.Action {
+    const appdata = envVarOwnedOrNull(allocator, "APPDATA");
+    defer if (appdata) |value| allocator.free(value);
+    const xdg_config_home = envVarOwnedOrNull(allocator, "XDG_CONFIG_HOME");
+    defer if (xdg_config_home) |value| allocator.free(value);
     const config_path = try vscodeConfigPathForPlatform(
         allocator,
         home,
-        currentConfigPlatform(),
-        std.posix.getenv("APPDATA"),
-        std.posix.getenv("XDG_CONFIG_HOME"),
+        currentConfigPlatform(allocator),
+        appdata,
+        xdg_config_home,
     );
     defer allocator.free(config_path);
 
@@ -1748,12 +1777,16 @@ fn uninstallVscodeConfig(
     home: []const u8,
     dry_run: bool,
 ) !InstallReport.Action {
+    const appdata = envVarOwnedOrNull(allocator, "APPDATA");
+    defer if (appdata) |value| allocator.free(value);
+    const xdg_config_home = envVarOwnedOrNull(allocator, "XDG_CONFIG_HOME");
+    defer if (xdg_config_home) |value| allocator.free(value);
     const config_path = try vscodeConfigPathForPlatform(
         allocator,
         home,
-        currentConfigPlatform(),
-        std.posix.getenv("APPDATA"),
-        std.posix.getenv("XDG_CONFIG_HOME"),
+        currentConfigPlatform(allocator),
+        appdata,
+        xdg_config_home,
     );
     defer allocator.free(config_path);
 
@@ -1768,12 +1801,16 @@ fn installKilocodeConfig(
     home: []const u8,
     options: InstallOptions,
 ) !InstallReport.Action {
+    const appdata = envVarOwnedOrNull(allocator, "APPDATA");
+    defer if (appdata) |value| allocator.free(value);
+    const xdg_config_home = envVarOwnedOrNull(allocator, "XDG_CONFIG_HOME");
+    defer if (xdg_config_home) |value| allocator.free(value);
     const config_path = try kilocodeConfigPathForPlatform(
         allocator,
         home,
-        currentConfigPlatform(),
-        std.posix.getenv("APPDATA"),
-        std.posix.getenv("XDG_CONFIG_HOME"),
+        currentConfigPlatform(allocator),
+        appdata,
+        xdg_config_home,
     );
     defer allocator.free(config_path);
 
@@ -1796,12 +1833,16 @@ fn uninstallKilocodeConfig(
     home: []const u8,
     dry_run: bool,
 ) !InstallReport.Action {
+    const appdata = envVarOwnedOrNull(allocator, "APPDATA");
+    defer if (appdata) |value| allocator.free(value);
+    const xdg_config_home = envVarOwnedOrNull(allocator, "XDG_CONFIG_HOME");
+    defer if (xdg_config_home) |value| allocator.free(value);
     const config_path = try kilocodeConfigPathForPlatform(
         allocator,
         home,
-        currentConfigPlatform(),
-        std.posix.getenv("APPDATA"),
-        std.posix.getenv("XDG_CONFIG_HOME"),
+        currentConfigPlatform(allocator),
+        appdata,
+        xdg_config_home,
     );
     defer allocator.free(config_path);
 

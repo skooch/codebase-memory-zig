@@ -143,10 +143,7 @@ fn runMcpServer(allocator: std.mem.Allocator) !void {
     server.setIndexGuard(&runtime.index_busy);
     server.setRuntimeLifecycle(&lifecycle);
     server.setRuntimeStorePath(runtime.db_path);
-    const idle_store_timeout_ms = if (std.posix.getenv("CBM_IDLE_STORE_TIMEOUT_MS") != null)
-        envUnsigned("CBM_IDLE_STORE_TIMEOUT_MS", config.idle_store_timeout_ms)
-    else
-        config.idle_store_timeout_ms;
+    const idle_store_timeout_ms = envUnsigned("CBM_IDLE_STORE_TIMEOUT_MS", config.idle_store_timeout_ms);
     server.setIdleStoreTimeoutMs(idle_store_timeout_ms);
     defer server.deinit();
 
@@ -206,10 +203,7 @@ fn maybeAutoIndexOnStartup(
         return;
     }
 
-    const limit = if (std.posix.getenv("CBM_AUTO_INDEX_LIMIT") != null)
-        envUnsigned("CBM_AUTO_INDEX_LIMIT", config.auto_index_limit)
-    else
-        config.auto_index_limit;
+    const limit = envUnsigned("CBM_AUTO_INDEX_LIMIT", config.auto_index_limit);
     const discovered = discoverIndexableFileCount(allocator, cwd) catch |err| {
         std.log.warn("auto-index discovery failed for {s}: {}", .{ cwd, err });
         return;
@@ -249,8 +243,13 @@ fn runtimeDbPath(allocator: std.mem.Allocator) ![]u8 {
     return std.fs.path.join(allocator, &.{ cache_dir, "codebase-memory-zig.db" });
 }
 
+fn envVarOwnedOrNull(name: []const u8) ?[]u8 {
+    return std.process.getEnvVarOwned(std.heap.c_allocator, name) catch null;
+}
+
 fn envFlagEnabled(name: []const u8) bool {
-    const value = std.posix.getenv(name) orelse return false;
+    const value = envVarOwnedOrNull(name) orelse return false;
+    defer std.heap.c_allocator.free(value);
     return std.ascii.eqlIgnoreCase(value, "1") or
         std.ascii.eqlIgnoreCase(value, "true") or
         std.ascii.eqlIgnoreCase(value, "yes") or
@@ -258,7 +257,8 @@ fn envFlagEnabled(name: []const u8) bool {
 }
 
 fn envUnsigned(name: []const u8, default_value: usize) usize {
-    const value = std.posix.getenv(name) orelse return default_value;
+    const value = envVarOwnedOrNull(name) orelse return default_value;
+    defer std.heap.c_allocator.free(value);
     return std.fmt.parseUnsigned(usize, value, 10) catch default_value;
 }
 
@@ -668,14 +668,14 @@ fn confirmAction(question: []const u8, answer: AutoAnswer) !bool {
         .ask => {},
     }
 
-    if (!std.posix.isatty(std.posix.STDIN_FILENO)) {
+    const stdin_file = std.fs.File.stdin();
+    if (!stdin_file.isTty()) {
         try stderr_file.writeAll("error: interactive prompt requires a terminal. Use -y or -n.\n");
         return false;
     }
 
     try printFile(stdout_file, "{s} (y/n): ", .{question});
     var buf: [32]u8 = undefined;
-    const stdin_file = std.fs.File.stdin();
     const bytes = try stdin_file.read(&buf);
     const response = std.mem.trim(u8, buf[0..bytes], " \t\r\n");
     return response.len > 0 and (response[0] == 'y' or response[0] == 'Y');

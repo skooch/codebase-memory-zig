@@ -9,6 +9,10 @@ const c = if (builtin.os.tag == .windows) struct {} else @cImport({
 const update_check_url = "https://api.github.com/repos/DeusData/codebase-memory-mcp/releases/latest";
 var shutdown_requested = std.atomic.Value(bool).init(false);
 
+fn envVarOwnedOrNull(name: []const u8) ?[]u8 {
+    return std.process.getEnvVarOwned(std.heap.c_allocator, name) catch null;
+}
+
 pub const RuntimeLifecycleError = error{
     ResponseTooLarge,
 };
@@ -57,7 +61,8 @@ pub const RuntimeLifecycle = struct {
 
         if (self.update_check_disabled or envFlagEnabled("CBM_UPDATE_CHECK_DISABLE")) return;
 
-        if (std.posix.getenv("CBM_UPDATE_CHECK_LATEST")) |latest| {
+        if (envVarOwnedOrNull("CBM_UPDATE_CHECK_LATEST")) |latest| {
+            defer std.heap.c_allocator.free(latest);
             self.storeNoticeIfNewer(latest) catch {};
             return;
         }
@@ -128,7 +133,9 @@ pub const RuntimeLifecycle = struct {
     fn storeNoticeIfNewer(self: *RuntimeLifecycle, latest_raw: []const u8) !void {
         const latest = std.mem.trim(u8, latest_raw, " \t\r\n");
         if (latest.len == 0) return;
-        const current = std.posix.getenv("CBM_UPDATE_CHECK_CURRENT") orelse self.current_version;
+        const current_override = envVarOwnedOrNull("CBM_UPDATE_CHECK_CURRENT");
+        defer if (current_override) |value| std.heap.c_allocator.free(value);
+        const current = current_override orelse self.current_version;
         if (compareVersions(latest, current) <= 0) return;
 
         const notice = try std.fmt.allocPrint(
@@ -230,7 +237,8 @@ fn trimNumericPrefix(part: []const u8) []const u8 {
 }
 
 fn envFlagEnabled(name: []const u8) bool {
-    const value = std.posix.getenv(name) orelse return false;
+    const value = envVarOwnedOrNull(name) orelse return false;
+    defer std.heap.c_allocator.free(value);
     return std.ascii.eqlIgnoreCase(value, "1") or
         std.ascii.eqlIgnoreCase(value, "true") or
         std.ascii.eqlIgnoreCase(value, "yes") or
@@ -238,7 +246,9 @@ fn envFlagEnabled(name: []const u8) bool {
 }
 
 fn runUpdateCheck(self: *RuntimeLifecycle) !void {
-    const url = std.posix.getenv("CBM_UPDATE_CHECK_URL") orelse update_check_url;
+    const url_override = envVarOwnedOrNull("CBM_UPDATE_CHECK_URL");
+    defer if (url_override) |value| std.heap.c_allocator.free(value);
+    const url = url_override orelse update_check_url;
     const body = runCurl(self.allocator, url) catch return;
     defer self.allocator.free(body);
     const latest = try parseLatestTag(self.allocator, body) orelse return;
