@@ -21,9 +21,12 @@ For the cross-bucket order that includes these improvement plans plus the
 remaining ready-to-go and productization plans, use
 [../README.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/README.md).
 
-## Plan Index
+## Active Improvement Plan
 
-- [parser-accuracy-and-graph-fidelity-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/parser-accuracy-and-graph-fidelity-improvements-plan.md)
+- [parser-accuracy-and-graph-fidelity-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/parser-accuracy-and-graph-fidelity-improvements-plan.md)
+
+## Remaining Improvement Queue
+
 - [large-repo-reliability-and-crash-safety-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/large-repo-reliability-and-crash-safety-improvements-plan.md)
 - [windows-installer-and-client-integration-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/windows-installer-and-client-integration-improvements-plan.md)
 - [discovery-indexing-scope-and-query-semantics-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/discovery-indexing-scope-and-query-semantics-improvements-plan.md)

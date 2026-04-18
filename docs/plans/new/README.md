@@ -3,9 +3,15 @@
 Refresh date: 2026-04-18
 
 The current target contract and the shared follow-on parity slices are complete.
-Everything left in `docs/plans/new/` is optional follow-on work. None of these
-plans has started yet; when work begins, move the chosen plan into
-`docs/plans/in-progress/` in the same change that starts implementation.
+Everything left in `docs/plans/new/` is optional follow-on work except the
+currently active parser-accuracy slice, which has moved into
+`docs/plans/in-progress/`.
+
+## Active Now
+
+- [parser-accuracy-and-graph-fidelity-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/parser-accuracy-and-graph-fidelity-improvements-plan.md)
+  - Active in `/Users/skooch/projects/worktrees/parser-accuracy-fidelity` on
+    `codex/parser-accuracy-fidelity`.
 
 ## Ordering Principles
 
@@ -17,42 +23,39 @@ plans has started yet; when work begins, move the chosen plan into
 
 ## Recommended Execution Order
 
-1. [parser-accuracy-and-graph-fidelity-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/parser-accuracy-and-graph-fidelity-improvements-plan.md)
-   - First because wrong graph facts poison every later search, trace, semantic,
-     and installer claim.
-2. [discovery-indexing-scope-and-query-semantics-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/discovery-indexing-scope-and-query-semantics-improvements-plan.md)
+1. [discovery-indexing-scope-and-query-semantics-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/discovery-indexing-scope-and-query-semantics-improvements-plan.md)
    - Next because search and schema behavior need deterministic indexed scope
      before more data or more clients are added.
-3. [large-repo-reliability-and-crash-safety-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/large-repo-reliability-and-crash-safety-improvements-plan.md)
+2. [large-repo-reliability-and-crash-safety-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/large-repo-reliability-and-crash-safety-improvements-plan.md)
    - Third because scale failures, hangs, and corruption invalidate any broader
      adoption story.
-4. [06-runtime-lifecycle-extras-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/ready-to-go/06-runtime-lifecycle-extras-plan.md)
+3. [06-runtime-lifecycle-extras-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/ready-to-go/06-runtime-lifecycle-extras-plan.md)
    - Build on the existing runtime work once correctness and scale boundaries are
      clearer.
-5. [windows-installer-and-client-integration-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/windows-installer-and-client-integration-improvements-plan.md)
+4. [windows-installer-and-client-integration-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/windows-installer-and-client-integration-improvements-plan.md)
    - Normalize startup, path, and client behavior before claiming a wider
      install surface.
-6. [operational-controls-and-configurability-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/operational-controls-and-configurability-feature-cluster-plan.md)
+5. [operational-controls-and-configurability-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/operational-controls-and-configurability-feature-cluster-plan.md)
    - Make operational knobs explicit before packaging or expanding agent-side
      automation.
-7. [release-and-setup-packaging-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/release-and-setup-packaging-plan.md)
+6. [release-and-setup-packaging-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/release-and-setup-packaging-plan.md)
    - Establish the release artifact and setup contract before broader installer
      matrix work.
-8. [installer-ecosystem-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/installer-ecosystem-parity-plan.md)
+7. [installer-ecosystem-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/installer-ecosystem-parity-plan.md)
    - Expand agent coverage only after shared packaging and client behavior are
      stable.
-9. [09-operations-script-suite-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/ready-to-go/09-operations-script-suite-plan.md)
+8. [09-operations-script-suite-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/ready-to-go/09-operations-script-suite-plan.md)
    - Operational credibility belongs after the runtime, packaging, and install
      contracts stop moving.
-10. [07-language-coverage-expansion-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/ready-to-go/07-language-coverage-expansion-plan.md)
+9. [07-language-coverage-expansion-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/ready-to-go/07-language-coverage-expansion-plan.md)
     - This is the first concrete parser-backed language-expansion tranche.
-11. [08-hybrid-type-resolution-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/ready-to-go/08-hybrid-type-resolution-plan.md)
+10. [08-hybrid-type-resolution-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/ready-to-go/08-hybrid-type-resolution-plan.md)
     - Hybrid resolution is higher risk and should land only after the repo has a
       stronger parser-backed baseline and cleaner runtime semantics.
-12. [language-support-expansion-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/language-support-expansion-feature-cluster-plan.md)
+11. [language-support-expansion-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/language-support-expansion-feature-cluster-plan.md)
     - Use this as the broader post-tranche language queue after Plan 07 proves
       the next parser-backed slice.
-13. [semantic-graph-expansion-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/semantic-graph-expansion-feature-cluster-plan.md)
+12. [semantic-graph-expansion-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/semantic-graph-expansion-feature-cluster-plan.md)
     - Keep higher-order graph expansion last, after graph correctness,
       discovery/query semantics, scale, and language posture are stronger.
 
@@ -71,5 +74,7 @@ plans has started yet; when work begins, move the chosen plan into
 
 ## Start Here
 
-If we start the remaining backlog now, begin with
-[parser-accuracy-and-graph-fidelity-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/parser-accuracy-and-graph-fidelity-improvements-plan.md).
+The current active plan is
+[parser-accuracy-and-graph-fidelity-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/in-progress/parser-accuracy-and-graph-fidelity-improvements-plan.md).
+When it finishes, the next plan to start is
+[discovery-indexing-scope-and-query-semantics-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/discovery-indexing-scope-and-query-semantics-improvements-plan.md).

@@ -90,6 +90,34 @@ Completed in Plan 03:
 Completed in Plan 05:
 - Long-tail edge parity: `THROWS`/`RAISES` edges from throw statements (JS/TS/TSX). Verified end-to-end on the edge-parity fixture with RAISES resolving custom error classes. Out-of-scope edges: `OVERRIDE` (Go-only), `CONTAINS_PACKAGE` (never implemented in C), `WRITES` and `READS` (not proven original-overlap by the current C reference fixture).
 
+## Active In-Progress Plan: Parser Accuracy and Graph Fidelity
+
+Known current-state evidence from the Zig implementation:
+- `src/extractor.zig:extractFile` still combines tree-sitter-backed definitions
+  with line-by-line fallback parsing and module-level ownership defaults.
+- Route metadata, imports, calls, usages, and throws are still accumulated from
+  line parsing before later resolution, which is where owner drift and
+  false-positive attachment can still occur.
+- `src.registry.addImportBinding` already preserves alias and namespace hints,
+  so the highest-value next contract work is proving where that metadata is
+  retained correctly and where it still collapses during extraction or lookup.
+
+Phase 1 bucket map for the parser-accuracy tranche:
+
+| Bucket | Upstream issue families | Why it belongs here | Phase 1 fixture lane |
+|--------|--------------------------|---------------------|----------------------|
+| Current target-language correctness | `#5`, `#6`, `#7`, `#8`, `#26`, `#43`, `#180`, `#236` | These overlap the parser-backed Python/JS/TS surface the Zig port already claims today: symbol ownership, false route signals, and import-aware resolution. | `python-framework-cases`, `typescript-import-cases` |
+| Deferred unsupported-language parity | `#9`, `#218`, `#219`, `#223` | These depend on unsupported or not-yet-parser-backed language surfaces such as C++, R, and embedded Svelte/Vue script extraction. Keep them as explicit deferred fixtures instead of silently mixing them into current-language claims. | `cpp-resolution-cases`, `r-box-cases`, `svelte-vue-import-cases` |
+| Future semantic-graph expansion | `#27`, `#28`, `#29`, `#55`, `#56`, `#220`, `#228` | These require broader route-graph, indirect-call, or higher-order semantic expansion rather than a narrow correctness repair to the currently shipped contract. | Document only in this plan; implement later in the semantic-graph expansion cluster |
+
+Phase 1 contract for this plan:
+- Keep module-vs-function ownership, false route detection, and import-aware
+  resolution in scope for already-supported languages.
+- Treat unsupported-language and embedded-script reports as deferred lanes that
+  still get local fixtures and explicit documentation.
+- Do not expand the broader semantic graph in this plan; only record the cases
+  that belong to later route or indirect-call work.
+
 ## Completed Shared Capability Full-Parity Follow-On
 
 Phase 2 of the follow-on parity plan is now complete: `cli --progress`, `query_graph`, `get_architecture`, `search_code`, and `detect_changes` are now backed by green shared-capability evidence and can be marked `Interoperable? Yes` in [port-comparison.md](/Users/skooch/projects/codebase-memory-zig/docs/port-comparison.md).
