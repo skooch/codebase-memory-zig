@@ -7,8 +7,8 @@ Round out the drop-in replacement story by restoring the broader operational scr
 Phase 1
 
 ## File Map
-- Modify: `docs/plans/new/ready-to-go/09-operations-script-suite-plan.md`
-- Create: `docs/plans/new/ready-to-go/09-operations-script-suite-progress.md`
+- Modify: `docs/plans/in-progress/09-operations-script-suite-plan.md`
+- Create: `docs/plans/in-progress/09-operations-script-suite-progress.md`
 - Modify: `docs/port-comparison.md`
 - Modify: `docs/gap-analysis.md`
 - Modify: `scripts/run_benchmark_suite.sh`
@@ -21,7 +21,7 @@ Phase 1
 
 ### Phase 1: Lock the Operations Contract
 - [ ] Re-read the original benchmark, soak, and security script surface and capture the overlapping operational expectations in `docs/gap-analysis.md`.
-- [ ] Define the exact operational script entrypoints, CI hooks, and verification workflow in `docs/plans/new/ready-to-go/09-operations-script-suite-progress.md`.
+- [ ] Define the exact operational script entrypoints, CI hooks, and verification workflow in `docs/plans/in-progress/09-operations-script-suite-progress.md`.
 - [ ] Keep the scope limited to reproducible repo-owned scripts rather than broadening into unrelated release engineering work.
 - **Status:** pending
 
@@ -34,7 +34,7 @@ Phase 1
 ### Phase 3: Verify And Reclassify
 - [ ] Run the benchmark, soak, and security script entrypoints until each completes successfully in a clean repo environment.
 - [ ] Update `docs/port-comparison.md` so the operations-script rows move out of `Partial` or `Deferred` only after the scripts and CI hooks are proven.
-- [ ] Record the final verification transcript and any intentionally unsupported operational checks in `docs/plans/new/ready-to-go/09-operations-script-suite-progress.md`.
+- [ ] Record the final verification transcript and any intentionally unsupported operational checks in `docs/plans/in-progress/09-operations-script-suite-progress.md`.
 - **Status:** pending
 
 ## Decisions
