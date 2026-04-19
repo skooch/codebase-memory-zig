@@ -12,6 +12,7 @@ const GraphBufferError = graph_buffer.GraphBufferError;
 const extractor = @import("extractor.zig");
 const minhash = @import("minhash.zig");
 const Registry = @import("registry.zig").Registry;
+const hybrid_resolution = @import("hybrid_resolution.zig");
 const scip = @import("scip.zig");
 const search_index = @import("search_index.zig");
 const store = @import("store.zig");
@@ -115,7 +116,13 @@ pub const Pipeline = struct {
 
         try collectExtractions(self, discovered_files, &gb, &reg, &extractions);
 
-        try resolveExtractions(&gb, &reg, extractions.items, &self.cancelled);
+        var hybrid = hybrid_resolution.Sidecar.load(self.allocator, self.repo_path) catch |err| blk: {
+            std.log.warn("pipeline skipped hybrid resolution sidecar for {s}: {}", .{ self.project_name, err });
+            break :blk hybrid_resolution.Sidecar.initEmpty();
+        };
+        defer hybrid.deinit();
+
+        try resolveExtractions(&gb, &reg, &hybrid, extractions.items, &self.cancelled);
         freeOwnedExtractions(self.allocator, &extractions);
 
         if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
@@ -222,7 +229,13 @@ pub const Pipeline = struct {
 
         try collectExtractions(self, classification.changed_files, &gb, &reg, &extractions);
 
-        try resolveExtractions(&gb, &reg, extractions.items, &self.cancelled);
+        var hybrid = hybrid_resolution.Sidecar.load(self.allocator, self.repo_path) catch |err| blk: {
+            std.log.warn("pipeline skipped hybrid resolution sidecar for {s}: {}", .{ self.project_name, err });
+            break :blk hybrid_resolution.Sidecar.initEmpty();
+        };
+        defer hybrid.deinit();
+
+        try resolveExtractions(&gb, &reg, &hybrid, extractions.items, &self.cancelled);
         freeOwnedExtractions(self.allocator, &extractions);
 
         if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
@@ -1304,6 +1317,7 @@ fn pythonImportModulePath(import_name: []const u8, buf: []u8) ?[]const u8 {
 fn resolveExtractions(
     gb: *GraphBuffer,
     reg: *Registry,
+    hybrid: *const hybrid_resolution.Sidecar,
     extractions: []const OwnedExtraction,
     cancelled: *const std.atomic.Value(bool),
 ) !void {
@@ -1327,23 +1341,19 @@ fn resolveExtractions(
                 try emitRouteRegistration(gb, reg, call, caller_node);
                 continue;
             }
+            if (hybrid.resolveCall(
+                call.file_path,
+                caller_node.qualified_name,
+                call.callee_name,
+                call.full_callee_name,
+            )) |res| {
+                if (try emitResolvedCall(gb, call, res.qualified_name, res.strategy, res.confidence)) {
+                    continue;
+                }
+            }
             if (reg.resolve(call.callee_name, call.caller_id, caller_node.file_path, null)) |res| {
-                if (gb.findNodeByQualifiedName(res.qualified_name)) |target| {
-                    if (std.mem.eql(u8, target.label, "Class") or std.mem.eql(u8, target.label, "Interface")) continue;
-                    const edge_type: []const u8 = if (classifyResolvedCall(call, res.qualified_name)) |kind| switch (kind) {
-                        .http_client => "HTTP_CALLS",
-                        .async_broker => "ASYNC_CALLS",
-                        .route_registration => "CALLS",
-                    } else "CALLS";
-                    if ((std.mem.eql(u8, edge_type, "HTTP_CALLS") or std.mem.eql(u8, edge_type, "ASYNC_CALLS")) and call.first_string_arg.len > 0) {
-                        if (try emitServiceRouteCall(gb, call, edge_type, res.qualified_name)) {
-                            continue;
-                        }
-                    }
-                    try insertResolvedEdge(gb, call.caller_id, target.id, edge_type);
-                    if (std.mem.eql(u8, edge_type, "CALLS")) {
-                        _ = try emitArgUrlRouteCall(gb, call);
-                    }
+                if (try emitResolvedCall(gb, call, res.qualified_name, res.strategy, res.confidence)) {
+                    continue;
                 }
             } else if (service_patterns.classify(call.full_callee_name)) |kind| {
                 const edge_type: []const u8 = switch (kind) {
@@ -1391,6 +1401,50 @@ fn resolveExtractions(
             }
         }
     }
+}
+
+fn emitResolvedCall(
+    gb: *GraphBuffer,
+    call: extractor.UnresolvedCall,
+    qualified_name: []const u8,
+    strategy: []const u8,
+    confidence: f64,
+) PipelineError!bool {
+    const target = gb.findNodeByQualifiedName(qualified_name) orelse return false;
+    if (std.mem.eql(u8, target.label, "Class") or std.mem.eql(u8, target.label, "Interface")) return false;
+
+    const edge_type: []const u8 = if (classifyResolvedCall(call, qualified_name)) |kind| switch (kind) {
+        .http_client => "HTTP_CALLS",
+        .async_broker => "ASYNC_CALLS",
+        .route_registration => "CALLS",
+    } else "CALLS";
+
+    if ((std.mem.eql(u8, edge_type, "HTTP_CALLS") or std.mem.eql(u8, edge_type, "ASYNC_CALLS")) and call.first_string_arg.len > 0) {
+        if (try emitServiceRouteCall(gb, call, edge_type, qualified_name)) {
+            return true;
+        }
+    }
+
+    if (std.mem.eql(u8, strategy, "hybrid_sidecar")) {
+        const props = std.fmt.allocPrint(
+            gb.allocator,
+            "{{\"callee\":\"{s}\",\"strategy\":\"{s}\",\"confidence\":{d}}}",
+            .{
+                if (call.full_callee_name.len > 0) call.full_callee_name else call.callee_name,
+                strategy,
+                confidence,
+            },
+        ) catch return PipelineError.OutOfMemory;
+        defer gb.allocator.free(props);
+        try insertResolvedEdgeWithProperties(gb, call.caller_id, target.id, edge_type, props);
+    } else {
+        try insertResolvedEdge(gb, call.caller_id, target.id, edge_type);
+    }
+
+    if (std.mem.eql(u8, edge_type, "CALLS")) {
+        _ = try emitArgUrlRouteCall(gb, call);
+    }
+    return true;
 }
 
 fn emitRouteRegistration(
@@ -1912,6 +1966,88 @@ test "pipeline resolves aliased imports across files" {
     defer db.freeNode(target);
     try std.testing.expectEqualStrings("helper", target.name);
     try std.testing.expectEqualStrings("util.py", target.file_path);
+}
+
+test "pipeline prefers hybrid sidecar call targets over ambiguous registry matches" {
+    const allocator = std.testing.allocator;
+    const project_dir = "testdata/interop/hybrid-resolution/go-sidecar";
+    const project_name = std.fs.path.basename(project_dir);
+
+    var db = try store.Store.openMemory(allocator);
+    defer db.deinit();
+
+    var pipeline = Pipeline.init(allocator, project_dir, .full);
+    defer pipeline.deinit();
+    try pipeline.run(&db);
+
+    const run_id = try findSingleNodeByNameInFile(&db, project_name, "Function", "run", "main.go");
+
+    const call_edges = try db.findEdgesBySource(project_name, run_id, "CALLS");
+    defer db.freeEdges(call_edges);
+    try std.testing.expectEqual(@as(usize, 1), call_edges.len);
+    const target = (try db.findNodeById(project_name, call_edges[0].target_id)).?;
+    defer db.freeNode(target);
+    try std.testing.expect(std.mem.indexOf(u8, target.qualified_name, "Primary.Handle") != null);
+    try std.testing.expect(std.mem.indexOf(u8, call_edges[0].properties_json, "\"strategy\":\"hybrid_sidecar\"") != null);
+}
+
+test "pipeline falls back cleanly when hybrid sidecar is absent" {
+    const allocator = std.testing.allocator;
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(
+        allocator,
+        "/tmp/cbm-hybrid-fallback-{x}",
+        .{project_id},
+    );
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    {
+        var dir = try std.fs.cwd().openDir(project_dir, .{});
+        defer dir.close();
+
+        var main = try dir.createFile("main.go", .{});
+        defer main.close();
+        try main.writeAll(
+            \\package main
+            \\
+            \\func run(selected Primary) {
+            \\    selected.Handle()
+            \\}
+            \\
+        );
+
+        var workers = try dir.createFile("workers.go", .{});
+        defer workers.close();
+        try workers.writeAll(
+            \\package main
+            \\
+            \\type Secondary struct{}
+            \\
+            \\func (Secondary) Handle() {}
+            \\
+            \\type Primary struct{}
+            \\
+            \\func (Primary) Handle() {}
+            \\
+        );
+    }
+
+    var db = try store.Store.openMemory(allocator);
+    defer db.deinit();
+
+    var pipeline = Pipeline.init(allocator, project_dir, .full);
+    defer pipeline.deinit();
+    try pipeline.run(&db);
+
+    const project_name = std.fs.path.basename(project_dir);
+    const run_id = try findSingleNodeByNameInFile(&db, project_name, "Function", "run", "main.go");
+
+    const call_edges = try db.findEdgesBySource(project_name, run_id, "CALLS");
+    defer db.freeEdges(call_edges);
+    try std.testing.expectEqual(@as(usize, 1), call_edges.len);
+    try std.testing.expectEqualStrings("{}", call_edges[0].properties_json);
 }
 
 test "pipeline preserves self call edges" {

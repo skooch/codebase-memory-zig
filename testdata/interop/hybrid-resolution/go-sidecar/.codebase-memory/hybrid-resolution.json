@@ -1,0 +1,20 @@
+{
+  "version": "0.1",
+  "source": "hybrid-resolution",
+  "documents": [
+    {
+      "rel_path": "main.go",
+      "language": "go",
+      "resolved_calls": [
+        {
+          "caller_qualified_name": "go-sidecar:main.go:go:symbol:go:run",
+          "callee_name": "Handle",
+          "full_callee_name": "selected.Handle",
+          "resolved_qualified_name": "go-sidecar:workers.go:go:symbol:go:Primary.Handle",
+          "strategy": "hybrid_sidecar",
+          "confidence": 0.97
+        }
+      ]
+    }
+  ]
+}

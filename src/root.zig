@@ -12,6 +12,7 @@ pub const mcp = @import("mcp.zig");
 pub const cypher = @import("cypher.zig");
 pub const search_index = @import("search_index.zig");
 pub const scip = @import("scip.zig");
+pub const hybrid_resolution = @import("hybrid_resolution.zig");
 pub const query_router = @import("query_router.zig");
 pub const discover = @import("discover.zig");
 pub const watcher = @import("watcher.zig");
@@ -43,6 +44,7 @@ test {
     _ = cypher;
     _ = search_index;
     _ = scip;
+    _ = hybrid_resolution;
     _ = query_router;
     _ = discover;
     _ = watcher;
