@@ -89,7 +89,12 @@ Current audit note on `2026-04-19`:
 
 - `zig build test`: pass
 - `bash scripts/run_cli_parity.sh --zig-only`: pass
-- `bash scripts/run_interop_alignment.sh --zig-only`: currently fails on `main` because `python-parity` now returns a different `get_graph_schema` shape than the stored golden expects, and the `discovery-scope`, `python-framework-cases`, and `typescript-import-cases` fixtures do not currently have committed zig-only golden snapshots.
+- `bash scripts/run_interop_alignment.sh --zig-only`: pass (`28/28`)
+- `bash scripts/run_benchmark_suite.sh --zig-only --manifest testdata/bench/stress-manifest.json --report-dir .benchmark_reports/ops`: pass
+- `bash scripts/run_soak_suite.sh --iterations 3 --report-dir .soak_reports/ci`: pass
+- `bash scripts/run_security_audit.sh .security_reports/ci`: pass
+- `bash scripts/run_interop_alignment.sh`: completed against the local C reference checkout with `6` bounded mismatches remaining in the broader parity surface (`python-parity/get_code_snippet`, `javascript-parity/query_graph`, `go-parity/query_graph`, `java-basic/query_graph`, `zig-parity/search_graph`, and `error-paths/get_code_snippet`)
+- `bash scripts/run_cli_parity.sh`: pass with no full-compare mismatches
 
 ## 1. Project Scope and Product Shape
 

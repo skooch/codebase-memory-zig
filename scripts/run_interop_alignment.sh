@@ -770,9 +770,10 @@ def build_requests(root: Path, fixture: dict[str, Any], impl: str) -> tuple[list
         tool_id += 1
 
     # search_graph: the C API uses "label" while the Zig API uses "label_pattern",
-    # so we translate the parameter name per-implementation below. Because the APIs
-    # differ, search_graph comparison is assertion-level (checking expected nodes
-    # appear in results) rather than raw output-level equality.
+    # so we translate one shared manifest contract into per-implementation request
+    # shapes below. Because those request shapes differ intentionally, comparison is
+    # assertion-level (expected nodes/results) rather than strict request or raw
+    # payload identity.
     for assertion in assertions.get("search_graph", []):
         args = dict(assertion.get("args", {}))
         is_error_assertion = assertion.get("expect", {}).get("expect_error", False)
@@ -1189,6 +1190,12 @@ def check_assertions(tool_name: str, tool_payload: Any, assertions: list[dict[st
             entries = canonical_list_projects(tool_payload or {})
             if len(entries) == 0:
                 failures.append("list_projects empty")
+            required_names = set(expected.get("required_names", []))
+            if required_names:
+                available_names = {entry.get("name", "") for entry in entries}
+                missing = sorted(required_names.difference(available_names))
+                if missing:
+                    failures.append(f"list_projects missing projects {missing}")
             continue
 
     return failures

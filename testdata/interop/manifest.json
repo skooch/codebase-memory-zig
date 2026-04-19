@@ -180,6 +180,16 @@
               ]
             }
           }
+        ],
+        "list_projects": [
+          {
+            "args": {},
+            "expect": {
+              "required_names": [
+                "python-basic"
+              ]
+            }
+          }
         ]
       }
     },

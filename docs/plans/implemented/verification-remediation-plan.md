@@ -4,7 +4,7 @@
 Restore all required verification paths to an honestly green state, close the currently known interop and snapshot drift on `main`, and tighten the remaining harness and CI gaps called out by the verification audit.
 
 ## Current Phase
-Phase 1
+Complete
 
 ## File Map
 - Create: `docs/plans/new/verification-remediation-plan.md`
@@ -33,19 +33,19 @@ Phase 1
 - **Status:** complete
 
 ### Phase 2: Close the known harness and assertion debt from the audit
-- [ ] Update `testdata/interop/manifest.json` so the shared interop fixtures exercise `get_code_snippet`, `get_graph_schema`, `index_status`, and `delete_project` with concrete assertions rather than tool-list presence only.
-- [ ] Tighten weak manifest assertions in `testdata/interop/manifest.json`, including non-vacuous `detect_changes` checks and `required_rows_min` on parity queries that are supposed to return rows.
-- [ ] Update `scripts/run_interop_alignment.sh` so snapshot comparison and report output remain stable and actionable after the added assertions, including any needed schema canonicalization or diff-detail improvements discovered while fixing the current red paths.
-- [ ] Refresh `docs/interop-testing-review.md` so it no longer reports already-resolved items as open and clearly distinguishes remaining verification debt from issues closed by this execution slice.
-- **Status:** pending
+- [x] Update `testdata/interop/manifest.json` so the shared interop fixtures exercise `get_code_snippet`, `get_graph_schema`, `index_status`, and `delete_project` with concrete assertions rather than tool-list presence only.
+- [x] Tighten weak manifest assertions in `testdata/interop/manifest.json`, including non-vacuous `detect_changes` checks and `required_rows_min` on parity queries that are supposed to return rows.
+- [x] Update `scripts/run_interop_alignment.sh` so snapshot comparison and report output remain stable and actionable after the added assertions, including any needed schema canonicalization or diff-detail improvements discovered while fixing the current red paths.
+- [x] Refresh `docs/interop-testing-review.md` so it no longer reports already-resolved items as open and clearly distinguishes remaining verification debt from issues closed by this execution slice.
+- **Status:** complete
 
 ### Phase 3: Align CI gates, documentation, and full verification
-- [ ] Decide and implement the intended CI posture in `.github/workflows/ci.yml` and `.github/workflows/interop-nightly.yml` so required gates match the repo's actual verification contract, including whether full Zig-vs-C comparison remains nightly-only or gains stronger surfacing.
-- [ ] Update `docs/port-comparison.md` and `docs/gap-analysis.md` so the verification posture reflects the post-remediation state instead of the current drift snapshot.
-- [ ] Re-run the required verification set: `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh --zig-only`, `bash scripts/run_cli_parity.sh --zig-only`, and the current ops suite entrypoints from `.github/workflows/ops-checks.yml`; also run the full Zig-vs-C comparison locally if the adjacent C reference checkout is available.
-- [ ] If any undocumented verification failure mode appears during execution, add the recovery rule to `CLAUDE.md` before continuing.
+- [x] Decide and implement the intended CI posture in `.github/workflows/ci.yml` and `.github/workflows/interop-nightly.yml` so required gates match the repo's actual verification contract, including whether full Zig-vs-C comparison remains nightly-only or gains stronger surfacing.
+- [x] Update `docs/port-comparison.md` and `docs/gap-analysis.md` so the verification posture reflects the post-remediation state instead of the current drift snapshot.
+- [x] Re-run the required verification set: `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh --zig-only`, `bash scripts/run_cli_parity.sh --zig-only`, and the current ops suite entrypoints from `.github/workflows/ops-checks.yml`; also run the full Zig-vs-C comparison locally if the adjacent C reference checkout is available.
+- [x] If any undocumented verification failure mode appears during execution, add the recovery rule to `CLAUDE.md` before continuing.
 - [x] Move the plan and progress files from `docs/plans/new/` to `docs/plans/in-progress/` before implementation starts, and only move them to `docs/plans/implemented/` after the required verification set is green or any remaining blocker is documented concretely.
-- **Status:** pending
+- **Status:** complete
 
 ## Decisions
 | Decision | Rationale |
