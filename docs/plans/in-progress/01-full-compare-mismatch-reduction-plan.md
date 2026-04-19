@@ -44,7 +44,7 @@ Phase 1
 - [ ] Refresh the affected interop goldens under `testdata/interop/golden/` only after the full compare is intentionally improved rather than merely reshaped.
 - [ ] Re-run `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh --zig-only`, and `bash scripts/run_interop_alignment.sh`, and record the reduced or cleared mismatch set in `docs/plans/in-progress/01-full-compare-mismatch-reduction-progress.md`.
 - [ ] Update `docs/port-comparison.md` and `docs/gap-analysis.md` so the “remaining mismatch” story reflects the post-fix state rather than the current baseline.
-- [ ] Move the plan and progress files from `docs/plans/new/` to `docs/plans/in-progress/` before execution starts, and to `docs/plans/implemented/` only after the verification results are recorded concretely.
+- [x] Move the plan and progress files from `docs/plans/new/` to `docs/plans/in-progress/` before execution starts, and to `docs/plans/implemented/` only after the verification results are recorded concretely.
 - **Status:** pending
 
 ## Decisions
