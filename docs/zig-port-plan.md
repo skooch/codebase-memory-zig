@@ -63,7 +63,7 @@ Intentionally deferred after Phase 7:
 - Remaining MCP surface beyond the current daily-use slice, especially fuller Cypher parity.
 - Full Cypher parity beyond the broader day-to-day query subset now used by `query_graph`, `get_architecture`, and `detect_changes`.
 - Deeper usage/type-ref parity and broader extraction semantics beyond the current daily-use slice for Python, JS/TS/TSX, Rust, and Zig.
-- Richer decorator/enrichment follow-ons and optional graph-model expansion beyond the implemented route/config fixture contract.
+- Higher-order graph analytics and broader framework expansion beyond the implemented route, event-topic, and config fixture contract.
 - Broader installer or self-update behavior beyond the current source-build-friendly CLI contract.
 
 ### Follow-On Shared Parity Plan
@@ -111,24 +111,18 @@ The completed execution order for the current target contract was:
    - CLI parity, install/update/config flows, and selective defer decisions
    - reason: user-facing packaging and long-tail features should settle after core runtime behavior stops shifting
 
-The remaining work is no longer a single shared-parity follow-on. It is a
-mixed backlog of correctness hardening, runtime/client stabilization,
-productization, and optional expansion plans.
+The ordered backlog in [docs/plans/new/README.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/README.md)
+is now complete. Remaining work is optional future expansion rather than an
+active execution queue.
 
-Use [docs/plans/new/README.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/README.md)
-as the canonical order for the remaining backlog.
+The main still-deferred themes are:
 
-The short version of that order is:
-
-1. parser accuracy and graph fidelity
-2. discovery, indexing scope, and query semantics
-3. large-repo reliability and crash safety
-4. runtime lifecycle extras
-5. installer ecosystem parity
-6. operations script suite
-7. language coverage expansion
-8. hybrid type resolution
-9. broader semantic-graph expansion
+1. fuller Cypher parity
+2. higher-order graph analytics beyond the verified route, event-topic, and
+   config slices
+3. broader framework-specific route and broker coverage
+4. optional subsystems intentionally deferred or cut, especially UI and infra
+   indexing
 
 ---
 

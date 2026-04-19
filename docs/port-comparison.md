@@ -148,7 +148,7 @@ This section compares what kinds of graph entities the two systems are built to 
 | `SIMILAR_TO` | Yes | Yes | `Near parity` | Yes | Landed in Zig Phase 6. |
 | Shared `CONFIGURES` contract | Yes | Yes for the verified shared fixture slices | `Near parity` | Yes | The parity fixtures now compare overlapping `CONFIGURES` rows directly, including the graph-model key-symbol normalization case; broader config-link systems remain deferred elsewhere. |
 | Internal serving architecture | Graph-centric serving path | Hybrid internal serving path: SQLite graph core, FTS5 lexical index, optional SCIP sidecar overlay, and query router | `Near parity` | Yes | This is an internal implementation improvement in the Zig port; it deliberately preserves the interoperable MCP surface rather than creating a new client contract. |
-| Route graph (`Route`, `HTTP_CALLS`, `ASYNC_CALLS`, `HANDLES`, route-linked data flows) | Yes | Partial | `Partial` | No | Zig now creates `HTTP_CALLS` and `ASYNC_CALLS` edges, concrete URL/path/topic `Route` nodes, verified decorator-backed `HANDLES`, strict shared route-linked `DATA_FLOWS`, strict shared async topic caller rows, and the additional strict shared `route-expansion-httpx` caller fixture. Broader framework-registration coverage still remains open, but the current full harness has no route-related mismatches. |
+| Route and event graph (`Route`, `EventTopic`, `HTTP_CALLS`, `ASYNC_CALLS`, `HANDLES`, `EMITS`, `SUBSCRIBES`, route-linked data flows) | Yes | Partial | `Partial` | No | Zig now creates concrete URL/path/topic `Route` nodes, verified decorator-backed `HANDLES`, strict shared route-linked `DATA_FLOWS`, strict shared async topic caller rows, fixture-backed `EventTopic` nodes, and derived `EMITS` / `SUBSCRIBES` edges with architecture and cross-service trace visibility. Broader framework-registration and higher-order analytics still remain open. |
 | Resource / infra graph (`Resource`, K8s/Kustomize entities) | Yes | Not shipped | `Cut` | No | Intentionally outside the Zig scope. |
 | `TESTS` / test metadata | Yes | Yes for the verified shared Python fixture slice | `Near parity` | Yes | The parity fixture now locks shared `TESTS` and `TESTS_FILE` rows plus file-level `is_test` metadata for the exercised Python naming rules. |
 | `FILE_CHANGES_WITH` | Yes | Yes | `Near parity` | Yes | Zig git-history pass creates `FILE_CHANGES_WITH` edges with `co_changes` and `coupling_score` properties via subprocess `git log`. |
@@ -251,6 +251,6 @@ That means the Zig port is already strong where this repo has chosen to compete:
 The remaining gap is no longer “the basics do not work.” The remaining gap is the long tail:
 
 - richer query parity
-- optional graph-model expansion beyond the verified route/config fixture contract
+- higher-order graph analytics beyond the verified route, event-topic, and config fixture contract
 - broader installer/product surface
 - optional subsystems that this repo has explicitly deferred or cut

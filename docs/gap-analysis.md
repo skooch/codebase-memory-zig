@@ -91,12 +91,22 @@ Completed after the readiness gate:
   - optional `.codebase-memory/scip.json` sidecars can import precise overlay facts into local overlay tables
   - `src/query_router.zig` now routes `search_code`, `get_code_snippet`, `get_architecture`, and `detect_changes` to the appropriate internal substrate while preserving the existing MCP tool surface
   - current evidence: `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh`, and `bash scripts/run_benchmark_suite.sh` all pass in the hybrid-serving worktree
+- Semantic graph first tranche:
+  - explicit `src/routes.zig` route helpers now own route identity and creation
+  - explicit `src/semantic_links.zig` now synthesizes `EventTopic` nodes plus
+    `EMITS` and `SUBSCRIBES` edges from async route facts
+  - `get_architecture` now supports `message_summaries`
+  - `trace_call_path(mode="cross_service")` now traverses `EMITS` and
+    `SUBSCRIBES` in addition to HTTP, async, and data-flow edges
+  - current evidence: `zig build`, `zig build test`, and direct fixture-level
+    CLI verification on `testdata/interop/semantic-expansion/http_routes` and
+    `testdata/interop/semantic-expansion/pubsub_events`
 
 Intentionally deferred after Phase 7:
 - The remaining MCP work outside the completed daily-use slice, especially fuller Cypher parity.
 - Full Cypher parity beyond the broader day-to-day query subset now supporting node/edge reads, filtering, sorting, and counts.
 - Deeper usage/type-reference extraction parity and broader cross-language semantics beyond the current target daily-use slice.
-- Richer decorator/enrichment follow-ons and broader route/config expansion beyond the implemented graph-model parity fixture contract. (Git-history coupling is implemented; route nodes and config-linking both have strict shared graph-model fixture slices.)
+- Higher-order graph analytics and broader framework expansion beyond the now-implemented route, event-topic, and config-link fixture slices. (Git-history coupling is implemented; route nodes, event-topic links, and config-linking all have verified bounded slices.)
 - Broader installer/self-update behavior beyond the current source-build-friendly Codex CLI / Claude Code support.
 
 Completed in Plan 03:

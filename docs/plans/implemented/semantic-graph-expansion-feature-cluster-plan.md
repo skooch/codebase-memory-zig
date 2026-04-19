@@ -1,8 +1,8 @@
 # Plan: Semantic Graph Expansion Feature Cluster
 
 ## Status
-In progress. The original-project graph-model parity plan is complete at
-`docs/plans/implemented/graph-model-parity-plan.md`; this plan now closes the
+Complete. The original-project graph-model parity plan is complete at
+`docs/plans/implemented/graph-model-parity-plan.md`; this plan closed the
 remaining bounded semantic-expansion tranche for explicit route helpers,
 pub-sub topic links, and architecture or trace visibility.
 
@@ -28,11 +28,11 @@ Observed upstream pattern:
 - The upstream work that looked most durable added one new edge family or one new semantic domain at a time, then proved it on real fixtures before layering new analysis tools on top.
 
 ## Current Phase
-Phase 1
+Phase 3
 
 ## File Map
-- Modify: `docs/plans/in-progress/semantic-graph-expansion-feature-cluster-plan.md`
-- Create: `docs/plans/in-progress/semantic-graph-expansion-feature-cluster-progress.md`
+- Modify: `docs/plans/implemented/semantic-graph-expansion-feature-cluster-plan.md`
+- Create: `docs/plans/implemented/semantic-graph-expansion-feature-cluster-progress.md`
 - Modify: `docs/gap-analysis.md`
 - Modify: `docs/port-comparison.md`
 - Modify: `docs/zig-port-plan.md`
@@ -51,22 +51,22 @@ Phase 1
 ## Phases
 
 ### Phase 1: Lock the Expansion Order
-- [ ] Map the upstream semantic requests into a strict dependency order in `docs/gap-analysis.md`: route facts, async/protocol facts, richer trace views, and only then higher-order analytics such as communities or blast-radius summaries.
-- [ ] Add route and pub-sub fixtures under `testdata/interop/semantic-expansion/` so new edge families can be verified without external services.
-- [ ] Record the first semantic tranche, deferred analysis surfaces, and exact verification commands in `docs/plans/in-progress/semantic-graph-expansion-feature-cluster-progress.md`.
-- **Status:** pending
+- [x] Map the upstream semantic requests into a strict dependency order in `docs/gap-analysis.md`: route facts, async/protocol facts, richer trace views, and only then higher-order analytics such as communities or blast-radius summaries.
+- [x] Add route and pub-sub fixtures under `testdata/interop/semantic-expansion/` so new edge families can be verified without external services.
+- [x] Record the first semantic tranche, deferred analysis surfaces, and exact verification commands in `docs/plans/implemented/semantic-graph-expansion-feature-cluster-progress.md`.
+- **Status:** complete
 
 ### Phase 2: Land One Semantic Substrate at a Time
-- [ ] Add `src/routes.zig` and `src/semantic_links.zig` so route extraction and protocol or indirect-call linking can evolve as explicit subsystems instead of spreading special cases across the generic extractor.
-- [ ] Extend `src/pipeline.zig`, `src/extractor.zig`, `src/query_router.zig`, and `src/mcp.zig` so new node and edge families are synthesized, summarized, and traceable before adding any compound analysis helpers.
-- [ ] Keep higher-order features like community summaries, blast radius, and compound query helpers documented as follow-ons until the supporting facts are fixture-backed.
-- **Status:** pending
+- [x] Add `src/routes.zig` and `src/semantic_links.zig` so route extraction and protocol or indirect-call linking can evolve as explicit subsystems instead of spreading special cases across the generic extractor.
+- [x] Extend `src/pipeline.zig`, `src/extractor.zig`, `src/query_router.zig`, and `src/mcp.zig` so new node and edge families are synthesized, summarized, and traceable before adding any compound analysis helpers.
+- [x] Keep higher-order features like community summaries, blast radius, and compound query helpers documented as follow-ons until the supporting facts are fixture-backed.
+- **Status:** complete
 
 ### Phase 3: Verify and Reclassify
-- [ ] Run `zig build`, `zig build test`, and fixture-level route and async edge queries until the first semantic tranche is stable.
-- [ ] Update `docs/graph-expansion-roadmap.md` and `docs/port-comparison.md` only for the semantic surfaces that now have verified graph facts underneath them.
-- [ ] Record still-deferred analysis features and their prerequisites in `docs/plans/in-progress/semantic-graph-expansion-feature-cluster-progress.md`.
-- **Status:** pending
+- [x] Run `zig build`, `zig build test`, and fixture-level route and async edge queries until the first semantic tranche is stable.
+- [x] Update `docs/graph-expansion-roadmap.md` and `docs/port-comparison.md` only for the semantic surfaces that now have verified graph facts underneath them.
+- [x] Record still-deferred analysis features and their prerequisites in `docs/plans/implemented/semantic-graph-expansion-feature-cluster-progress.md`.
+- **Status:** complete
 
 ## Decisions
 | Decision | Rationale |
@@ -78,3 +78,4 @@ Phase 1
 ## Errors
 | Error | Attempt | Resolution |
 |-------|---------|------------|
+| `scripts/fetch_grammars.sh` skipped missing PowerShell and GDScript vendored grammars because it only checked `rust/parser.c` | `zig build test` failed after worktree bootstrap with missing `vendored/grammars/powershell/parser.c`, and a plain `bash scripts/fetch_grammars.sh` incorrectly reported success | Updated the fetch script to verify every required vendored grammar before early exit, documented the failure mode in `CLAUDE.md`, and reran the fetch before final verification |
