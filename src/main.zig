@@ -231,6 +231,9 @@ fn discoverIndexableFileCount(allocator: std.mem.Allocator, root_path: []const u
 }
 
 fn openStoreAtPath(allocator: std.mem.Allocator, db_path: []const u8) !cbm.Store {
+    if (std.fs.path.dirname(db_path)) |dir_name| {
+        try std.fs.cwd().makePath(dir_name);
+    }
     const db_path_z = try allocator.dupeZ(u8, db_path);
     defer allocator.free(db_path_z);
     return cbm.Store.openPath(allocator, db_path_z);
@@ -410,6 +413,21 @@ fn emitCliProgressDone(
         return;
     }
     try stderr_file.writeAll("Done.\n");
+}
+
+test "openStoreAtPath creates missing parent directories" {
+    const allocator = std.testing.allocator;
+    const root = try std.fmt.allocPrint(allocator, "/tmp/cbm-open-store-{x}", .{std.crypto.random.int(u64)});
+    defer allocator.free(root);
+    defer std.fs.cwd().deleteTree(root) catch {};
+
+    const db_path = try std.fs.path.join(allocator, &.{ root, "cache", "nested", "runtime.db" });
+    defer allocator.free(db_path);
+
+    var db = try openStoreAtPath(allocator, db_path);
+    defer db.deinit();
+
+    try std.fs.cwd().access(db_path, .{});
 }
 
 const AutoAnswer = enum { ask, yes, no };
