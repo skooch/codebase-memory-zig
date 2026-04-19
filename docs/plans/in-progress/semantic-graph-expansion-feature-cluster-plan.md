@@ -1,10 +1,10 @@
 # Plan: Semantic Graph Expansion Feature Cluster
 
 ## Status
-Backlog improvement cluster. The original-project graph-model parity plan is
-complete at `docs/plans/implemented/graph-model-parity-plan.md`; this plan
-remains as the broader upstream feature-pressure inventory for later semantic
-expansion.
+In progress. The original-project graph-model parity plan is complete at
+`docs/plans/implemented/graph-model-parity-plan.md`; this plan now closes the
+remaining bounded semantic-expansion tranche for explicit route helpers,
+pub-sub topic links, and architecture or trace visibility.
 
 ## Goal
 Sequence the upstream pressure for richer graph semantics into a substrate-first Zig roadmap that grows route, protocol, trace, and higher-order analysis features only after the underlying graph facts are stable.
@@ -31,40 +31,41 @@ Observed upstream pattern:
 Phase 1
 
 ## File Map
-- Modify: `docs/plans/new/improvements/semantic-graph-expansion-feature-cluster-plan.md`
-- Create: `docs/plans/new/improvements/semantic-graph-expansion-feature-cluster-progress.md`
+- Modify: `docs/plans/in-progress/semantic-graph-expansion-feature-cluster-plan.md`
+- Create: `docs/plans/in-progress/semantic-graph-expansion-feature-cluster-progress.md`
 - Modify: `docs/gap-analysis.md`
 - Modify: `docs/port-comparison.md`
 - Modify: `docs/zig-port-plan.md`
 - Modify: `src/pipeline.zig`
 - Modify: `src/query_router.zig`
-- Modify: `src/store.zig`
-- Modify: `src/cypher.zig`
+- Modify: `src/extractor.zig`
 - Modify: `src/mcp.zig`
+- Modify: `src/root.zig`
 - Create: `src/routes.zig`
 - Create: `src/semantic_links.zig`
 - Create: `docs/graph-expansion-roadmap.md`
 - Create: `testdata/interop/semantic-expansion/http_routes/index.ts`
 - Create: `testdata/interop/semantic-expansion/pubsub_events/main.py`
+- Modify: `src/query_router_test.zig`
 
 ## Phases
 
 ### Phase 1: Lock the Expansion Order
 - [ ] Map the upstream semantic requests into a strict dependency order in `docs/gap-analysis.md`: route facts, async/protocol facts, richer trace views, and only then higher-order analytics such as communities or blast-radius summaries.
 - [ ] Add route and pub-sub fixtures under `testdata/interop/semantic-expansion/` so new edge families can be verified without external services.
-- [ ] Record the first semantic tranche, deferred analysis surfaces, and exact verification commands in `docs/plans/new/improvements/semantic-graph-expansion-feature-cluster-progress.md`.
+- [ ] Record the first semantic tranche, deferred analysis surfaces, and exact verification commands in `docs/plans/in-progress/semantic-graph-expansion-feature-cluster-progress.md`.
 - **Status:** pending
 
 ### Phase 2: Land One Semantic Substrate at a Time
 - [ ] Add `src/routes.zig` and `src/semantic_links.zig` so route extraction and protocol or indirect-call linking can evolve as explicit subsystems instead of spreading special cases across the generic extractor.
-- [ ] Extend `src/pipeline.zig`, `src/store.zig`, `src/cypher.zig`, `src/query_router.zig`, and `src/mcp.zig` so new node and edge families are stored and queryable before adding any compound analysis helpers.
+- [ ] Extend `src/pipeline.zig`, `src/extractor.zig`, `src/query_router.zig`, and `src/mcp.zig` so new node and edge families are synthesized, summarized, and traceable before adding any compound analysis helpers.
 - [ ] Keep higher-order features like community summaries, blast radius, and compound query helpers documented as follow-ons until the supporting facts are fixture-backed.
 - **Status:** pending
 
 ### Phase 3: Verify and Reclassify
 - [ ] Run `zig build`, `zig build test`, and fixture-level route and async edge queries until the first semantic tranche is stable.
 - [ ] Update `docs/graph-expansion-roadmap.md` and `docs/port-comparison.md` only for the semantic surfaces that now have verified graph facts underneath them.
-- [ ] Record still-deferred analysis features and their prerequisites in `docs/plans/new/improvements/semantic-graph-expansion-feature-cluster-progress.md`.
+- [ ] Record still-deferred analysis features and their prerequisites in `docs/plans/in-progress/semantic-graph-expansion-feature-cluster-progress.md`.
 - **Status:** pending
 
 ## Decisions
@@ -72,6 +73,7 @@ Phase 1
 |----------|-----------|
 | Build new graph facts before new graph summaries | The upstream PR history shows that summary tools become noisy or misleading when the underlying edge families are incomplete. |
 | Split route and protocol work into dedicated modules | Those features kept reappearing upstream and are easier to verify when they are not hidden inside general extraction code. |
+| Close this plan with a bounded first tranche instead of a full graph rewrite | The repo already has route facts and generic edge storage, so the durable next step is explicit helpers plus one verified event-link family rather than a speculative analytics bundle. |
 
 ## Errors
 | Error | Attempt | Resolution |
