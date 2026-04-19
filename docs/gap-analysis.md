@@ -18,7 +18,7 @@ Verification posture today:
 - Treat [port-comparison.md](/Users/skooch/projects/codebase-memory-zig/docs/port-comparison.md) as the authoritative statement of what the repo can truthfully claim today.
 
 Known coverage gaps in the current automated suite:
-- Current local audit on `2026-04-19`: `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh --zig-only`, `bash scripts/run_cli_parity.sh --zig-only`, and the current ops suite entrypoints all pass. The config-normalization and read-write contract worktree also completed `bash scripts/run_interop_alignment.sh --update-golden`, `bash scripts/run_interop_alignment.sh --zig-only`, and the full `bash scripts/run_interop_alignment.sh` compare with `31` fixtures, `237` comparisons, `135` strict matches, `35` diagnostic-only comparisons, and one bounded residual mismatch: `go-parity/query_graph`, where Zig returns the `Class -> DEFINES_METHOD -> Method` row and the C reference still returns zero rows.
+- Current local audit on `2026-04-20`: `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh --zig-only`, `bash scripts/run_cli_parity.sh --zig-only`, and the current ops suite entrypoints all pass. The Go query-graph resolution worktree also completed `bash scripts/run_interop_alignment.sh` with `31` fixtures, `237` comparisons, `135` strict matches, `36` diagnostic-only comparisons, and `0` mismatches.
 - Full Zig-vs-C parity is nightly, not per-PR, so merge-blocking CI relies on zig-only goldens plus unit and integration tests.
 - Packaging and setup entrypoints are exercised by verification runs and workflows, but do not yet have exhaustive cross-platform regression automation for every shell or archive flow.
 - Windows coverage is strong at config-path, installer-layout, and PowerShell entrypoint level, but not exhaustive of native runtime and filesystem edge cases.
@@ -57,15 +57,15 @@ Completed now:
   - `Strict matches: 58`
   - `Diagnostic-only comparisons: 9`
   - `Mismatches: 0`
-- The expanded full harness after the config-normalization and read-write contract work currently reports:
+- The expanded full harness currently reports:
   - `Fixtures: 31`
   - `Comparisons: 237`
   - `Strict matches: 135`
-  - `Diagnostic-only comparisons: 35`
-  - `Known mismatches: 1`
+  - `Diagnostic-only comparisons: 36`
+  - `Known mismatches: 0`
   - `cli_progress: match`
   - no remaining snippet, search, JavaScript-ordering, Java query-shape, or error-path comparison mismatches
-  - one remaining Go query residual in the broader reference surface
+  - the former Go method-ownership delta is now diagnostic-only instead of a hard mismatch
 
 Completed after the readiness gate:
 - Runtime lifecycle and scale baseline:

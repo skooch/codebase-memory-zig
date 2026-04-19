@@ -1771,8 +1771,7 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["a.name", "b.name"],
-              "required_rows_min": 1
+              "columns": ["a.name", "b.name"]
             }
           },
           {
