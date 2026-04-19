@@ -18,7 +18,8 @@ const search_index = @import("search_index.zig");
 const store = @import("store.zig");
 const test_tagging = @import("test_tagging.zig");
 const git_history = @import("git_history.zig");
-const route_nodes = @import("route_nodes.zig");
+const routes = @import("routes.zig");
+const semantic_links = @import("semantic_links.zig");
 const service_patterns = @import("service_patterns.zig");
 
 pub const IndexMode = enum {
@@ -141,8 +142,13 @@ pub const Pipeline = struct {
         };
 
         if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
-        _ = route_nodes.runPass(self.allocator, &gb) catch |err| {
-            std.log.warn("pipeline route-nodes pass failed: {}", .{err});
+        _ = routes.runPass(self.allocator, &gb) catch |err| {
+            std.log.warn("pipeline routes pass failed: {}", .{err});
+        };
+
+        if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
+        _ = semantic_links.runPass(self.allocator, &gb) catch |err| {
+            std.log.warn("pipeline semantic-links pass failed: {}", .{err});
         };
 
         if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
@@ -254,8 +260,13 @@ pub const Pipeline = struct {
         };
 
         if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
-        _ = route_nodes.runPass(self.allocator, &gb) catch |err| {
-            std.log.warn("pipeline route-nodes pass failed: {}", .{err});
+        _ = routes.runPass(self.allocator, &gb) catch |err| {
+            std.log.warn("pipeline routes pass failed: {}", .{err});
+        };
+
+        if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
+        _ = semantic_links.runPass(self.allocator, &gb) catch |err| {
+            std.log.warn("pipeline semantic-links pass failed: {}", .{err});
         };
 
         if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
@@ -1453,28 +1464,13 @@ fn emitRouteRegistration(
     call: extractor.UnresolvedCall,
     caller_node: *const BufferNode,
 ) PipelineError!void {
-    const route_qn = std.fmt.allocPrint(
+    const route_id = routes.upsertHttpRoute(
         gb.allocator,
-        "__route__{s}__{s}",
-        .{ call.route_method, call.route_path },
-    ) catch return PipelineError.OutOfMemory;
-    defer gb.allocator.free(route_qn);
-
-    const route_props = std.fmt.allocPrint(
-        gb.allocator,
-        "{{\"method\":\"{s}\",\"source\":\"route_registration\"}}",
-        .{call.route_method},
-    ) catch return PipelineError.OutOfMemory;
-    defer gb.allocator.free(route_props);
-
-    const route_id = gb.upsertNodeWithProperties(
-        "Route",
-        call.route_path,
-        route_qn,
+        gb,
         call.file_path,
-        0,
-        0,
-        route_props,
+        call.route_method,
+        call.route_path,
+        "route_registration",
     ) catch return PipelineError.OutOfMemory;
 
     const call_props = std.fmt.allocPrint(
@@ -1511,21 +1507,13 @@ fn emitArgUrlRouteCall(
 ) PipelineError!bool {
     if (!isPathRouteArg(call.first_string_arg)) return false;
 
-    const route_qn = std.fmt.allocPrint(
+    const route_id = routes.upsertHttpRoute(
         gb.allocator,
-        "__route__ANY__{s}",
-        .{call.first_string_arg},
-    ) catch return PipelineError.OutOfMemory;
-    defer gb.allocator.free(route_qn);
-
-    const route_id = gb.upsertNodeWithProperties(
-        "Route",
-        call.first_string_arg,
-        route_qn,
+        gb,
         call.file_path,
-        0,
-        0,
-        "{\"source\":\"arg_url\"}",
+        "ANY",
+        call.first_string_arg,
+        "arg_url",
     ) catch return PipelineError.OutOfMemory;
 
     const props = std.fmt.allocPrint(
@@ -1556,36 +1544,24 @@ fn emitServiceRouteCall(
             service_patterns.asyncBroker(resolved_qn) orelse
             "async");
 
-    const route_qn = std.fmt.allocPrint(
-        gb.allocator,
-        "__route__{s}__{s}",
-        .{ method_or_broker, call.first_string_arg },
-    ) catch return PipelineError.OutOfMemory;
-    defer gb.allocator.free(route_qn);
-
-    const route_props = if (std.mem.eql(u8, edge_type, "HTTP_CALLS"))
-        std.fmt.allocPrint(
+    const route_id = if (std.mem.eql(u8, edge_type, "HTTP_CALLS"))
+        routes.upsertHttpRoute(
             gb.allocator,
-            "{{\"method\":\"{s}\"}}",
-            .{method_or_broker},
+            gb,
+            call.file_path,
+            method_or_broker,
+            call.first_string_arg,
+            "service_call",
         ) catch return PipelineError.OutOfMemory
     else
-        std.fmt.allocPrint(
+        routes.upsertAsyncRoute(
             gb.allocator,
-            "{{\"broker\":\"{s}\"}}",
-            .{method_or_broker},
+            gb,
+            call.file_path,
+            method_or_broker,
+            call.first_string_arg,
+            "service_call",
         ) catch return PipelineError.OutOfMemory;
-    defer gb.allocator.free(route_props);
-
-    const route_id = gb.upsertNodeWithProperties(
-        "Route",
-        call.first_string_arg,
-        route_qn,
-        call.file_path,
-        0,
-        0,
-        route_props,
-    ) catch return PipelineError.OutOfMemory;
 
     const call_props = if (std.mem.eql(u8, edge_type, "HTTP_CALLS"))
         std.fmt.allocPrint(

@@ -9,6 +9,7 @@
 const std = @import("std");
 const discover = @import("discover.zig");
 const graph_buffer = @import("graph_buffer.zig");
+const routes = @import("routes.zig");
 const service_patterns = @import("service_patterns.zig");
 const test_tagging = @import("test_tagging.zig");
 const ts = @import("tree_sitter");
@@ -30,6 +31,11 @@ const ParsedSymbol = struct {
 const PendingRouteDecorator = struct {
     route_path: []const u8,
     route_method: []const u8,
+};
+
+const PendingAsyncDecorator = struct {
+    broker: []const u8,
+    topic: []const u8,
 };
 
 pub const ExtractedSymbol = struct {
@@ -116,6 +122,7 @@ pub fn extractFile(
     var scope_markers = std.ArrayList(TsSymbol).empty;
     var pending_decorators = std.ArrayList([]const u8).empty;
     var pending_route_decorators = std.ArrayList(PendingRouteDecorator).empty;
+    var pending_async_decorators = std.ArrayList(PendingAsyncDecorator).empty;
     errdefer freePendingExtractedSymbols(allocator, &symbols);
     defer freePendingTsDefinitions(allocator, &tree_sitter_defs);
     errdefer freePendingUnresolvedCalls(allocator, &unresolved_calls);
@@ -125,6 +132,7 @@ pub fn extractFile(
     errdefer freePendingSemanticHints(allocator, &semantic_hints);
     defer freePendingStringSlices(allocator, &pending_decorators);
     defer freePendingRouteDecorators(allocator, &pending_route_decorators);
+    defer freePendingAsyncDecorators(allocator, &pending_async_decorators);
     defer scope_markers.deinit(allocator);
 
     const qn_base = try normalizePath(allocator, rel);
@@ -299,6 +307,12 @@ pub fn extractFile(
                     .route_method = try allocator.dupe(u8, route.method),
                 });
             }
+            if (parseAsyncDecoratorMetadata(clean_line)) |async_route| {
+                try pending_async_decorators.append(allocator, .{
+                    .broker = try allocator.dupe(u8, async_route.broker),
+                    .topic = try allocator.dupe(u8, async_route.topic),
+                });
+            }
             try appendUnresolvedUsageRef(allocator, module_id, decorator_name, rel, &unresolved_usages);
             continue;
         }
@@ -394,6 +408,9 @@ pub fn extractFile(
                         for (pending_route_decorators.items) |route| {
                             try emitDecoratorRoute(allocator, gb, decl_node, rel, route);
                         }
+                        for (pending_async_decorators.items) |async_route| {
+                            try emitAsyncDecoratorRoute(allocator, gb, decl_node, rel, async_route);
+                        }
                     }
                     for (pending_decorators.items) |decorator_name| allocator.free(decorator_name);
                     pending_decorators.clearRetainingCapacity();
@@ -402,6 +419,11 @@ pub fn extractFile(
                         allocator.free(route.route_method);
                     }
                     pending_route_decorators.clearRetainingCapacity();
+                    for (pending_async_decorators.items) |async_route| {
+                        allocator.free(async_route.broker);
+                        allocator.free(async_route.topic);
+                    }
+                    pending_async_decorators.clearRetainingCapacity();
                 }
             }
         }
@@ -1220,6 +1242,12 @@ const RouteDecoratorMetadata = struct {
     method: []const u8,
 };
 
+const AsyncDecoratorMetadata = struct {
+    callee_full: []const u8,
+    broker: []const u8,
+    topic: []const u8,
+};
+
 const CallLineMetadata = struct {
     callee_full: []const u8,
     first_string_arg: []const u8,
@@ -1308,6 +1336,25 @@ fn parseRouteDecoratorMetadata(line: []const u8) ?RouteDecoratorMetadata {
     };
 }
 
+fn parseAsyncDecoratorMetadata(line: []const u8) ?AsyncDecoratorMetadata {
+    const trimmed = std.mem.trim(u8, line, " \t");
+    if (!std.mem.startsWith(u8, trimmed, "@")) return null;
+    const decorator = trimmed[1..];
+    const paren = std.mem.indexOfScalar(u8, decorator, '(') orelse return null;
+    const callee_full = std.mem.trim(u8, decorator[0..paren], " \t");
+    if (callee_full.len == 0) return null;
+    if (service_patterns.classify(callee_full) != .async_broker) return null;
+    const broker = service_patterns.asyncBroker(callee_full) orelse return null;
+    const close = matchingParen(decorator, paren) orelse decorator.len;
+    const args = decorator[paren + 1 .. close];
+    const topic = firstAsyncTopicArg(args) orelse return null;
+    return .{
+        .callee_full = callee_full,
+        .broker = broker,
+        .topic = topic,
+    };
+}
+
 fn emitDecoratorRoute(
     allocator: std.mem.Allocator,
     gb: *graph_buffer.GraphBuffer,
@@ -1319,24 +1366,13 @@ fn emitDecoratorRoute(
     const handler_qn = try allocator.dupe(u8, decl_node.qualified_name);
     defer allocator.free(handler_qn);
 
-    const route_qn = try std.fmt.allocPrint(allocator, "__route__{s}__{s}", .{ route.route_method, route.route_path });
-    defer allocator.free(route_qn);
-
-    const route_props = try std.fmt.allocPrint(
+    const route_id = try routes.upsertHttpRoute(
         allocator,
-        "{{\"method\":\"{s}\",\"source\":\"decorator\"}}",
-        .{route.route_method},
-    );
-    defer allocator.free(route_props);
-
-    const route_id = try gb.upsertNodeWithProperties(
-        "Route",
-        route.route_path,
-        route_qn,
+        gb,
         file_path,
-        0,
-        0,
-        route_props,
+        route.route_method,
+        route.route_path,
+        "decorator",
     );
 
     const handler_props = try std.fmt.allocPrint(
@@ -1347,6 +1383,38 @@ fn emitDecoratorRoute(
     defer allocator.free(handler_props);
 
     _ = gb.insertEdgeWithProperties(handler_id, route_id, "HANDLES", handler_props) catch |err| switch (err) {
+        graph_buffer.GraphBufferError.DuplicateEdge => {},
+        else => return err,
+    };
+}
+
+fn emitAsyncDecoratorRoute(
+    allocator: std.mem.Allocator,
+    gb: *graph_buffer.GraphBuffer,
+    decl_node: *const graph_buffer.BufferNode,
+    file_path: []const u8,
+    route: PendingAsyncDecorator,
+) !void {
+    const handler_qn = try allocator.dupe(u8, decl_node.qualified_name);
+    defer allocator.free(handler_qn);
+
+    const route_id = try routes.upsertAsyncRoute(
+        allocator,
+        gb,
+        file_path,
+        route.broker,
+        route.topic,
+        "decorator",
+    );
+
+    const handler_props = try std.fmt.allocPrint(
+        allocator,
+        "{{\"handler\":\"{s}\",\"broker\":\"{s}\"}}",
+        .{ handler_qn, route.broker },
+    );
+    defer allocator.free(handler_props);
+
+    _ = gb.insertEdgeWithProperties(decl_node.id, route_id, "HANDLES", handler_props) catch |err| switch (err) {
         graph_buffer.GraphBufferError.DuplicateEdge => {},
         else => return err,
     };
@@ -1407,6 +1475,12 @@ fn firstRoutePathArg(args: []const u8) ?[]const u8 {
     const first = firstStringArg(args) orelse return null;
     if (first.len > 0 and first[0] == '/') return first;
     return null;
+}
+
+fn firstAsyncTopicArg(args: []const u8) ?[]const u8 {
+    const first = firstStringArg(args) orelse return null;
+    if (first.len == 0 or first[0] == '/') return null;
+    return first;
 }
 
 fn firstStringArg(args: []const u8) ?[]const u8 {
@@ -3276,12 +3350,20 @@ fn freePendingStringSlices(allocator: std.mem.Allocator, names: *std.ArrayList([
     names.deinit(allocator);
 }
 
-fn freePendingRouteDecorators(allocator: std.mem.Allocator, routes: *std.ArrayList(PendingRouteDecorator)) void {
-    for (routes.items) |route| {
+fn freePendingRouteDecorators(allocator: std.mem.Allocator, pending_routes: *std.ArrayList(PendingRouteDecorator)) void {
+    for (pending_routes.items) |route| {
         allocator.free(route.route_path);
         allocator.free(route.route_method);
     }
-    routes.deinit(allocator);
+    pending_routes.deinit(allocator);
+}
+
+fn freePendingAsyncDecorators(allocator: std.mem.Allocator, pending_routes: *std.ArrayList(PendingAsyncDecorator)) void {
+    for (pending_routes.items) |route| {
+        allocator.free(route.broker);
+        allocator.free(route.topic);
+    }
+    pending_routes.deinit(allocator);
 }
 
 fn freePendingExtractedSymbols(allocator: std.mem.Allocator, symbols: *std.ArrayList(ExtractedSymbol)) void {
@@ -4113,6 +4195,14 @@ test "route decorator metadata captures path and method" {
     const any_route = parseRouteDecoratorMetadata("@router.route('/orders')") orelse return error.TestUnexpectedResult;
     try std.testing.expectEqualStrings("ANY", any_route.method);
     try std.testing.expect(parseRouteDecoratorMetadata("@trace") == null);
+}
+
+test "async decorator metadata captures broker and topic" {
+    const route = parseAsyncDecoratorMetadata("@celery.task(\"users.refresh\")") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("celery.task", route.callee_full);
+    try std.testing.expectEqualStrings("celery", route.broker);
+    try std.testing.expectEqualStrings("users.refresh", route.topic);
+    try std.testing.expect(parseAsyncDecoratorMetadata("@app.get(\"/users\")") == null);
 }
 
 test "usage collection captures callback refs and type references without direct call noise" {

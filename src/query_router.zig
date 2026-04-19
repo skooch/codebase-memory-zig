@@ -35,6 +35,7 @@ pub const ArchitectureRequest = struct {
     include_hotspots: bool = false,
     include_entry_points: bool = false,
     include_routes: bool = false,
+    include_messages: bool = false,
 };
 
 pub const DetectChangesRequest = struct {
@@ -231,6 +232,9 @@ pub const QueryRouter = struct {
         }
         if (request.include_routes) {
             try appendRoutesField(&payload, self, request.project);
+        }
+        if (request.include_messages) {
+            try appendMessageTopicsField(&payload, self, request.project);
         }
 
         try payload.appendSlice(self.allocator, "}");
@@ -694,6 +698,48 @@ fn appendRoutesField(payload: *std.ArrayList(u8), router: *QueryRouter, project:
         try appendJsonStringField(payload, router.allocator, "type", edge.edge_type, false);
         try payload.appendSlice(router.allocator, "}");
         wrote += 1;
+    }
+    try payload.append(router.allocator, ']');
+}
+
+fn appendMessageTopicsField(payload: *std.ArrayList(u8), router: *QueryRouter, project: []const u8) !void {
+    const nodes = try router.db.searchNodes(.{
+        .project = project,
+        .label_pattern = "EventTopic",
+        .limit = 500,
+    });
+    defer router.db.freeNodes(nodes);
+
+    const edges = try router.db.listEdges(project, null);
+    defer router.db.freeEdges(edges);
+
+    try payload.appendSlice(router.allocator, ",\"messages\":[");
+    for (nodes, 0..) |node, node_idx| {
+        if (node_idx > 0) try payload.append(router.allocator, ',');
+        try payload.appendSlice(router.allocator, "{");
+        try appendJsonStringField(payload, router.allocator, "name", node.name, true);
+        try appendJsonStringField(payload, router.allocator, "file_path", node.file_path, false);
+        try payload.appendSlice(router.allocator, ",\"emitters\":[");
+        var wrote_emitters = false;
+        for (edges) |edge| {
+            if (edge.target_id != node.id or !std.mem.eql(u8, edge.edge_type, "EMITS")) continue;
+            const source = (try router.db.findNodeById(project, edge.source_id)) orelse continue;
+            defer router.db.freeNode(source);
+            if (wrote_emitters) try payload.append(router.allocator, ',');
+            try appendJsonString(payload, router.allocator, source.name);
+            wrote_emitters = true;
+        }
+        try payload.appendSlice(router.allocator, "],\"subscribers\":[");
+        var wrote_subscribers = false;
+        for (edges) |edge| {
+            if (edge.target_id != node.id or !std.mem.eql(u8, edge.edge_type, "SUBSCRIBES")) continue;
+            const source = (try router.db.findNodeById(project, edge.source_id)) orelse continue;
+            defer router.db.freeNode(source);
+            if (wrote_subscribers) try payload.append(router.allocator, ',');
+            try appendJsonString(payload, router.allocator, source.name);
+            wrote_subscribers = true;
+        }
+        try payload.appendSlice(router.allocator, "]}");
     }
     try payload.append(router.allocator, ']');
 }

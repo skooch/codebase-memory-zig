@@ -98,6 +98,42 @@ fn setupIndexedRouteProject(allocator: std.mem.Allocator, db: *store.Store) ![]c
     return project_dir;
 }
 
+fn setupIndexedPubSubProject(allocator: std.mem.Allocator, db: *store.Store) ![]const u8 {
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(
+        allocator,
+        "/tmp/cbm-qr-pubsub-test-{x}",
+        .{project_id},
+    );
+    errdefer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+
+    {
+        var dir = try std.fs.cwd().openDir(project_dir, .{});
+        defer dir.close();
+
+        var app = try dir.createFile("worker.py", .{});
+        defer app.close();
+        try app.writeAll(
+            \\import celery
+            \\
+            \\@celery.task("users.refresh")
+            \\def refresh_users():
+            \\    return []
+            \\
+            \\def enqueue_users():
+            \\    return celery.delay("users.refresh")
+            \\
+        );
+    }
+
+    var p = pipeline.Pipeline.init(allocator, project_dir, .full);
+    defer p.deinit();
+    try p.run(db);
+
+    return project_dir;
+}
+
 test "searchCodePayload returns matching results" {
     const allocator = std.testing.allocator;
 
@@ -263,6 +299,32 @@ test "getArchitecturePayload includes route summaries" {
     try std.testing.expect(std.mem.indexOf(u8, payload, "\"routes\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, payload, "/api/users") != null);
     try std.testing.expect(std.mem.indexOf(u8, payload, "HTTP_CALLS") != null);
+}
+
+test "getArchitecturePayload includes message summaries" {
+    const allocator = std.testing.allocator;
+
+    var db = try store.Store.openMemory(allocator);
+    defer db.deinit();
+
+    const project_dir = try setupIndexedPubSubProject(allocator, &db);
+    defer allocator.free(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    const project_name = std.fs.path.basename(project_dir);
+
+    var router = QueryRouter.init(allocator, &db);
+    const payload = try router.getArchitecturePayload(.{
+        .project = project_name,
+        .include_messages = true,
+    });
+    defer allocator.free(payload);
+
+    try std.testing.expect(payload.len > 0 and payload[0] == '{');
+    try std.testing.expect(std.mem.indexOf(u8, payload, "\"messages\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, payload, "users.refresh") != null);
+    try std.testing.expect(std.mem.indexOf(u8, payload, "enqueue_users") != null);
+    try std.testing.expect(std.mem.indexOf(u8, payload, "refresh_users") != null);
 }
 
 test "detectChangesPayload handles non-git gracefully" {

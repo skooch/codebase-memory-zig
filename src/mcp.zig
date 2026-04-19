@@ -252,7 +252,7 @@ pub const McpServer = struct {
                 \\{"name":"trace_call_path","description":"Trace call paths between nodes with configurable edge types, modes, risk labels, and test filtering","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"start_node_qn":{"type":"string","description":"Qualified name of start node"},"function_name":{"type":"string","description":"Alias for start_node_qn (bare name lookup)"},"direction":{"type":"string","enum":["in","out","both"]},"depth":{"type":"number"},"mode":{"type":"string","enum":["calls","data_flow","cross_service"],"description":"Preset edge type set (default: calls)"},"edge_types":{"type":"array","items":{"type":"string"},"description":"Explicit edge types override (takes priority over mode)"},"risk_labels":{"type":"boolean","description":"Include hop-based risk classification per node"},"include_tests":{"type":"boolean","description":"Include test-file nodes in results (default: true)"}}}},
                 \\{"name":"get_code_snippet","description":"Read source code for a function/class/symbol. IMPORTANT: First call search_graph to find the exact qualified_name, then pass it here. This is a read tool, not a search tool. Accepts full qualified_name (exact match) or short function name (returns suggestions if ambiguous).","inputSchema":{"type":"object","properties":{"qualified_name":{"type":"string","description":"Full qualified_name from search_graph, or short function name"},"project":{"type":"string"},"include_neighbors":{"type":"boolean","default":false}},"required":["qualified_name","project"]}},
                 \\{"name":"get_graph_schema","description":"Get the schema of the knowledge graph (node labels, edge types)","inputSchema":{"type":"object","properties":{"project":{"type":"string"}},"required":["project"]}},
-                \\{"name":"get_architecture","description":"High-level project summary: structure, dependencies, languages, hotspots, entry points, and routes","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"aspects":{"type":"array","items":{"type":"string"}}},"required":["project"]}},
+                \\{"name":"get_architecture","description":"High-level project summary: structure, dependencies, languages, hotspots, entry points, routes, and messaging","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"aspects":{"type":"array","items":{"type":"string"}}},"required":["project"]}},
                 \\{"name":"search_code","description":"Text search across indexed project files with compact, full, or files-only output","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"pattern":{"type":"string"},"mode":{"type":"string","enum":["compact","full","files"]},"file_pattern":{"type":"string"},"path_filter":{"type":"string"},"limit":{"type":"number"},"context":{"type":"number"},"regex":{"type":"boolean"}},"required":["project","pattern"]}},
                 \\{"name":"list_projects","description":"List indexed projects","inputSchema":{"type":"object","properties":{}}},
                 \\{"name":"delete_project","description":"Delete a project from the index","inputSchema":{"type":"object","properties":{"project":{"type":"string"}},"required":["project"]}},
@@ -791,6 +791,7 @@ pub const McpServer = struct {
             .include_hotspots = explicitArchitectureAspectWanted(args, "hotspots"),
             .include_entry_points = explicitArchitectureAspectWanted(args, "entry_points"),
             .include_routes = explicitArchitectureAspectWanted(args, "route_summaries"),
+            .include_messages = explicitArchitectureAspectWanted(args, "message_summaries"),
         }) catch |err| switch (err) {
             error.UnknownProject => return self.errorResponse(request_id, -32602, "Unknown project"),
             else => return err,
@@ -1182,7 +1183,7 @@ fn resolveTraceEdgeTypes(mode: []const u8) []const []const u8 {
         return &.{ "CALLS", "DATA_FLOWS" };
     }
     if (std.mem.eql(u8, mode, "cross_service")) {
-        return &.{ "HTTP_CALLS", "ASYNC_CALLS", "DATA_FLOWS", "CALLS" };
+        return &.{ "HTTP_CALLS", "ASYNC_CALLS", "EMITS", "SUBSCRIBES", "DATA_FLOWS", "CALLS" };
     }
     // Default: "calls" mode or any unrecognized mode
     return &.{"CALLS"};
