@@ -1,7 +1,7 @@
 # Interop Testing Review
 
 **Date:** 2026-04-19  
-**Scope:** Current-state review of the interop and parity verification surface after the verification-remediation execution work  
+**Scope:** Current-state review of the interop and parity verification surface after the completed queued parity follow-on work  
 **Status:** Updated
 
 ## Summary
@@ -11,8 +11,9 @@ The interop harness is in materially better shape than the 2026-04-12 review des
 Current verified state:
 - `zig build test` passes in the execution worktree.
 - `bash scripts/run_cli_parity.sh --zig-only` passes.
-- `bash scripts/run_interop_alignment.sh --zig-only` passes at `28/28`.
+- `bash scripts/run_interop_alignment.sh --zig-only` passes at `31/31`.
 - `bash scripts/run_interop_alignment.sh` now reports one bounded residual mismatch instead of the earlier six-item set.
+- The current full compare baseline is `31` fixtures, `237` comparisons, `135` strict matches, `35` diagnostic-only comparisons, and `1` bounded residual mismatch.
 - The nightly workflow no longer hides failures behind `continue-on-error`.
 
 The review from 2026-04-12 is no longer accurate as a live issue register. Several items it flagged have already been resolved in the repo, and the remaining debt is narrower than that review implied.
@@ -30,9 +31,9 @@ The review from 2026-04-12 is no longer accurate as a live issue register. Sever
 ### Fixture Footprint
 
 Current manifest footprint:
-- `28` fixtures in `testdata/interop/manifest.json`
+- `31` fixtures in `testdata/interop/manifest.json`
 - zig-only goldens committed for all manifest fixtures
-- basic, parity, graph-model, enrichment, discovery-scope, error-path, and language-expansion coverage all present
+- basic, parity, graph-model, enrichment, discovery-scope, error-path, language-expansion, route-expansion, semantic-expansion, and config-expansion coverage all present
 
 ### MCP Tool Assertion Coverage
 
@@ -88,7 +89,7 @@ The remaining debt is real, but it is narrower:
    `search_graph` still maps a shared manifest contract onto different request shapes (`label` for the C reference, `label_pattern` for Zig). That is now documented inline in the harness, but it remains a designed comparison asymmetry rather than strict payload identity.
 
 5. The remaining full-reference delta is narrow and explicit.
-   The current full compare leaves one bounded residual mismatch: `go-parity/query_graph`, where Zig returns the `Class -> DEFINES_METHOD -> Method` row and the C reference still returns zero rows. After the Cypher parity expansion pass, that residual is no longer evidence of a broader read-only executor gap; it is isolated Go extraction-side debt around method-ownership rows.
+   The current full compare still leaves one bounded residual mismatch: `go-parity/query_graph`, where Zig returns the `Class -> DEFINES_METHOD -> Method` row and the C reference still returns zero rows. After the Cypher parity expansion pass and the later fixture additions, that residual is still not evidence of a broader read-only executor gap; it remains isolated Go extraction-side debt around method-ownership rows.
 
 ## Current Judgment
 

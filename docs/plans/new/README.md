@@ -4,8 +4,8 @@ Refresh date: 2026-04-19
 
 The current target contract, the shared follow-on parity slices, the
 verification-remediation slice, and the bounded full-compare mismatch-reduction
-slice are complete. The remaining queue stays ordered by leverage and
-boundedness rather than by “biggest possible project.”
+slice are complete. This file now records that the tracked parity execution
+queue is exhausted, rather than presenting a remaining ordered backlog.
 
 ## Current State
 

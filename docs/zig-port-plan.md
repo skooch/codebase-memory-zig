@@ -27,18 +27,23 @@ Completed now:
   - TSX
   - Rust
   - Zig
+  - Go
+  - Java
+  - PowerShell
+  - GDScript
 - The first-gate fixture corpus and harness report:
   - `Strict matches: 58`
   - `Diagnostic-only comparisons: 9`
   - `Mismatches: 0`
-- The expanded full harness after graph-model parity currently reports:
-  - `Fixtures: 24`
-  - `Comparisons: 186`
-  - `Strict matches: 105`
-  - `Diagnostic-only comparisons: 24`
-  - `Known mismatches: 8`
+- The expanded full harness after the completed queued parity follow-on work currently reports:
+  - `Fixtures: 31`
+  - `Comparisons: 237`
+  - `Strict matches: 135`
+  - `Diagnostic-only comparisons: 35`
+  - `Known mismatches: 1`
   - `cli_progress: match`
-  - no remaining route-, config-, or graph-model fixture mismatches
+  - no remaining route-, config-, graph-model, snippet, search, JavaScript-ordering, Java query-shape, or error-path comparison mismatches
+  - one remaining bounded Go query residual in the broader reference surface
 - Runtime lifecycle and scale are implemented for the current target contract:
   - watcher-driven auto-index and auto-reindex
   - incremental indexing
@@ -48,7 +53,7 @@ Completed now:
   - persisted runtime config
   - `install`, `uninstall`, `update`, and `config`
   - `cli --progress`
-  - installer support for Codex CLI and Claude Code
+  - broader detected-scope installer support for the verified 10-agent matrix
 - The shared-surface Phase 2 parity slice is complete for:
   - `tools/list`
   - `cli --progress`
@@ -76,7 +81,7 @@ The completed follow-on plan covered:
 - call resolution
 - usage/type-reference parity
 - semantic-edge parity
-- `CONFIGURES`, `WRITES`, and `USES_TYPE`
+- `CONFIGURES`, bounded shared `WRITES` / `READS` zero-row micro-case coverage, and `USES_TYPE`
 - `install`, `uninstall`, and `update`
 - auto-detected agent integrations
 
@@ -123,6 +128,8 @@ The main still-deferred themes are:
 3. broader framework-specific route and broker coverage
 4. optional subsystems intentionally deferred or cut, especially UI and infra
    indexing
+5. the single bounded `go-parity/query_graph` residual if exhaustive shared
+   parity is still the goal
 
 ---
 

@@ -90,7 +90,7 @@ Current audit note on `2026-04-19`:
 - `zig build`: pass
 - `zig build test`: pass
 - `bash scripts/run_cli_parity.sh --zig-only`: pass
-- `bash scripts/run_interop_alignment.sh --zig-only`: pass (`30/30`)
+- `bash scripts/run_interop_alignment.sh --zig-only`: pass (`31/31`)
 - `bash scripts/run_benchmark_suite.sh --zig-only --manifest testdata/bench/stress-manifest.json --report-dir .benchmark_reports/ops`: pass
 - `bash scripts/run_soak_suite.sh --iterations 3 --report-dir .soak_reports/ci`: pass
 - `bash scripts/run_security_audit.sh .security_reports/ci`: pass
