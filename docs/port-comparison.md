@@ -16,8 +16,13 @@ It is intentionally not a wish list. It describes:
 - Planning and status docs in this repo:
   - `docs/zig-port-plan.md`
   - `docs/gap-analysis.md`
+  - `docs/interop-testing-review.md`
   - `docs/plans/implemented/interoperability-alignment-readiness-plan.md`
   - `docs/plans/implemented/post-readiness-zig-port-execution-plan.md`
+- Verification and CI wiring:
+  - `.github/workflows/ci.yml`
+  - `.github/workflows/interop-nightly.yml`
+  - `.github/workflows/ops-checks.yml`
 - Zig implementation:
   - `src/main.zig`
   - `src/mcp.zig`
@@ -59,6 +64,32 @@ It is intentionally not a wish list. It describes:
 | Runtime lifecycle | Watcher, auto-index, update notifications, UI-capable runtime | Watcher, auto-index, incremental, transactional indexing, persistent runtime DB | `Near parity` | Yes |
 | CLI/productization | Rich install/update/config for 10 agents plus hooks/instructions | Source-build-friendly install/update/config for the broader 10-agent matrix, with explicit shipped-vs-detected scope and fixture-backed extras coverage | `Partial` | No |
 | Optional/long-tail systems | UI, route graph, infra/resource indexing, git history, config linking | Git history coupling implemented; graph-model parity fixture contract completed for route nodes and config linking; UI and infra scanning remain deferred or cut | `Partial` / `Cut` | No |
+
+## Verification Posture
+
+The repository now has broad automated coverage, but it does **not** have an exhaustive suite for every feature or edge case.
+
+Broad automated coverage in the current repo:
+
+- `zig build test` exercises unit and integration coverage across the core modules, including MCP framing and lifecycle, discovery, extraction, pipeline passes, query routing, graph buffer/store behavior, runtime lifecycle, route and event-topic synthesis, hybrid sidecars, git-history coupling, and installer or config logic.
+- `.github/workflows/ci.yml` blocks merges on `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh --zig-only`, `bash scripts/run_cli_parity.sh --zig-only`, formatting, and `zlint`.
+- `.github/workflows/interop-nightly.yml` runs the full Zig-vs-C interop and CLI parity comparison against the reference implementation on a weekly schedule.
+- `.github/workflows/ops-checks.yml` runs the Zig-only benchmark, soak, and static security audit suites on push and PR.
+
+What this does **not** justify claiming:
+
+- exhaustive tool-surface parity for every MCP edge case
+- exhaustive framework-specific route or async-broker coverage
+- exhaustive Windows-native runtime, installer, and archive behavior
+- exhaustive packaging and setup regression coverage across all shells and platforms
+
+The current automated posture is strong enough to support the repo's daily-use parity claims. It is not strong enough to claim that every implemented feature and every error path is exhaustively locked down.
+
+Current audit note on `2026-04-19`:
+
+- `zig build test`: pass
+- `bash scripts/run_cli_parity.sh --zig-only`: pass
+- `bash scripts/run_interop_alignment.sh --zig-only`: currently fails on `main` because `python-parity` now returns a different `get_graph_schema` shape than the stored golden expects, and the `discovery-scope`, `python-framework-cases`, and `typescript-import-cases` fixtures do not currently have committed zig-only golden snapshots.
 
 ## 1. Project Scope and Product Shape
 
@@ -202,7 +233,7 @@ This section compares what kinds of graph entities the two systems are built to 
 
 | Capability | Original C | Zig Port | Status | Interoperable? | Notes |
 |-----------|------------|----------|--------|----------------|-------|
-| Primary build system | Make + shell scripts | `zig build` | `Partial` | No | Both are buildable, but the Zig repo has not yet reproduced the original’s packaging/release scaffolding. |
+| Primary build system | Make + shell scripts | `zig build` plus repo-owned packaging and release scripts | `Partial` | No | Both repos now ship build and release scaffolding. The remaining difference is that Zig intentionally packages only the standard binary surface, not the original UI-oriented release variants. |
 | Setup scripts | Yes (`scripts/setup.sh`, `setup-windows.ps1`) | Yes (`install.sh`, `install.ps1`, `scripts/setup.sh`, `scripts/setup-windows.ps1`) | `Near parity` | Yes | Zig now verifies both shell and PowerShell entrypoints against local packaged archives, while keeping the scope on the standard binary rather than the original's broader UI release set. |
 | UI asset embedding | Yes | No | `Cut` | No | Tied to the UI subsystem. |
 | Security / audit / benchmark script set | Broad script suite | Bounded repo-owned benchmark, soak, and static audit suite | `Near parity` | No | Zig now provides reproducible local and CI entrypoints for benchmark, soak, and static audit coverage. It still intentionally stops short of the original's binary-string, network-trace, fuzz, and multi-hour soak layers. |
@@ -216,6 +247,7 @@ This section compares what kinds of graph entities the two systems are built to 
 | It matches the original on the documented readiness gate | Yes |
 | It implements the completed post-readiness target contract described in this repo | Yes |
 | It is a full feature-for-feature port of the original C project | No |
+| Its automated suite is exhaustive of all implemented features and edge cases | No |
 | It has no meaningful remaining work in its chosen daily-use target | Yes |
 | It still has optional future parity work if exhaustive comparison is the goal | Yes |
 
@@ -254,3 +286,5 @@ The remaining gap is no longer “the basics do not work.” The remaining gap i
 - higher-order graph analytics beyond the verified route, event-topic, and config fixture contract
 - broader installer/product surface
 - optional subsystems that this repo has explicitly deferred or cut
+
+The testing story has the same shape: broad automated coverage for the chosen target contract, but not an exhaustive lock on every feature permutation, shell or OS path, or negative-path behavior.
