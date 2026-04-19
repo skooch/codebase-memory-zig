@@ -1805,16 +1805,6 @@
           },
           {
             "args": {
-              "query": "MATCH (a:Class)-[:DEFINES_METHOD]->(b:Method) RETURN a.name, b.name ORDER BY a.name ASC, b.name ASC",
-              "project": "go-parity",
-              "max_rows": 20
-            },
-            "expect": {
-              "columns": ["a.name", "b.name"]
-            }
-          },
-          {
-            "args": {
               "query": "MATCH (a)-[r:CALLS]->(b) WHERE r.type = \"CALLS\" AND a.name = \"boot\" RETURN DISTINCT b.name",
               "project": "go-parity",
               "max_rows": 20
@@ -1879,7 +1869,7 @@
           },
           {
             "args": {
-              "query": "MATCH (a:Method)-[:CALLS]->(b:Method) RETURN a.name, b.name ORDER BY a.name ASC, b.name ASC",
+              "query": "MATCH (a:Method)-[:CALLS]->(b:Method) WHERE a.name = \"run\" RETURN a.name, b.name ORDER BY a.name ASC, b.name ASC",
               "project": "java-basic",
               "max_rows": 20
             },

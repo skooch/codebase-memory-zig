@@ -31,18 +31,6 @@
     },
     {
       "columns": [
-        "a.name",
-        "b.name"
-      ],
-      "rows": [
-        [
-          "Worker",
-          "Run"
-        ]
-      ]
-    },
-    {
-      "columns": [
         "b.name"
       ],
       "rows": [

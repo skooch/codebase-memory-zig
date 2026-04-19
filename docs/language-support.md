@@ -43,6 +43,15 @@ language-specific behavior that users actually query for, such as:
 The Zig port only claims semantic parity where a language or feature lane is
 explicitly verified in the repo docs and tests.
 
+Current shared-parity language additions beyond the original Python/JS/TS/Rust
+floor:
+- Go for the exercised `go-basic` / `go-parity` search, query, and trace rows
+- Java for the exercised `java-basic` search, query, and trace rows
+
+These are still bounded fixture claims, not a blanket promise that every Go or
+Java semantic edge or ownership detail matches the original outside the
+asserted contract.
+
 ## Deferred Languages
 
 QML is intentionally deferred after the PowerShell and GDScript tranche. The

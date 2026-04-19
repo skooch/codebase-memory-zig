@@ -90,7 +90,7 @@ The remaining debt is real, but it is narrower:
    `search_graph` still maps a shared manifest contract onto different request shapes (`label` for the C reference, `label_pattern` for Zig). That is now documented inline in the harness, but it remains a designed comparison asymmetry rather than strict payload identity.
 
 5. Compare mode still intentionally permits bounded diagnostic drift.
-   The former `go-parity/query_graph` hard mismatch is now scored as diagnostic-only because the shared contract no longer over-asserts the `Class -> DEFINES_METHOD -> Method` row. That keeps the full compare focused on genuine shared-surface failures rather than intentional extraction differences outside the asserted floor.
+   The old `go-parity/query_graph` and `java-basic/query_graph` language deltas are no longer inside the exercised shared floor; the current Go and Java fixture rows now full-compare cleanly, while compare mode still leaves room for diagnostic-only drift outside asserted contracts in other areas.
 
 6. The old discovery-scope warning is resolved.
    The direct Zig/C repro and the full compare both now show `search_code` agreement on the `discovery-scope` fixture: `scopeVisible` returns `src/index.ts`, while `ghostIgnoredHit`, `generatedBundleHit`, and `ghostNestedHit` all return zero results on both implementations. The earlier docs overstated a divergence that is no longer present in the measured baseline.

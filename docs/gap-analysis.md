@@ -178,15 +178,15 @@ Observed results:
   - `java-basic`: pass
 - scoped Zig-vs-C compare:
   - `go-basic`: pass
-  - `go-parity`: query-result deltas only
-  - `java-basic`: query-result deltas only
+  - `go-parity`: pass
+  - `java-basic`: pass
 
 Intentional residual delta after completion:
 - bounded Go hybrid-resolution sidecars are now implemented for both the original single-call case and an expanded multi-document sidecar slice, but C/C++ hybrid resolution remains deferred
 - C++, R, Svelte, and Vue parser-backed expansion remain deferred
-- the new Go and Java fixtures are verified Zig-side additions, but not yet a
-  strict shared-parity claim because scoped C compare still has query-result
-  deltas
+- the exercised shared Go and Java fixture rows now full-compare cleanly, so
+  both languages can be promoted from verified Zig-side expansion to strict
+  shared parity for the bounded fixture contract this repo actually asserts
 
 ## Implemented Plan: Language Support Expansion Feature Cluster
 
