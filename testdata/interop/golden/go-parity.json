@@ -40,6 +40,19 @@
           "Run"
         ]
       ]
+    },
+    {
+      "columns": [
+        "b.name"
+      ],
+      "rows": [
+        [
+          "NewWorker"
+        ],
+        [
+          "Run"
+        ]
+      ]
     }
   ],
   "search_code": [],

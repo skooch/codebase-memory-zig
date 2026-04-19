@@ -1247,6 +1247,141 @@ test "cypher preserves shared default edge ordering without ORDER BY" {
     try std.testing.expectEqualStrings("write", result.rows[3][1]);
 }
 
+test "cypher supports distinct node queries with OR filters" {
+    var s = try Store.openMemory(std.testing.allocator);
+    defer s.deinit();
+    try s.upsertProject("p", "/tmp/p");
+    _ = try s.upsertNode(.{
+        .project = "p",
+        .label = "Function",
+        .name = "boot",
+        .qualified_name = "p:boot",
+        .file_path = "main.py",
+    });
+    _ = try s.upsertNode(.{
+        .project = "p",
+        .label = "Variable",
+        .name = "mode",
+        .qualified_name = "p:mode",
+        .file_path = "main.py",
+    });
+    _ = try s.upsertNode(.{
+        .project = "p",
+        .label = "Variable",
+        .name = "count",
+        .qualified_name = "p:count",
+        .file_path = "main.py",
+    });
+
+    const result = try execute(
+        std.testing.allocator,
+        &s,
+        "MATCH (n) WHERE n.label = \"Function\" OR n.label = \"Variable\" RETURN DISTINCT n.label",
+        "p",
+        20,
+    );
+    defer freeResult(std.testing.allocator, result);
+
+    try std.testing.expectEqual(@as(usize, 2), result.rows.len);
+    try std.testing.expectEqualStrings("Function", result.rows[0][0]);
+    try std.testing.expectEqualStrings("Variable", result.rows[1][0]);
+}
+
+test "cypher gives AND higher precedence than OR" {
+    var s = try Store.openMemory(std.testing.allocator);
+    defer s.deinit();
+    try s.upsertProject("p", "/tmp/p");
+    _ = try s.upsertNode(.{
+        .project = "p",
+        .label = "Function",
+        .name = "boot",
+        .qualified_name = "p:boot",
+        .file_path = "main.py",
+    });
+    _ = try s.upsertNode(.{
+        .project = "p",
+        .label = "Variable",
+        .name = "mode",
+        .qualified_name = "p:mode",
+        .file_path = "main.py",
+    });
+    _ = try s.upsertNode(.{
+        .project = "p",
+        .label = "Variable",
+        .name = "count",
+        .qualified_name = "p:count",
+        .file_path = "main.py",
+    });
+
+    const result = try execute(
+        std.testing.allocator,
+        &s,
+        "MATCH (n) WHERE n.label = \"Function\" OR n.label = \"Variable\" AND n.name = \"count\" RETURN n.label, n.name ORDER BY n.label ASC, n.name ASC",
+        "p",
+        20,
+    );
+    defer freeResult(std.testing.allocator, result);
+
+    try std.testing.expectEqual(@as(usize, 2), result.rows.len);
+    try std.testing.expectEqualStrings("Function", result.rows[0][0]);
+    try std.testing.expectEqualStrings("boot", result.rows[0][1]);
+    try std.testing.expectEqualStrings("Variable", result.rows[1][0]);
+    try std.testing.expectEqualStrings("count", result.rows[1][1]);
+}
+
+test "cypher supports numeric node filters and edge type filters" {
+    var s = try Store.openMemory(std.testing.allocator);
+    defer s.deinit();
+    try s.upsertProject("p", "/tmp/p");
+    const boot = try s.upsertNode(.{
+        .project = "p",
+        .label = "Function",
+        .name = "boot",
+        .qualified_name = "p:boot",
+        .file_path = "main.py",
+        .start_line = 12,
+        .end_line = 16,
+    });
+    const helper = try s.upsertNode(.{
+        .project = "p",
+        .label = "Method",
+        .name = "helper",
+        .qualified_name = "p:helper",
+        .file_path = "main.py",
+        .start_line = 4,
+        .end_line = 8,
+    });
+    _ = try s.upsertEdge(.{
+        .project = "p",
+        .source_id = boot,
+        .target_id = helper,
+        .edge_type = "CALLS",
+    });
+
+    const numeric = try execute(
+        std.testing.allocator,
+        &s,
+        "MATCH (n:Function) WHERE n.start_line >= 10 RETURN n.name ORDER BY n.name ASC",
+        "p",
+        20,
+    );
+    defer freeResult(std.testing.allocator, numeric);
+    try std.testing.expectEqual(@as(usize, 1), numeric.rows.len);
+    try std.testing.expectEqualStrings("boot", numeric.rows[0][0]);
+
+    const edge_filter = try execute(
+        std.testing.allocator,
+        &s,
+        "MATCH (a)-[r:CALLS]->(b) WHERE r.type = \"CALLS\" AND b.name = \"helper\" RETURN a.name, b.name",
+        "p",
+        20,
+    );
+    defer freeResult(std.testing.allocator, edge_filter);
+    try std.testing.expectEqual(@as(usize, 1), edge_filter.rows.len);
+    try std.testing.expectEqualStrings("boot", edge_filter.rows[0][0]);
+    try std.testing.expectEqualStrings("helper", edge_filter.rows[0][1]);
+}
+
 test "cypher reports unsupported queries as errors" {
     var s = try Store.openMemory(std.testing.allocator);
     defer s.deinit();

@@ -123,6 +123,19 @@
     },
     {
       "columns": [
+        "n.label"
+      ],
+      "rows": [
+        [
+          "Class"
+        ],
+        [
+          "Function"
+        ]
+      ]
+    },
+    {
+      "columns": [
         "a.label",
         "a.file_path",
         "b.label",

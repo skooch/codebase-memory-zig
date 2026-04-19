@@ -29,6 +29,16 @@
     },
     {
       "columns": [
+        "n.label"
+      ],
+      "rows": [
+        [
+          "Function"
+        ]
+      ]
+    },
+    {
+      "columns": [
         "n.name"
       ],
       "rows": []

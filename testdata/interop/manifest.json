@@ -155,6 +155,23 @@
           },
           {
             "args": {
+              "query": "MATCH (n) WHERE n.label = \"Function\" OR n.label = \"Variable\" RETURN DISTINCT n.label",
+              "project": "python-basic",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": [
+                "n.label"
+              ],
+              "required_rows": [
+                [
+                  "Function"
+                ]
+              ]
+            }
+          },
+          {
+            "args": {
               "query": "MATCH (n) WHERE n.label = \"Variable\" RETURN n.name ORDER BY n.name ASC",
               "project": "python-basic",
               "max_rows": 20
@@ -574,6 +591,26 @@
                 "b.name"
               ],
               "required_rows_min": 1
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (n) WHERE n.label = \"Class\" OR n.label = \"Function\" RETURN DISTINCT n.label",
+              "project": "python-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": [
+                "n.label"
+              ],
+              "required_rows": [
+                [
+                  "Class"
+                ],
+                [
+                  "Function"
+                ]
+              ]
             }
           },
           {
@@ -1736,6 +1773,20 @@
             "expect": {
               "columns": ["a.name", "b.name"],
               "required_rows_min": 1
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:CALLS]->(b) WHERE r.type = \"CALLS\" AND a.name = \"boot\" RETURN DISTINCT b.name",
+              "project": "go-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["b.name"],
+              "required_rows": [
+                ["NewWorker"],
+                ["Run"]
+              ]
             }
           }
         ],
