@@ -18,7 +18,7 @@ Verification posture today:
 - Treat [port-comparison.md](/Users/skooch/projects/codebase-memory-zig/docs/port-comparison.md) as the authoritative statement of what the repo can truthfully claim today.
 
 Known coverage gaps in the current automated suite:
-- Current local audit on `2026-04-20`: `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh --zig-only`, `bash scripts/run_cli_parity.sh --zig-only`, and the current ops suite entrypoints all pass. The discovery-scope parity worktree also completed `bash scripts/run_interop_alignment.sh` with `31` fixtures, `237` comparisons, `135` strict matches, `36` diagnostic-only comparisons, and `0` mismatches, and direct Zig/C fixture repro confirmed shared `search_code` exclusion of ignored and generated files.
+- Current local audit on `2026-04-20`: `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh --zig-only`, `bash scripts/run_cli_parity.sh --zig-only`, and the current ops suite entrypoints all pass. The fuller Cypher parity worktree also completed `bash scripts/run_interop_alignment.sh` with `32` fixtures, `244` comparisons, `139` strict matches, `37` diagnostic-only comparisons, and `0` mismatches, and direct Zig/C fixture repro confirmed the added shared query tranche for counts, boolean-precedence filters, and numeric property predicates.
 - Full Zig-vs-C parity is nightly, not per-PR, so merge-blocking CI relies on zig-only goldens plus unit and integration tests.
 - Packaging and setup entrypoints are exercised by verification runs and workflows, but do not yet have exhaustive cross-platform regression automation for every shell or archive flow.
 - Windows coverage is strong at config-path, installer-layout, and PowerShell entrypoint level, but not exhaustive of native runtime and filesystem edge cases.
@@ -58,10 +58,10 @@ Completed now:
   - `Diagnostic-only comparisons: 9`
   - `Mismatches: 0`
 - The expanded full harness currently reports:
-  - `Fixtures: 31`
-  - `Comparisons: 237`
-  - `Strict matches: 135`
-  - `Diagnostic-only comparisons: 36`
+  - `Fixtures: 32`
+  - `Comparisons: 244`
+  - `Strict matches: 139`
+  - `Diagnostic-only comparisons: 37`
   - `Known mismatches: 0`
   - `cli_progress: match`
   - no remaining snippet, search, JavaScript-ordering, Java query-shape, or error-path comparison mismatches
@@ -119,7 +119,7 @@ Completed after the readiness gate:
 
 Intentionally deferred after Phase 7:
 - The remaining MCP work outside the completed daily-use slice, especially fuller Cypher parity.
-- Full Cypher parity beyond the broader day-to-day query subset now supporting node and edge reads, filtering, sorting, counts, distinct selection, bounded boolean conditions, and edge-type filtering.
+- Full Cypher parity beyond the broader day-to-day query subset now supporting node and edge reads, filtering, sorting, counts, distinct selection, boolean-precedence predicates, numeric property predicates, and edge-type filtering.
 - Deeper usage/type-reference extraction parity and broader cross-language semantics beyond the current target daily-use slice.
 - Higher-order graph analytics and broader framework expansion beyond the now-implemented route, event-topic, and config-link fixture slices. (Git-history coupling is implemented; route nodes, event-topic links, and config-linking all have verified bounded slices.)
 - Broader installer/self-update behavior beyond the current source-build-friendly Codex CLI / Claude Code support.

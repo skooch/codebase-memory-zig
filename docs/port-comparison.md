@@ -90,7 +90,7 @@ Current audit note on `2026-04-20`:
 - `zig build`: pass
 - `zig build test`: pass
 - `bash scripts/run_cli_parity.sh --zig-only`: pass
-- `bash scripts/run_interop_alignment.sh --zig-only`: pass (`31/31`)
+- `bash scripts/run_interop_alignment.sh --zig-only`: pass (`32/32`)
 - `bash scripts/run_benchmark_suite.sh --zig-only --manifest testdata/bench/stress-manifest.json --report-dir .benchmark_reports/ops`: pass
 - `bash scripts/run_soak_suite.sh --iterations 3 --report-dir .soak_reports/ci`: pass
 - `bash scripts/run_security_audit.sh .security_reports/ci`: pass
@@ -102,7 +102,7 @@ Current audit note on `2026-04-20`:
 | Capability | Original C (`codebase-memory-mcp`) | Zig Port (`codebase-memory-zig`) | Status | Interoperable? | Notes |
 |-----------|-------------------------------------|----------------------------------|--------|----------------|-------|
 | Stated product goal | Full-featured code intelligence engine with 14 MCP tools, UI variant, 66 languages, 10-agent install path | Interoperable, higher-performance and more reliable daily-use port of the original | `Partial` | No | The Zig repo explicitly treats completion of Phase 7 as completion of the current target contract, not exhaustive parity. |
-| Readiness gate | Reference side of the interop harness | Completed and passing: `Strict matches: 58`, `Diagnostic-only comparisons: 9`, `Mismatches: 0` | `Near parity` | Yes | The first-gate harness is green; the expanded full harness now reports 31 fixtures, 237 comparisons, 135 strict matches, 36 diagnostic-only comparisons, 0 mismatches, and `cli_progress: match`. |
+| Readiness gate | Reference side of the interop harness | Completed and passing: `Strict matches: 58`, `Diagnostic-only comparisons: 9`, `Mismatches: 0` | `Near parity` | Yes | The first-gate harness is green; the expanded full harness now reports 32 fixtures, 244 comparisons, 139 strict matches, 37 diagnostic-only comparisons, 0 mismatches, and `cli_progress: match`. |
 | Broader post-readiness target | Everything in the original project | Current target contract only; long-tail parity moved to deferred backlog | `Partial` | No | See `docs/plans/implemented/post-readiness-zig-port-execution-plan.md`. |
 | Built-in graph UI | Yes, optional UI binary / HTTP server | No | `Cut` | No | Original has `src/ui/*` and `--ui` flags. Zig intentionally does not port the UI. |
 | Release/install packaging | Prebuilt release artifacts plus setup scripts and install scripts | Standard `cbm` release archives, checksums, install scripts, setup scripts, install docs, and a repo-owned release workflow | `Near parity` | Yes | The Zig repo now proves standard-binary packaging for macOS and Windows artifacts. UI variants plus signing/attestation remain intentionally narrower than the original pipeline. |
@@ -127,7 +127,7 @@ Current audit note on `2026-04-20`:
 |------|------------|----------|--------|----------------|-------|
 | `index_repository` | Full | Implemented | `Near parity` | Yes | Core readiness tool; interop-gated. |
 | `search_graph` | Full | Implemented with rich filters and pagination | `Near parity` | Yes | The Zig Phase 5 work specifically broadened this toward daily-use parity. |
-| `query_graph` | Full Cypher-oriented surface | Shared read-only Cypher parity floor for node and edge reads, filtering, counts, distinct selection, and bounded boolean conditions | `Near parity` | Yes | The compare harness now scores shared query-contract parity instead of incidental row-shape drift when both sides satisfy the fixture floor. The former `go-parity` hard mismatch is now reclassified as diagnostic-only because the shared contract no longer over-asserts that receiver-owned method row. |
+| `query_graph` | Full Cypher-oriented surface | Shared read-only Cypher parity floor for node and edge reads, filtering, counts, distinct selection, boolean-precedence predicates, numeric property predicates, and bounded edge-type conditions | `Near parity` | Yes | The compare harness now proves an additional `cypher-predicate-floor` slice covering `COUNT(...)`, `OR`/`AND` precedence, and numeric `start_line` filters as an exact Zig/C match. The former `go-parity` hard mismatch remains diagnostic-only because the shared contract no longer over-asserts that receiver-owned method row. |
 | `trace_call_path` / `trace_path` | Calls, data-flow, cross-service, risk labels, include-tests | Calls, data-flow, cross-service modes; multi-edge-type BFS; risk labels; test-file filtering; function_name alias; structured callees/callers response | `Near parity` | Yes | Zig now implements trace modes, risk classification, test filtering, and the richer response format matching the C reference surface. |
 | `get_code_snippet` | Full | Implemented | `Near parity` | Yes | Zig supports exact lookup, suffix fallback, ambiguity suggestions, neighbor info. The full-compare harness now normalizes the shared snippet contract instead of scoring implementation-specific qualified-name formatting. |
 | `get_graph_schema` | Full | Implemented | `Near parity` | Yes | Good match for the low-risk public surface. |
@@ -263,7 +263,7 @@ If someone asks “what still separates the Zig port from the original?”, the 
 
 | Difference | Why it matters |
 |-----------|----------------|
-| No exhaustive Cypher parity | The verified shared floor now covers node and edge reads, filters, counts, distinct selection, and bounded boolean conditions, but more advanced graph-query permutations remain unproven or C-only. |
+| No exhaustive Cypher parity | The verified shared floor now covers node and edge reads, filters, counts, distinct selection, boolean-precedence predicates, numeric property predicates, and bounded edge-type conditions, but more advanced graph-query permutations such as deeper multi-hop shapes, richer aggregates, aliases, and skip-style pagination remain unproven or C-only. |
 | Broader route / cross-service framework expansion | Zig now emits verified decorator-backed `HANDLES`, strict shared route-linked `DATA_FLOWS`, strict shared async topic caller rows, route summaries, the shared `route-expansion-httpx` caller fixture, plus zig-only verified keyword route registrations, generic `requests.request("METHOD", "/path")`, and `celery.send_task("topic")`. The new framework fixtures are still diagnostic-only in the full compare because the current C reference returns empty row sets there, so broader shared-framework parity remains open. |
 | No LSP-assisted hybrid resolution | Some higher-fidelity call/type resolution paths remain original-only. |
 | Broader config normalization expansion | Git-history coupling is implemented, config linking has dependency-import matching and deduplication coverage, a strict shared key-symbol normalization fixture, a strict shared env-style config-key fixture, and a strict shared YAML key-shape fixture. Broader config-language and key-shape expansion remains optional future work, while `WRITES` / `READS` now have only a bounded shared zero-row harness contract rather than proven positive overlap. |

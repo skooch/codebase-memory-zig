@@ -2643,6 +2643,96 @@
           }
         ]
       }
+    },
+    {
+      "id": "cypher-predicate-floor",
+      "path": "testdata/interop/cypher-expansion/predicate-floor",
+      "project": "predicate-floor",
+      "language": "python",
+      "scope_tools": [
+        "index_repository",
+        "search_graph",
+        "query_graph",
+        "list_projects"
+      ],
+      "assertions": {
+        "index_repository": {
+          "expect": {
+            "nodes_min": 6,
+            "edges_min": 4
+          }
+        },
+        "search_graph": [
+          {
+            "args": {
+              "project": "cypher-predicate-floor",
+              "label": "Function"
+            },
+            "expect": {
+              "required_names": [
+                "bootstrap",
+                "helper",
+                "trace"
+              ]
+            }
+          }
+        ],
+        "query_graph": [
+          {
+            "args": {
+              "query": "MATCH (n:Function) RETURN COUNT(n) AS count",
+              "project": "predicate-floor",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": [
+                "count"
+              ],
+              "required_rows_min": 1
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (n) WHERE n.label = \"Variable\" RETURN COUNT(n) AS count",
+              "project": "predicate-floor",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": [
+                "count"
+              ],
+              "required_rows_min": 1
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (n) WHERE n.label = \"Function\" OR n.label = \"Variable\" AND n.name = \"count\" RETURN n.label, n.name ORDER BY n.label ASC, n.name ASC",
+              "project": "predicate-floor",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": [
+                "n.label",
+                "n.name"
+              ],
+              "required_rows_min": 1
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (n:Function) WHERE n.start_line >= 8 RETURN n.name ORDER BY n.name ASC",
+              "project": "predicate-floor",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": [
+                "n.name"
+              ],
+              "required_rows_min": 1
+            }
+          }
+        ]
+      }
     }
   ]
 }
