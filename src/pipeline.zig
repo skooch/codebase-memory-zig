@@ -3220,6 +3220,67 @@ test "pipeline links env-style config keys to matching code symbols" {
     try std.testing.expect(edgeTargetsContain(configures, config_id));
 }
 
+test "pipeline links yaml hyphenated and camel config keys to matching code symbols" {
+    const allocator = std.testing.allocator;
+
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(
+        allocator,
+        "/tmp/cbm-pipeline-configlink-yaml-shapes-{x}",
+        .{project_id},
+    );
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    {
+        var dir = try std.fs.cwd().openDir(project_dir, .{});
+        defer dir.close();
+
+        var cfg = try dir.createFile("settings.yaml", .{});
+        defer cfg.close();
+        try cfg.writeAll(
+            \\api-base-url: https://example.test
+            \\apiBaseUrl: https://example.test/v2
+            \\
+        );
+
+        var py = try dir.createFile("main.py", .{});
+        defer py.close();
+        try py.writeAll(
+            \\def load_api_base_url():
+            \\    return 1
+            \\
+            \\def load_api_base_url_v2():
+            \\    return 2
+            \\
+        );
+    }
+
+    var db = try store.Store.openMemory(allocator);
+    defer db.deinit();
+
+    var pipeline = Pipeline.init(allocator, project_dir, .full);
+    defer pipeline.deinit();
+    try pipeline.run(&db);
+
+    const project_name = std.fs.path.basename(project_dir);
+    const first_getter_id = try findSingleNodeByNameInFile(&db, project_name, "Function", "load_api_base_url", "main.py");
+    const second_getter_id = try findSingleNodeByNameInFile(&db, project_name, "Function", "load_api_base_url_v2", "main.py");
+    const hyphen_key_id = try findSingleNodeByNameInFile(&db, project_name, "Variable", "api-base-url", "settings.yaml");
+    const camel_key_id = try findSingleNodeByNameInFile(&db, project_name, "Variable", "apiBaseUrl", "settings.yaml");
+
+    const first_edges = try db.findEdgesBySource(project_name, first_getter_id, "CONFIGURES");
+    defer db.freeEdges(first_edges);
+    try std.testing.expect(edgeTargetsContain(first_edges, hyphen_key_id));
+    try std.testing.expect(edgeTargetsContain(first_edges, camel_key_id));
+
+    const second_edges = try db.findEdgesBySource(project_name, second_getter_id, "CONFIGURES");
+    defer db.freeEdges(second_edges);
+    try std.testing.expect(edgeTargetsContain(second_edges, hyphen_key_id));
+    try std.testing.expect(edgeTargetsContain(second_edges, camel_key_id));
+}
+
 test "normalizeConfigName keeps env-style uppercase runs intact" {
     const allocator = std.testing.allocator;
 

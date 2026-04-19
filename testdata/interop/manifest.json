@@ -2334,6 +2334,47 @@
       }
     },
     {
+      "id": "config-expansion-yaml-key-shapes",
+      "path": "testdata/interop/config-expansion/yaml_key_shapes",
+      "project": "yaml_key_shapes",
+      "language": "python",
+      "scope_tools": ["index_repository", "query_graph"],
+      "assertions": {
+        "index_repository": {
+          "expect": { "nodes_min": 8, "edges_min": 10 }
+        },
+        "query_graph": [
+          {
+            "args": {
+              "query": "MATCH (a)-[r:CONFIGURES]->(b) RETURN a.name, b.name ORDER BY a.name, b.name",
+              "project": "yaml_key_shapes",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["a.name", "b.name"],
+              "required_rows": [
+                ["load_api_base_url", "api-base-url"],
+                ["load_api_base_url", "apiBaseUrl"],
+                ["load_api_base_url_v2", "api-base-url"],
+                ["load_api_base_url_v2", "apiBaseUrl"]
+              ]
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (n:Variable) RETURN n.name ORDER BY n.name ASC",
+              "project": "yaml_key_shapes",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["n.name"],
+              "required_rows": [["api-base-url"], ["apiBaseUrl"]]
+            }
+          }
+        ]
+      }
+    },
+    {
       "id": "edge-parity",
       "path": "testdata/interop/edge-parity",
       "project": "edge-parity",
@@ -2375,6 +2416,26 @@
             "expect": {
               "columns": ["n.name"],
               "required_rows_min": 2
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:WRITES]->(b) RETURN a.name, b.name ORDER BY a.name, b.name",
+              "project": "edge-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["a.name", "b.name"]
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:READS]->(b) RETURN a.name, b.name ORDER BY a.name, b.name",
+              "project": "edge-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["a.name", "b.name"]
             }
           }
         ]

@@ -273,6 +273,60 @@ test "store indexes keyword route registrations and send_task semantic fixtures"
     }
 }
 
+test "store indexes config key-shape fixture and keeps WRITES/READS absent on bounded edge fixture" {
+    const allocator = std.testing.allocator;
+
+    {
+        var db = try store.Store.openMemory(allocator);
+        defer db.deinit();
+
+        const project_dir = "testdata/interop/config-expansion/yaml_key_shapes";
+        const project_name = std.fs.path.basename(project_dir);
+
+        var p = pipeline.Pipeline.init(allocator, project_dir, .full);
+        defer p.deinit();
+        try p.run(&db);
+
+        const first_getter_id = try findSingleNodeInStore(&db, project_name, "Function", "load_api_base_url", "main.py");
+        const second_getter_id = try findSingleNodeInStore(&db, project_name, "Function", "load_api_base_url_v2", "main.py");
+        const hyphen_key_id = try findSingleNodeInStore(&db, project_name, "Variable", "api-base-url", "settings.yaml");
+        const camel_key_id = try findSingleNodeInStore(&db, project_name, "Variable", "apiBaseUrl", "settings.yaml");
+
+        const first_edges = try db.findEdgesBySource(project_name, first_getter_id, "CONFIGURES");
+        defer db.freeEdges(first_edges);
+        try std.testing.expect(edgeTargetsContain(first_edges, hyphen_key_id));
+        try std.testing.expect(edgeTargetsContain(first_edges, camel_key_id));
+
+        const second_edges = try db.findEdgesBySource(project_name, second_getter_id, "CONFIGURES");
+        defer db.freeEdges(second_edges);
+        try std.testing.expect(edgeTargetsContain(second_edges, hyphen_key_id));
+        try std.testing.expect(edgeTargetsContain(second_edges, camel_key_id));
+    }
+
+    {
+        var db = try store.Store.openMemory(allocator);
+        defer db.deinit();
+
+        const project_dir = "testdata/interop/edge-parity";
+        const project_name = std.fs.path.basename(project_dir);
+
+        var p = pipeline.Pipeline.init(allocator, project_dir, .full);
+        defer p.deinit();
+        try p.run(&db);
+
+        const read_state_id = try findSingleNodeInStore(&db, project_name, "Function", "read_state", "read_write_local_state.py");
+        const write_state_id = try findSingleNodeInStore(&db, project_name, "Function", "write_state", "read_write_local_state.py");
+
+        const reads = try db.findEdgesBySource(project_name, read_state_id, "READS");
+        defer db.freeEdges(reads);
+        try std.testing.expectEqual(@as(usize, 0), reads.len);
+
+        const writes = try db.findEdgesBySource(project_name, write_state_id, "WRITES");
+        defer db.freeEdges(writes);
+        try std.testing.expectEqual(@as(usize, 0), writes.len);
+    }
+}
+
 fn edgeTargetsContain(edges: []const store.Edge, target_id: i64) bool {
     for (edges) |edge| {
         if (edge.target_id == target_id) return true;

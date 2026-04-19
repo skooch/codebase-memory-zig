@@ -1,33 +1,43 @@
 {
   "delete_project": [],
   "detect_changes_count": 0,
-  "fixture_id": "edge-parity",
+  "fixture_id": "config-expansion-yaml-key-shapes",
   "get_architecture": [],
   "get_code_snippet": [],
   "get_graph_schema": [],
   "index_repository": {
-    "edges_actual": 27,
-    "edges_min": 15,
-    "nodes_actual": 19,
-    "nodes_min": 10
+    "edges_actual": 12,
+    "edges_min": 10,
+    "nodes_actual": 9,
+    "nodes_min": 8
   },
   "index_status": [],
   "list_projects": [
-    "edge-parity"
+    "yaml_key_shapes"
   ],
   "manage_adr": [],
   "query_graph": [
     {
       "columns": [
         "a.name",
-        "r.type",
         "b.name"
       ],
       "rows": [
         [
-          "validate",
-          "RAISES",
-          "ValidationError"
+          "load_api_base_url",
+          "api-base-url"
+        ],
+        [
+          "load_api_base_url",
+          "apiBaseUrl"
+        ],
+        [
+          "load_api_base_url_v2",
+          "api-base-url"
+        ],
+        [
+          "load_api_base_url_v2",
+          "apiBaseUrl"
         ]
       ]
     },
@@ -37,51 +47,12 @@
       ],
       "rows": [
         [
-          "build_config"
+          "api-base-url"
         ],
         [
-          "process"
-        ],
-        [
-          "read_state"
-        ],
-        [
-          "update_config"
-        ],
-        [
-          "validate"
-        ],
-        [
-          "write_state"
+          "apiBaseUrl"
         ]
       ]
-    },
-    {
-      "columns": [
-        "n.name"
-      ],
-      "rows": [
-        [
-          "Config"
-        ],
-        [
-          "ValidationError"
-        ]
-      ]
-    },
-    {
-      "columns": [
-        "a.name",
-        "b.name"
-      ],
-      "rows": []
-    },
-    {
-      "columns": [
-        "a.name",
-        "b.name"
-      ],
-      "rows": []
     }
   ],
   "search_code": [],
