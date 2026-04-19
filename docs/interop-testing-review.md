@@ -103,6 +103,7 @@ The interop and parity verification surface is now strong enough to support the 
 - the shared `query_graph` contract is now behavior-tested past simple counts, including bounded `DISTINCT`, boolean-precedence filters, numeric property predicates, and edge-type filtering
 - the bounded Go hybrid-resolution sidecar contract is now exercised on both the original single-call fixture and the expanded multi-document fixture
 - the broader route surface now explicitly includes one additional strict shared framework slice via `route-expansion-httpx`, while `keyword_request_styles` and `semantic-expansion-send-task` stay diagnostic-only by design
+- the shared long-tail edge floor now explicitly includes bounded zero-row `WRITES` / `READS` coverage across the exercised Python, JavaScript, TypeScript, and local-state micro-cases
 - zig-only golden verification is green
 - CLI parity verification is green
 - nightly full reference comparison is visible rather than silent

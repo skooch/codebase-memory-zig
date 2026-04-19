@@ -105,6 +105,13 @@
     },
     {
       "columns": [
+        "a.name",
+        "b.name"
+      ],
+      "rows": []
+    },
+    {
+      "columns": [
         "n.name"
       ],
       "rows": [

@@ -238,6 +238,13 @@
     },
     {
       "columns": [
+        "a.name",
+        "b.name"
+      ],
+      "rows": []
+    },
+    {
+      "columns": [
         "a.label",
         "a.name",
         "b.label",
