@@ -52,6 +52,7 @@ pub const UnresolvedCall = struct {
     full_callee_name: []const u8 = "",
     file_path: []const u8,
     first_string_arg: []const u8 = "",
+    second_string_arg: []const u8 = "",
     route_path: []const u8 = "",
     route_handler_ref: []const u8 = "",
     route_method: []const u8 = "",
@@ -514,6 +515,7 @@ pub fn extractFile(
                         callee),
                     .file_path = try allocator.dupe(u8, rel),
                     .first_string_arg = if (call_metadata) |meta| try allocator.dupe(u8, meta.first_string_arg) else "",
+                    .second_string_arg = if (call_metadata) |meta| try allocator.dupe(u8, meta.second_string_arg) else "",
                     .route_path = if (route_call) try allocator.dupe(u8, route_metadata.?.route_path) else "",
                     .route_handler_ref = if (route_call) try allocator.dupe(u8, route_metadata.?.handler_ref) else "",
                     .route_method = if (route_call) try allocator.dupe(u8, route_metadata.?.method) else "",
@@ -1251,6 +1253,7 @@ const AsyncDecoratorMetadata = struct {
 const CallLineMetadata = struct {
     callee_full: []const u8,
     first_string_arg: []const u8,
+    second_string_arg: []const u8,
 };
 
 fn parseCallLineMetadataForLeaf(line: []const u8, callee_leaf: []const u8) ?CallLineMetadata {
@@ -1270,6 +1273,7 @@ fn parseCallLineMetadataForLeaf(line: []const u8, callee_leaf: []const u8) ?Call
         return .{
             .callee_full = callee_full,
             .first_string_arg = firstStringArg(args) orelse "",
+            .second_string_arg = nthStringArg(args, 1) orelse "",
         };
     }
     return null;
@@ -1298,7 +1302,7 @@ fn parseRouteRegistrationMetadata(line: []const u8) ?RouteRegistrationMetadata {
             search_start = paren + 1;
             continue;
         };
-        const handler_ref = handlerRefAfterRoutePath(args, route_path) orelse {
+        const handler_ref = handlerRefAfterRoutePath(args, route_path) orelse handlerRefFromKeywords(args) orelse {
             search_start = paren + 1;
             continue;
         };
@@ -1311,7 +1315,7 @@ fn parseRouteRegistrationMetadata(line: []const u8) ?RouteRegistrationMetadata {
             .callee_full = callee_full,
             .route_path = route_path,
             .handler_ref = handler_ref,
-            .method = method,
+            .method = routeRegistrationMethodOverride(args) orelse method,
         };
     }
     return null;
@@ -1484,7 +1488,12 @@ fn firstAsyncTopicArg(args: []const u8) ?[]const u8 {
 }
 
 fn firstStringArg(args: []const u8) ?[]const u8 {
+    return nthStringArg(args, 0);
+}
+
+fn nthStringArg(args: []const u8, target_index: usize) ?[]const u8 {
     var idx: usize = 0;
+    var seen: usize = 0;
     while (idx < args.len) : (idx += 1) {
         const ch = args[idx];
         if (ch != '"' and ch != '\'' and ch != '`') continue;
@@ -1504,7 +1513,8 @@ fn firstStringArg(args: []const u8) ?[]const u8 {
             if (args[idx] == quote) break;
         }
         if (idx <= args.len and start < idx) {
-            return args[start..idx];
+            if (seen == target_index) return args[start..idx];
+            seen += 1;
         }
     }
     return null;
@@ -1518,14 +1528,104 @@ fn handlerRefAfterRoutePath(args: []const u8, route_path: []const u8) ?[]const u
     idx += 1;
     while (idx < args.len and std.ascii.isWhitespace(args[idx])) : (idx += 1) {}
     if (idx >= args.len) return null;
+    if (peekNonSpace(args, idx) == '=') return null;
     if (args[idx] == '"' or args[idx] == '\'' or args[idx] == '`' or args[idx] == '{' or args[idx] == '[') return null;
 
     const start = idx;
     while (idx < args.len and (isIdentifierChar(args[idx]) or args[idx] == '.')) : (idx += 1) {}
     if (idx == start) return null;
+    if (peekNonSpace(args, idx) == '=') return null;
     const ref = args[start..idx];
     if (isKeywordCandidate(ref)) return null;
     return ref;
+}
+
+fn handlerRefFromKeywords(args: []const u8) ?[]const u8 {
+    const names = [_][]const u8{ "endpoint", "view_func", "handler", "callback" };
+    for (names) |name| {
+        if (keywordArgRef(args, name)) |ref| return ref;
+    }
+    return null;
+}
+
+fn routeRegistrationMethodOverride(args: []const u8) ?[]const u8 {
+    if (keywordArgHttpMethod(args, "method")) |method| return method;
+    if (keywordArgHttpMethod(args, "methods")) |method| return method;
+    return null;
+}
+
+fn keywordArgRef(args: []const u8, key: []const u8) ?[]const u8 {
+    var start: usize = 0;
+    while (start < args.len) {
+        const idx = std.mem.indexOfPos(u8, args, start, key) orelse return null;
+        if (!isKeywordBoundary(args, idx, key.len)) {
+            start = idx + key.len;
+            continue;
+        }
+        var cursor = idx + key.len;
+        while (cursor < args.len and std.ascii.isWhitespace(args[cursor])) : (cursor += 1) {}
+        if (cursor >= args.len or args[cursor] != '=') {
+            start = idx + key.len;
+            continue;
+        }
+        cursor += 1;
+        while (cursor < args.len and std.ascii.isWhitespace(args[cursor])) : (cursor += 1) {}
+        if (cursor >= args.len) return null;
+        if (args[cursor] == '"' or args[cursor] == '\'' or args[cursor] == '`' or args[cursor] == '{' or args[cursor] == '[') return null;
+        const value_start = cursor;
+        while (cursor < args.len and (isIdentifierChar(args[cursor]) or args[cursor] == '.')) : (cursor += 1) {}
+        if (cursor == value_start) return null;
+        const ref = args[value_start..cursor];
+        if (isKeywordCandidate(ref)) return null;
+        return ref;
+    }
+    return null;
+}
+
+fn keywordArgHttpMethod(args: []const u8, key: []const u8) ?[]const u8 {
+    var start: usize = 0;
+    while (start < args.len) {
+        const idx = std.mem.indexOfPos(u8, args, start, key) orelse return null;
+        if (!isKeywordBoundary(args, idx, key.len)) {
+            start = idx + key.len;
+            continue;
+        }
+        var cursor = idx + key.len;
+        while (cursor < args.len and std.ascii.isWhitespace(args[cursor])) : (cursor += 1) {}
+        if (cursor >= args.len or args[cursor] != '=') {
+            start = idx + key.len;
+            continue;
+        }
+        const tail = args[cursor + 1 ..];
+        const method_text = firstStringArg(tail) orelse return null;
+        return canonicalHttpMethodLiteral(method_text);
+    }
+    return null;
+}
+
+fn canonicalHttpMethodLiteral(text: []const u8) ?[]const u8 {
+    if (std.ascii.eqlIgnoreCase(text, "GET")) return "GET";
+    if (std.ascii.eqlIgnoreCase(text, "POST")) return "POST";
+    if (std.ascii.eqlIgnoreCase(text, "PUT")) return "PUT";
+    if (std.ascii.eqlIgnoreCase(text, "DELETE")) return "DELETE";
+    if (std.ascii.eqlIgnoreCase(text, "PATCH")) return "PATCH";
+    if (std.ascii.eqlIgnoreCase(text, "HEAD")) return "HEAD";
+    if (std.ascii.eqlIgnoreCase(text, "OPTIONS")) return "OPTIONS";
+    return null;
+}
+
+fn isKeywordBoundary(text: []const u8, idx: usize, len: usize) bool {
+    const before_ok = idx == 0 or !(isIdentifierChar(text[idx - 1]) or text[idx - 1] == '.');
+    const end = idx + len;
+    const after_ok = end >= text.len or !(isIdentifierChar(text[end]) or text[end] == '.');
+    return before_ok and after_ok;
+}
+
+fn peekNonSpace(text: []const u8, idx: usize) u8 {
+    var cursor = idx;
+    while (cursor < text.len and std.ascii.isWhitespace(text[cursor])) : (cursor += 1) {}
+    if (cursor >= text.len) return 0;
+    return text[cursor];
 }
 
 fn routeRegistrationMethod(callee_full: []const u8) ?[]const u8 {
@@ -3382,6 +3482,7 @@ fn freePendingUnresolvedCalls(allocator: std.mem.Allocator, calls: *std.ArrayLis
         if (c.full_callee_name.len > 0) allocator.free(c.full_callee_name);
         allocator.free(c.file_path);
         if (c.first_string_arg.len > 0) allocator.free(c.first_string_arg);
+        if (c.second_string_arg.len > 0) allocator.free(c.second_string_arg);
         if (c.route_path.len > 0) allocator.free(c.route_path);
         if (c.route_handler_ref.len > 0) allocator.free(c.route_handler_ref);
         if (c.route_method.len > 0) allocator.free(c.route_method);
@@ -3439,6 +3540,7 @@ pub fn freeUnresolvedCalls(allocator: std.mem.Allocator, calls: []UnresolvedCall
         if (c.full_callee_name.len > 0) allocator.free(c.full_callee_name);
         allocator.free(c.file_path);
         if (c.first_string_arg.len > 0) allocator.free(c.first_string_arg);
+        if (c.second_string_arg.len > 0) allocator.free(c.second_string_arg);
         if (c.route_path.len > 0) allocator.free(c.route_path);
         if (c.route_handler_ref.len > 0) allocator.free(c.route_handler_ref);
         if (c.route_method.len > 0) allocator.free(c.route_method);
@@ -4173,6 +4275,15 @@ test "route registration metadata captures path handler and method" {
     try std.testing.expectEqualStrings("ANY", any_route.method);
     try std.testing.expectEqualStrings("handlers.list", any_route.handler_ref);
 
+    const keyword_route = parseRouteRegistrationMetadata("app.add_api_route('/api/orders', endpoint=listOrders, methods=['GET'])") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("/api/orders", keyword_route.route_path);
+    try std.testing.expectEqualStrings("listOrders", keyword_route.handler_ref);
+    try std.testing.expectEqualStrings("GET", keyword_route.method);
+
+    const flask_route = parseRouteRegistrationMetadata("app.add_url_rule('/api/users', view_func=handlers.list_users, methods=['POST'])") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("handlers.list_users", flask_route.handler_ref);
+    try std.testing.expectEqualStrings("POST", flask_route.method);
+
     try std.testing.expect(parseRouteRegistrationMetadata("requests.get(\"/api/users\")") == null);
 }
 
@@ -4180,6 +4291,12 @@ test "call metadata captures dotted callee and first string arg" {
     const get_meta = parseCallLineMetadataForLeaf("response = requests.get(\"/api/users\")", "get") orelse return error.TestUnexpectedResult;
     try std.testing.expectEqualStrings("requests.get", get_meta.callee_full);
     try std.testing.expectEqualStrings("/api/users", get_meta.first_string_arg);
+    try std.testing.expectEqualStrings("", get_meta.second_string_arg);
+
+    const request_meta = parseCallLineMetadataForLeaf("return requests.request(\"GET\", \"/api/orders\")", "request") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("requests.request", request_meta.callee_full);
+    try std.testing.expectEqualStrings("GET", request_meta.first_string_arg);
+    try std.testing.expectEqualStrings("/api/orders", request_meta.second_string_arg);
 
     const json_meta = parseCallLineMetadataForLeaf("return response.json()", "json") orelse return error.TestUnexpectedResult;
     try std.testing.expectEqualStrings("response.json", json_meta.callee_full);

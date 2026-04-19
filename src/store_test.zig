@@ -217,6 +217,62 @@ test "store indexes powershell and gdscript fixture definitions" {
     }
 }
 
+test "store indexes keyword route registrations and send_task semantic fixtures" {
+    const allocator = std.testing.allocator;
+
+    {
+        var db = try store.Store.openMemory(allocator);
+        defer db.deinit();
+
+        const project_dir = "testdata/interop/route-expansion/keyword_request_styles";
+        const project_name = std.fs.path.basename(project_dir);
+
+        var p = pipeline.Pipeline.init(allocator, project_dir, .full);
+        defer p.deinit();
+        try p.run(&db);
+
+        const route_id = try findSingleNodeInStore(&db, project_name, "Route", "/api/orders", "app.py");
+        const handler_id = try findSingleNodeInStore(&db, project_name, "Function", "list_orders", "app.py");
+        const caller_id = try findSingleNodeInStore(&db, project_name, "Function", "fetch_orders", "app.py");
+
+        const handles = try db.findEdgesBySource(project_name, handler_id, "HANDLES");
+        defer db.freeEdges(handles);
+        try std.testing.expect(edgeTargetsContain(handles, route_id));
+
+        const http_calls = try db.findEdgesBySource(project_name, caller_id, "HTTP_CALLS");
+        defer db.freeEdges(http_calls);
+        try std.testing.expect(edgeTargetsContain(http_calls, route_id));
+
+        const data_flows = try db.findEdgesBySource(project_name, caller_id, "DATA_FLOWS");
+        defer db.freeEdges(data_flows);
+        try std.testing.expect(edgeTargetsContain(data_flows, handler_id));
+    }
+
+    {
+        var db = try store.Store.openMemory(allocator);
+        defer db.deinit();
+
+        const project_dir = "testdata/interop/semantic-expansion/celery_send_task";
+        const project_name = std.fs.path.basename(project_dir);
+
+        var p = pipeline.Pipeline.init(allocator, project_dir, .full);
+        defer p.deinit();
+        try p.run(&db);
+
+        const route_id = try findSingleNodeInStore(&db, project_name, "Route", "users.refresh", "main.py");
+        const publisher_id = try findSingleNodeInStore(&db, project_name, "Function", "enqueue_users", "main.py");
+        const subscriber_id = try findSingleNodeInStore(&db, project_name, "Function", "refresh_users", "main.py");
+
+        const async_calls = try db.findEdgesBySource(project_name, publisher_id, "ASYNC_CALLS");
+        defer db.freeEdges(async_calls);
+        try std.testing.expect(edgeTargetsContain(async_calls, route_id));
+
+        const handles = try db.findEdgesBySource(project_name, subscriber_id, "HANDLES");
+        defer db.freeEdges(handles);
+        try std.testing.expect(edgeTargetsContain(handles, route_id));
+    }
+}
+
 fn edgeTargetsContain(edges: []const store.Edge, target_id: i64) bool {
     for (edges) |edge| {
         if (edge.target_id == target_id) return true;

@@ -2143,6 +2143,111 @@
       }
     },
     {
+      "id": "route-expansion-keyword-request",
+      "path": "testdata/interop/route-expansion/keyword_request_styles",
+      "project": "keyword_request_styles",
+      "language": "python",
+      "scope_tools": ["index_repository", "query_graph", "list_projects"],
+      "assertions": {
+        "index_repository": {
+          "expect": { "nodes_min": 6, "edges_min": 6 }
+        },
+        "query_graph": [
+          {
+            "args": {
+              "query": "MATCH (n) WHERE n.label = 'Route' RETURN n.name ORDER BY n.name ASC",
+              "project": "keyword_request_styles",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["n.name"],
+              "required_rows": [["/api/orders"]]
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:HANDLES]->(b) RETURN a.name, b.name ORDER BY a.name, b.name",
+              "project": "keyword_request_styles",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["a.name", "b.name"],
+              "required_rows": [["list_orders", "/api/orders"]]
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:HTTP_CALLS]->(b) WHERE a.name = 'fetch_orders' RETURN a.name, b.name ORDER BY a.name, b.name",
+              "project": "keyword_request_styles",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["a.name", "b.name"],
+              "required_rows": [["fetch_orders", "/api/orders"]]
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:DATA_FLOWS]->(b) WHERE a.name = 'fetch_orders' RETURN a.name, b.name ORDER BY a.name, b.name",
+              "project": "keyword_request_styles",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["a.name", "b.name"],
+              "required_rows": [["fetch_orders", "list_orders"]]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "semantic-expansion-send-task",
+      "path": "testdata/interop/semantic-expansion/celery_send_task",
+      "project": "celery_send_task",
+      "language": "python",
+      "scope_tools": ["index_repository", "query_graph", "list_projects"],
+      "assertions": {
+        "index_repository": {
+          "expect": { "nodes_min": 4, "edges_min": 4 }
+        },
+        "query_graph": [
+          {
+            "args": {
+              "query": "MATCH (a)-[r:ASYNC_CALLS]->(b) WHERE a.name = 'enqueue_users' RETURN a.name, b.name ORDER BY a.name, b.name",
+              "project": "celery_send_task",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["a.name", "b.name"],
+              "required_rows": [["enqueue_users", "users.refresh"]]
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:EMITS]->(b) WHERE a.name = 'enqueue_users' RETURN a.name, b.name ORDER BY a.name, b.name",
+              "project": "celery_send_task",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["a.name", "b.name"],
+              "required_rows": [["enqueue_users", "users.refresh"]]
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:SUBSCRIBES]->(b) WHERE a.name = 'refresh_users' RETURN a.name, b.name ORDER BY a.name, b.name",
+              "project": "celery_send_task",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["a.name", "b.name"],
+              "required_rows": [["refresh_users", "users.refresh"]]
+            }
+          }
+        ]
+      }
+    },
+    {
       "id": "graph-enrichment-config-deps",
       "path": "testdata/interop/graph-enrichment/config-deps",
       "project": "config-deps",

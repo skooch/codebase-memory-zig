@@ -134,6 +134,17 @@ fn setupIndexedPubSubProject(allocator: std.mem.Allocator, db: *store.Store) ![]
     return project_dir;
 }
 
+fn setupIndexedFixtureProject(allocator: std.mem.Allocator, db: *store.Store, fixture_dir: []const u8) ![]const u8 {
+    const project_dir = try allocator.dupe(u8, fixture_dir);
+    errdefer allocator.free(project_dir);
+
+    var p = pipeline.Pipeline.init(allocator, project_dir, .full);
+    defer p.deinit();
+    try p.run(db);
+
+    return project_dir;
+}
+
 test "searchCodePayload returns matching results" {
     const allocator = std.testing.allocator;
 
@@ -322,6 +333,52 @@ test "getArchitecturePayload includes message summaries" {
 
     try std.testing.expect(payload.len > 0 and payload[0] == '{');
     try std.testing.expect(std.mem.indexOf(u8, payload, "\"messages\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, payload, "users.refresh") != null);
+    try std.testing.expect(std.mem.indexOf(u8, payload, "enqueue_users") != null);
+    try std.testing.expect(std.mem.indexOf(u8, payload, "refresh_users") != null);
+}
+
+test "getArchitecturePayload includes keyword route registration summaries" {
+    const allocator = std.testing.allocator;
+
+    var db = try store.Store.openMemory(allocator);
+    defer db.deinit();
+
+    const project_dir = try setupIndexedFixtureProject(allocator, &db, "testdata/interop/route-expansion/keyword_request_styles");
+    defer allocator.free(project_dir);
+
+    const project_name = std.fs.path.basename(project_dir);
+
+    var router = QueryRouter.init(allocator, &db);
+    const payload = try router.getArchitecturePayload(.{
+        .project = project_name,
+        .include_routes = true,
+    });
+    defer allocator.free(payload);
+
+    try std.testing.expect(std.mem.indexOf(u8, payload, "/api/orders") != null);
+    try std.testing.expect(std.mem.indexOf(u8, payload, "fetch_orders") != null);
+    try std.testing.expect(std.mem.indexOf(u8, payload, "HTTP_CALLS") != null);
+}
+
+test "getArchitecturePayload includes send_task message summaries" {
+    const allocator = std.testing.allocator;
+
+    var db = try store.Store.openMemory(allocator);
+    defer db.deinit();
+
+    const project_dir = try setupIndexedFixtureProject(allocator, &db, "testdata/interop/semantic-expansion/celery_send_task");
+    defer allocator.free(project_dir);
+
+    const project_name = std.fs.path.basename(project_dir);
+
+    var router = QueryRouter.init(allocator, &db);
+    const payload = try router.getArchitecturePayload(.{
+        .project = project_name,
+        .include_messages = true,
+    });
+    defer allocator.free(payload);
+
     try std.testing.expect(std.mem.indexOf(u8, payload, "users.refresh") != null);
     try std.testing.expect(std.mem.indexOf(u8, payload, "enqueue_users") != null);
     try std.testing.expect(std.mem.indexOf(u8, payload, "refresh_users") != null);
