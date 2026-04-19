@@ -18,7 +18,7 @@ Verification posture today:
 - Treat [port-comparison.md](/Users/skooch/projects/codebase-memory-zig/docs/port-comparison.md) as the authoritative statement of what the repo can truthfully claim today.
 
 Known coverage gaps in the current automated suite:
-- Current local audit on `2026-04-19`: `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh --zig-only`, `bash scripts/run_cli_parity.sh --zig-only`, and the current ops suite entrypoints all pass. The route-cross-service expansion worktree also completed `bash scripts/run_interop_alignment.sh --update-golden`, `bash scripts/run_interop_alignment.sh --zig-only`, and the full `bash scripts/run_interop_alignment.sh` compare with `30` fixtures, `230` comparisons, `132` strict matches, `34` diagnostic-only comparisons, and one bounded residual mismatch: `go-parity/query_graph`, where Zig returns the `Class -> DEFINES_METHOD -> Method` row and the C reference still returns zero rows.
+- Current local audit on `2026-04-19`: `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh --zig-only`, `bash scripts/run_cli_parity.sh --zig-only`, and the current ops suite entrypoints all pass. The config-normalization and read-write contract worktree also completed `bash scripts/run_interop_alignment.sh --update-golden`, `bash scripts/run_interop_alignment.sh --zig-only`, and the full `bash scripts/run_interop_alignment.sh` compare with `31` fixtures, `237` comparisons, `135` strict matches, `35` diagnostic-only comparisons, and one bounded residual mismatch: `go-parity/query_graph`, where Zig returns the `Class -> DEFINES_METHOD -> Method` row and the C reference still returns zero rows.
 - Full Zig-vs-C parity is nightly, not per-PR, so merge-blocking CI relies on zig-only goldens plus unit and integration tests.
 - Packaging and setup entrypoints are exercised by verification runs and workflows, but do not yet have exhaustive cross-platform regression automation for every shell or archive flow.
 - Windows coverage is strong at config-path, installer-layout, and PowerShell entrypoint level, but not exhaustive of native runtime and filesystem edge cases.
@@ -57,11 +57,11 @@ Completed now:
   - `Strict matches: 58`
   - `Diagnostic-only comparisons: 9`
   - `Mismatches: 0`
-- The expanded full harness after the route and cross-service expansion currently reports:
-  - `Fixtures: 30`
-  - `Comparisons: 230`
-  - `Strict matches: 132`
-  - `Diagnostic-only comparisons: 34`
+- The expanded full harness after the config-normalization and read-write contract work currently reports:
+  - `Fixtures: 31`
+  - `Comparisons: 237`
+  - `Strict matches: 135`
+  - `Diagnostic-only comparisons: 35`
   - `Known mismatches: 1`
   - `cli_progress: match`
   - no remaining snippet, search, JavaScript-ordering, Java query-shape, or error-path comparison mismatches
@@ -128,7 +128,7 @@ Completed in Plan 03:
 - Advanced trace parity: modes (calls/data_flow/cross_service), multi-edge-type BFS, risk labels, test-file filtering, function_name alias, structured callees/callers response format.
 
 Completed in Plan 05:
-- Long-tail edge parity: `THROWS`/`RAISES` edges from throw statements (JS/TS/TSX). Verified end-to-end on the edge-parity fixture with RAISES resolving custom error classes. Out-of-scope edges: `OVERRIDE` (Go-only), `CONTAINS_PACKAGE` (never implemented in C), `WRITES` and `READS` (not proven original-overlap by the current C reference fixture).
+- Long-tail edge parity: `THROWS`/`RAISES` edges from throw statements (JS/TS/TSX). Verified end-to-end on the edge-parity fixture with RAISES resolving custom error classes. The public harness now also proves a bounded shared zero-row `WRITES` / `READS` contract on the local-state micro-case. Out-of-scope or still-unproven positive overlaps: `OVERRIDE` (Go-only), `CONTAINS_PACKAGE` (never implemented in C), and broader positive `WRITES` / `READS` extraction.
 
 ## Implemented Plan: Language Coverage Expansion
 
@@ -645,7 +645,7 @@ The historical rows below describe the acceptance targets used by completed shar
 | Call resolution | Zig misses some shared alias-heavy and suffix-heavy cases | The Zig pipeline resolves the same overlapping call edges as the original on parity fixtures with aliasing and cross-file imports | `src/registry.zig`, `src/pipeline.zig` | Pipeline tests plus interop trace/search assertions |
 | Usage / type-reference edges | Zig has useful `USAGE` output but not full shared parity | The Zig graph emits the same overlapping usage and type-reference facts as the original where both implementations already model them | `src/extractor.zig`, `src/pipeline.zig`, `src/store.zig` | Pipeline/store tests plus parity fixture graph queries |
 | Semantic edges | Zig covers a narrower semantic slice | The Zig graph emits the same overlapping `INHERITS`, `IMPLEMENTS`, and `DECORATES` facts as the original on shared target-language fixture cases | `src/extractor.zig`, `src/pipeline.zig`, `src/store.zig` | Pipeline tests plus parity fixture graph queries |
-| `CONFIGURES` / `USES_TYPE` | `CONFIGURES` and `USES_TYPE` are at shared-fixture parity; `WRITES` is not currently proven original-overlap by the C reference fixture | The Zig graph emits the same overlapping edge families, target resolution, and retained metadata as the original on parity fixtures that exercise config files and type references | `src/extractor.zig`, `src/pipeline.zig`, `src/graph_buffer.zig`, `src/store.zig` | Parity fixtures plus interop graph/query comparisons |
+| `CONFIGURES` / `USES_TYPE` | `CONFIGURES` and `USES_TYPE` are at shared-fixture parity; `WRITES` / `READS` now have a bounded shared zero-row micro-case contract, but broader positive overlap is still unproven | The Zig graph emits the same overlapping edge families, target resolution, and retained metadata as the original on parity fixtures that exercise config files and type references | `src/extractor.zig`, `src/pipeline.zig`, `src/graph_buffer.zig`, `src/store.zig` | Parity fixtures plus interop graph/query comparisons |
 | `THROWS` / `RAISES` | Zig now extracts throw/raise edges for JS/TS/TSX | The Zig graph emits `THROWS` and `RAISES` edges from throw statements with the same checked/unchecked classification heuristic as the original | `src/extractor.zig`, `src/pipeline.zig` | Edge-parity fixture plus store tests |
 | `install`, `uninstall`, `update` | Zig now proves the broader detected-scope matrix, but still keeps binary self-replacement deferred | The Zig CLI verifies broader detected-scope config persistence, reporting, and reversible filesystem changes in temp-HOME tests while keeping the shared Codex/Claude compare green against the original | `src/cli.zig`, `src/main.zig` | Temp-HOME command parity checks, expanded zig-only installer matrix lane, and shared Zig/C command comparison |
 | Auto-detected agent integrations | Zig now detects and reports the broader 10-agent matrix it claims to support, while the shipped default scope stays narrower | The Zig CLI auto-detects every current supported target in the same environments its temp-home harness creates and reports the same broader matrix shape the original documents | `src/cli.zig`, `src/main.zig` | Temp-HOME detection matrix tests plus CLI output comparison |
@@ -680,9 +680,9 @@ Deferred or optional future slices:
   - broader parser-backed families beyond Go and Java
 - Metadata and enrichment:
   - git-history coupling — now implemented (subprocess `git log`, `FILE_CHANGES_WITH` edges)
-  - long-tail edges — now implemented: `THROWS`/`RAISES` (JS/TS/TSX throw statements), decorator-backed `HANDLES`, and route-linked `DATA_FLOWS`; remaining or out-of-scope gaps: `OVERRIDE` (Go-only), `WRITES`/`READS` (not proven original-overlap by the current C reference fixture)
+  - long-tail edges — now implemented: `THROWS`/`RAISES` (JS/TS/TSX throw statements), decorator-backed `HANDLES`, route-linked `DATA_FLOWS`, and a bounded shared zero-row `WRITES` / `READS` micro-case; remaining or out-of-scope gaps: `OVERRIDE` (Go-only) and broader positive `WRITES` / `READS` overlap
   - route nodes — implemented for the graph-model parity fixture contract plus the completed `route-expansion-httpx`, `route-expansion-keyword-request`, and `semantic-expansion-send-task` follow-on fixtures (stub and concrete URL/path/topic `Route` nodes, verified decorator-backed `Route`/`HANDLES`, strict shared route-linked `DATA_FLOWS`, strict shared `ASYNC_CALLS`, route summary exposure, one additional strict shared `httpx` caller slice, zig-only verified keyword route registration and generic `requests.request` slices, and zig-only verified `celery.send_task` topic dispatch; the newest framework slices remain diagnostic-only in the full compare because the current C reference still returns empty row sets there)
-  - config-linking — implemented for the graph-model parity fixture contract plus the completed `config-expansion-env-var-python` follow-on fixture (Strategy 1 key-symbol + Strategy 2 dependency-import, strict shared key-symbol normalization fixture, raw-key preservation, `CONFIGURES` query visibility, Zig dependency-import deduplication coverage, and one additional strict shared env-style config-key slice; `WRITES` / `READS` remain unproven public-harness rows)
+  - config-linking — implemented for the graph-model parity fixture contract plus the completed `config-expansion-env-var-python` and `config-expansion-yaml-key-shapes` follow-on fixtures (Strategy 1 key-symbol + Strategy 2 dependency-import, strict shared key-symbol normalization fixture, raw-key preservation, `CONFIGURES` query visibility, Zig dependency-import deduplication coverage, one additional strict shared env-style config-key slice, and a strict shared YAML key-shape slice; broader positive `WRITES` / `READS` overlap remains separate)
   - richer decorator/enrichment promotion
   - completed entrypoint: [graph-model-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/graph-model-parity-plan.md)
 - Productization beyond the current contract:
