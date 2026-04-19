@@ -88,13 +88,14 @@ The remaining debt is real, but it is narrower:
    `search_graph` still maps a shared manifest contract onto different request shapes (`label` for the C reference, `label_pattern` for Zig). That is now documented inline in the harness, but it remains a designed comparison asymmetry rather than strict payload identity.
 
 5. The remaining full-reference delta is narrow and explicit.
-   The current full compare leaves one bounded residual mismatch: `go-parity/query_graph`, where Zig returns the `Class -> DEFINES_METHOD -> Method` row and the C reference still returns zero rows.
+   The current full compare leaves one bounded residual mismatch: `go-parity/query_graph`, where Zig returns the `Class -> DEFINES_METHOD -> Method` row and the C reference still returns zero rows. After the Cypher parity expansion pass, that residual is no longer evidence of a broader read-only executor gap; it is isolated Go extraction-side debt around method-ownership rows.
 
 ## Current Judgment
 
 The interop and parity verification surface is now strong enough to support the repo's documented daily-use contract:
 
 - all shared MCP tools are behavior-tested somewhere in the manifest
+- the shared `query_graph` contract is now behavior-tested past simple counts, including bounded `DISTINCT`, boolean filters, and edge-type filtering
 - zig-only golden verification is green
 - CLI parity verification is green
 - nightly full reference comparison is visible rather than silent

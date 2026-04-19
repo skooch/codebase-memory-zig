@@ -30,15 +30,18 @@
   - `testdata/interop/golden/go-parity.json`
 
 ### Phase 3: Reclassify the remaining gap and close the plan
-- **Status:** in_progress
+- **Status:** completed
 - Actions:
-  - Updating `docs/port-comparison.md`, `docs/gap-analysis.md`, and `docs/interop-testing-review.md` to describe the now-verified read-only Cypher floor accurately.
-  - Archiving the plan and progress log only after the docs and plan indexes reflect that the remaining `go-parity/query_graph` delta is extraction-side residual debt, not broader executor incompleteness.
+  - Updated `docs/port-comparison.md`, `docs/gap-analysis.md`, and `docs/interop-testing-review.md` to describe the verified read-only Cypher floor accurately and to keep the remaining `go-parity/query_graph` delta classified as extraction-side residual debt rather than executor-floor incompleteness.
+  - Archived the plan and progress log under `docs/plans/implemented/`.
+  - Advanced the queue in `docs/plans/new/README.md` so the next execution item is `03-search-and-snippet-contract-normalization-plan.md`.
 - Files modified:
   - `docs/port-comparison.md`
   - `docs/gap-analysis.md`
   - `docs/interop-testing-review.md`
   - `docs/plans/new/README.md`
+  - `docs/plans/implemented/02-cypher-and-query-parity-expansion-plan.md`
+  - `docs/plans/implemented/02-cypher-and-query-parity-expansion-progress.md`
 
 ## Errors
 | Timestamp | Error | Attempt | Resolution |

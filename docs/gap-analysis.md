@@ -18,7 +18,7 @@ Verification posture today:
 - Treat [port-comparison.md](/Users/skooch/projects/codebase-memory-zig/docs/port-comparison.md) as the authoritative statement of what the repo can truthfully claim today.
 
 Known coverage gaps in the current automated suite:
-- Current local audit on `2026-04-19`: `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh --zig-only`, `bash scripts/run_cli_parity.sh --zig-only`, and the current ops suite entrypoints all pass in the full-compare-mismatch-reduction worktree. The broader full Zig-vs-C compare now reports a single bounded residual mismatch: `go-parity/query_graph`, where Zig returns the `Class -> DEFINES_METHOD -> Method` row and the C reference still returns zero rows.
+- Current local audit on `2026-04-19`: `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh --zig-only`, `bash scripts/run_cli_parity.sh --zig-only`, and the current ops suite entrypoints all pass in the cypher-query-parity worktree. The broader full Zig-vs-C compare still reports a single bounded residual mismatch: `go-parity/query_graph`, where Zig returns the `Class -> DEFINES_METHOD -> Method` row and the C reference still returns zero rows.
 - Full Zig-vs-C parity is nightly, not per-PR, so merge-blocking CI relies on zig-only goldens plus unit and integration tests.
 - Packaging and setup entrypoints are exercised by verification runs and workflows, but do not yet have exhaustive cross-platform regression automation for every shell or archive flow.
 - Windows coverage is strong at config-path, installer-layout, and PowerShell entrypoint level, but not exhaustive of native runtime and filesystem edge cases.
@@ -119,7 +119,7 @@ Completed after the readiness gate:
 
 Intentionally deferred after Phase 7:
 - The remaining MCP work outside the completed daily-use slice, especially fuller Cypher parity.
-- Full Cypher parity beyond the broader day-to-day query subset now supporting node/edge reads, filtering, sorting, and counts.
+- Full Cypher parity beyond the broader day-to-day query subset now supporting node and edge reads, filtering, sorting, counts, distinct selection, bounded boolean conditions, and edge-type filtering.
 - Deeper usage/type-reference extraction parity and broader cross-language semantics beyond the current target daily-use slice.
 - Higher-order graph analytics and broader framework expansion beyond the now-implemented route, event-topic, and config-link fixture slices. (Git-history coupling is implemented; route nodes, event-topic links, and config-linking all have verified bounded slices.)
 - Broader installer/self-update behavior beyond the current source-build-friendly Codex CLI / Claude Code support.

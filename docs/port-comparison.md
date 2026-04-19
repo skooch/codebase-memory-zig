@@ -87,6 +87,7 @@ The current automated posture is strong enough to support the repo's daily-use p
 
 Current audit note on `2026-04-19`:
 
+- `zig build`: pass
 - `zig build test`: pass
 - `bash scripts/run_cli_parity.sh --zig-only`: pass
 - `bash scripts/run_interop_alignment.sh --zig-only`: pass (`28/28`)
@@ -101,7 +102,7 @@ Current audit note on `2026-04-19`:
 | Capability | Original C (`codebase-memory-mcp`) | Zig Port (`codebase-memory-zig`) | Status | Interoperable? | Notes |
 |-----------|-------------------------------------|----------------------------------|--------|----------------|-------|
 | Stated product goal | Full-featured code intelligence engine with 14 MCP tools, UI variant, 66 languages, 10-agent install path | Interoperable, higher-performance and more reliable daily-use port of the original | `Partial` | No | The Zig repo explicitly treats completion of Phase 7 as completion of the current target contract, not exhaustive parity. |
-| Readiness gate | Reference side of the interop harness | Completed and passing: `Strict matches: 58`, `Diagnostic-only comparisons: 9`, `Mismatches: 0` | `Near parity` | Yes | The first-gate harness is green; the expanded full harness now reports 28 fixtures, 392 comparisons, 127 strict matches, 30 diagnostic-only comparisons, 1 remaining mismatch, and `cli_progress: match`. |
+| Readiness gate | Reference side of the interop harness | Completed and passing: `Strict matches: 58`, `Diagnostic-only comparisons: 9`, `Mismatches: 0` | `Near parity` | Yes | The first-gate harness is green; the expanded full harness now reports 28 fixtures, 216 comparisons, 128 strict matches, 30 diagnostic-only comparisons, 1 remaining mismatch, and `cli_progress: match`. |
 | Broader post-readiness target | Everything in the original project | Current target contract only; long-tail parity moved to deferred backlog | `Partial` | No | See `docs/plans/implemented/post-readiness-zig-port-execution-plan.md`. |
 | Built-in graph UI | Yes, optional UI binary / HTTP server | No | `Cut` | No | Original has `src/ui/*` and `--ui` flags. Zig intentionally does not port the UI. |
 | Release/install packaging | Prebuilt release artifacts plus setup scripts and install scripts | Standard `cbm` release archives, checksums, install scripts, setup scripts, install docs, and a repo-owned release workflow | `Near parity` | Yes | The Zig repo now proves standard-binary packaging for macOS and Windows artifacts. UI variants plus signing/attestation remain intentionally narrower than the original pipeline. |
@@ -126,7 +127,7 @@ Current audit note on `2026-04-19`:
 |------|------------|----------|--------|----------------|-------|
 | `index_repository` | Full | Implemented | `Near parity` | Yes | Core readiness tool; interop-gated. |
 | `search_graph` | Full | Implemented with rich filters and pagination | `Near parity` | Yes | The Zig Phase 5 work specifically broadened this toward daily-use parity. |
-| `query_graph` | Full Cypher-oriented surface | Shared read-only Cypher parity floor for the fixture and harness query set | `Near parity` | Yes | The compare harness now scores shared query-contract parity instead of incidental row-shape drift when both sides satisfy the fixture floor. The one remaining residual is `go-parity`, where Zig returns the `Class -> DEFINES_METHOD -> Method` row and the C reference still returns zero rows. |
+| `query_graph` | Full Cypher-oriented surface | Shared read-only Cypher parity floor for node and edge reads, filtering, counts, distinct selection, and bounded boolean conditions | `Near parity` | Yes | The compare harness now scores shared query-contract parity instead of incidental row-shape drift when both sides satisfy the fixture floor. The one remaining residual is `go-parity`, where Zig returns the `Class -> DEFINES_METHOD -> Method` row and the C reference still returns zero rows; that is now bounded as a Go extraction-side difference rather than a broader executor-floor failure. |
 | `trace_call_path` / `trace_path` | Calls, data-flow, cross-service, risk labels, include-tests | Calls, data-flow, cross-service modes; multi-edge-type BFS; risk labels; test-file filtering; function_name alias; structured callees/callers response | `Near parity` | Yes | Zig now implements trace modes, risk classification, test filtering, and the richer response format matching the C reference surface. |
 | `get_code_snippet` | Full | Implemented | `Near parity` | Yes | Zig supports exact lookup, suffix fallback, ambiguity suggestions, neighbor info. The full-compare harness now normalizes the shared snippet contract instead of scoring implementation-specific qualified-name formatting. |
 | `get_graph_schema` | Full | Implemented | `Near parity` | Yes | Good match for the low-risk public surface. |
@@ -263,7 +264,7 @@ If someone asks “what still separates the Zig port from the original?”, the 
 | Difference | Why it matters |
 |-----------|----------------|
 | Discovery-scope semantics now diverge on the new fixture | Zig now enforces nested-ignore and generated-path exclusion in `search_code`, while the current C reference still returns those files on the discovery-scope fixture. |
-| No full Cypher parity | Some advanced graph query patterns remain C-only. |
+| No exhaustive Cypher parity | The verified shared floor now covers node and edge reads, filters, counts, distinct selection, and bounded boolean conditions, but more advanced graph-query permutations remain unproven or C-only. |
 | Broader route / cross-service framework expansion | Zig now emits verified decorator-backed `HANDLES`, strict shared route-linked `DATA_FLOWS`, strict shared async topic caller rows, route summaries, and the shared `route-expansion-httpx` caller fixture. Additional framework-specific route registrations beyond those verified slices remain optional future work. |
 | No LSP-assisted hybrid resolution | Some higher-fidelity call/type resolution paths remain original-only. |
 | Broader config normalization expansion | Git-history coupling is implemented, config linking has dependency-import matching and deduplication coverage, a strict shared key-symbol normalization fixture, and a strict shared env-style config-key fixture. Additional config-language/key-shape expansion remains optional future work, while `WRITES` / `READS` still lack a proven shared public-harness contract. |
@@ -287,7 +288,7 @@ That means the Zig port is already strong where this repo has chosen to compete:
 
 The remaining gap is no longer “the basics do not work.” The remaining gap is the long tail:
 
-- richer query parity
+- more exhaustive Cypher/query parity beyond the now-verified read-only floor
 - higher-order graph analytics beyond the verified route, event-topic, and config fixture contract
 - broader installer/product surface
 - optional subsystems that this repo has explicitly deferred or cut
