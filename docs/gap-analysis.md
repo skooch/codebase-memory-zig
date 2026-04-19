@@ -37,6 +37,8 @@ Completed now:
   - Zig
   - Go
   - Java
+  - PowerShell
+  - GDScript
 - The first-gate fixture harness baseline is:
   - `Strict matches: 58`
   - `Diagnostic-only comparisons: 9`
@@ -161,6 +163,80 @@ Intentional residual delta after completion:
 - the new Go and Java fixtures are verified Zig-side additions, but not yet a
   strict shared-parity claim because scoped C compare still has query-result
   deltas
+
+## Implemented Plan: Language Support Expansion Feature Cluster
+
+Current parser-backed tranche:
+- PowerShell
+  - top-level functions
+  - classes
+  - class methods with owner linkage
+- GDScript
+  - top-level `class_name`
+  - nested classes
+  - top-level functions
+  - class-owned methods
+
+Queue decision for this completed slice:
+- chosen first tranche
+  - PowerShell
+  - GDScript
+- explicit deferred next candidate
+  - QML
+
+Scored queue captured during selection:
+- PowerShell
+  - demand: high
+  - parser availability: high
+  - overlap with current Zig goals: high
+  - verification cost: low
+- GDScript
+  - demand: medium
+  - parser availability: high
+  - overlap with current Zig goals: medium
+  - verification cost: low
+- QML
+  - demand: medium
+  - parser availability: medium
+  - overlap with current Zig goals: medium
+  - verification cost: medium-high
+
+Completion evidence:
+- the plan is now archived at
+  [language-support-expansion-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/language-support-expansion-feature-cluster-plan.md)
+  and
+  [language-support-expansion-feature-cluster-progress.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/language-support-expansion-feature-cluster-progress.md)
+- `build.zig` now compiles vendored PowerShell and GDScript parsers
+- `scripts/fetch_grammars.sh` now fetches pinned PowerShell and GDScript
+  grammar sources in a Bash 3.2-compatible way
+- `src/discover.zig` now recognizes `.ps1`, `.psm1`, `.psd1`, and `.gd`
+- `src/extractor.zig` now uses tree-sitter for PowerShell and GDScript
+  definition extraction
+- [`docs/language-support.md`](/Users/skooch/projects/codebase-memory-zig/docs/language-support.md)
+  now separates extension detection, parser-backed extraction, and semantic
+  parity claims
+
+Completion verification on 2026-04-19:
+- `bash scripts/bootstrap_worktree.sh /Users/skooch/projects/codebase-memory-zig`
+- `bash scripts/fetch_grammars.sh --force`
+- `zig build`
+- `zig build test`
+- `CBM_CACHE_DIR=/Users/skooch/projects/worktrees/language-support-expansion/.cbm-cache-verify zig build run -- cli index_repository '{"project_path":"testdata/interop/language-expansion/powershell-basic"}'`
+- `CBM_CACHE_DIR=/Users/skooch/projects/worktrees/language-support-expansion/.cbm-cache-verify zig build run -- cli query_graph '{"project":"powershell-basic","query":"MATCH (n) WHERE n.file_path = \"main.ps1\" RETURN n.label, n.name ORDER BY n.label, n.name"}'`
+- `CBM_CACHE_DIR=/Users/skooch/projects/worktrees/language-support-expansion/.cbm-cache-verify zig build run -- cli index_repository '{"project_path":"testdata/interop/language-expansion/gdscript-basic"}'`
+- `CBM_CACHE_DIR=/Users/skooch/projects/worktrees/language-support-expansion/.cbm-cache-verify zig build run -- cli query_graph '{"project":"gdscript-basic","query":"MATCH (n) WHERE n.file_path = \"main.gd\" RETURN n.label, n.name ORDER BY n.label, n.name"}'`
+
+Observed results:
+- PowerShell fixture returned `Class Worker`, `Function Invoke-Users`, and
+  `Method Run`
+- GDScript fixture returned `Class Hero`, `Class Worker`, `Function boot`, and
+  `Method run`
+
+Intentional residual delta after completion:
+- QML remains the next candidate lane and is not extension-recognized or
+  parser-backed in this branch
+- PowerShell and GDScript are verified parser-backed additions, not yet a
+  broader semantic-parity claim against the original C implementation
 
 ## Implemented Plan: Operational Controls and Configurability
 

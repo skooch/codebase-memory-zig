@@ -128,8 +128,7 @@ The short version of that order is:
 6. operations script suite
 7. language coverage expansion
 8. hybrid type resolution
-9. broader language-support expansion
-10. broader semantic-graph expansion
+9. broader semantic-graph expansion
 
 ---
 
