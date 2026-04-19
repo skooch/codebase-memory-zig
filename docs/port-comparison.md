@@ -85,7 +85,7 @@ What this does **not** justify claiming:
 
 The current automated posture is strong enough to support the repo's daily-use parity claims. It is not strong enough to claim that every implemented feature and every error path is exhaustively locked down.
 
-Current audit note on `2026-04-19`:
+Current audit note on `2026-04-20`:
 
 - `zig build`: pass
 - `zig build test`: pass
@@ -132,7 +132,7 @@ Current audit note on `2026-04-19`:
 | `get_code_snippet` | Full | Implemented | `Near parity` | Yes | Zig supports exact lookup, suffix fallback, ambiguity suggestions, neighbor info. The full-compare harness now normalizes the shared snippet contract instead of scoring implementation-specific qualified-name formatting. |
 | `get_graph_schema` | Full | Implemented | `Near parity` | Yes | Good match for the low-risk public surface. |
 | `get_architecture` | Languages, packages, entry points, routes, hotspots, boundaries, layers, clusters, ADR | Shared architecture summary sections, counts, and structured fields aligned on the parity fixtures | `Near parity` | Yes | The harness now proves the overlapping architecture-summary contract is aligned; richer original-only route and clustering sections remain outside this shared row. |
-| `search_code` | Graph-augmented grep with ranking/dedup | Shared compact/full/files behavior mostly aligned, but the new discovery-scope fixture shows a real scope divergence on ignored/generated files | `Partial` | No | The Zig search path now matches the original on the earlier parity fixtures, including the JavaScript `boot` label case, but the discovery-scope fixture shows the current C reference still returning `generated/bundle.js` and `src/nested/ghost.js` where Zig now enforces indexed-scope exclusion. |
+| `search_code` | Graph-augmented grep with ranking/dedup | Shared compact/full/files behavior aligned on the verified parity fixtures, including discovery-scope ignored/generated-file cases | `Near parity` | Yes | The current direct fixture repro and full compare both show shared indexed-scope behavior on `discovery-scope`: both implementations return `src/index.ts` for `scopeVisible` and `0` results for the ignored/generated search terms. Ranking and enrichment details remain implementation-specific, but the claimed shared contract is green. |
 | `list_projects` | Full | Implemented | `Near parity` | Yes | Core readiness tool; counts remain diagnostic in first-gate comparisons. |
 | `delete_project` | Full | Implemented | `Near parity` | Yes | Includes watcher unregistration in Zig. |
 | `index_status` | Full | Implemented | `Near parity` | Yes | Exposed during Phase 3. |
@@ -263,7 +263,6 @@ If someone asks “what still separates the Zig port from the original?”, the 
 
 | Difference | Why it matters |
 |-----------|----------------|
-| Discovery-scope semantics now diverge on the new fixture | Zig now enforces nested-ignore and generated-path exclusion in `search_code`, while the current C reference still returns those files on the discovery-scope fixture. |
 | No exhaustive Cypher parity | The verified shared floor now covers node and edge reads, filters, counts, distinct selection, and bounded boolean conditions, but more advanced graph-query permutations remain unproven or C-only. |
 | Broader route / cross-service framework expansion | Zig now emits verified decorator-backed `HANDLES`, strict shared route-linked `DATA_FLOWS`, strict shared async topic caller rows, route summaries, the shared `route-expansion-httpx` caller fixture, plus zig-only verified keyword route registrations, generic `requests.request("METHOD", "/path")`, and `celery.send_task("topic")`. The new framework fixtures are still diagnostic-only in the full compare because the current C reference returns empty row sets there, so broader shared-framework parity remains open. |
 | No LSP-assisted hybrid resolution | Some higher-fidelity call/type resolution paths remain original-only. |

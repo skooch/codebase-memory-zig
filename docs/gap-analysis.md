@@ -18,7 +18,7 @@ Verification posture today:
 - Treat [port-comparison.md](/Users/skooch/projects/codebase-memory-zig/docs/port-comparison.md) as the authoritative statement of what the repo can truthfully claim today.
 
 Known coverage gaps in the current automated suite:
-- Current local audit on `2026-04-20`: `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh --zig-only`, `bash scripts/run_cli_parity.sh --zig-only`, and the current ops suite entrypoints all pass. The Go query-graph resolution worktree also completed `bash scripts/run_interop_alignment.sh` with `31` fixtures, `237` comparisons, `135` strict matches, `36` diagnostic-only comparisons, and `0` mismatches.
+- Current local audit on `2026-04-20`: `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh --zig-only`, `bash scripts/run_cli_parity.sh --zig-only`, and the current ops suite entrypoints all pass. The discovery-scope parity worktree also completed `bash scripts/run_interop_alignment.sh` with `31` fixtures, `237` comparisons, `135` strict matches, `36` diagnostic-only comparisons, and `0` mismatches, and direct Zig/C fixture repro confirmed shared `search_code` exclusion of ignored and generated files.
 - Full Zig-vs-C parity is nightly, not per-PR, so merge-blocking CI relies on zig-only goldens plus unit and integration tests.
 - Packaging and setup entrypoints are exercised by verification runs and workflows, but do not yet have exhaustive cross-platform regression automation for every shell or archive flow.
 - Windows coverage is strong at config-path, installer-layout, and PowerShell entrypoint level, but not exhaustive of native runtime and filesystem edge cases.

@@ -1,7 +1,7 @@
 # Interop Testing Review
 
 **Date:** 2026-04-20
-**Scope:** Current-state review of the interop and parity verification surface after the completed queued parity follow-on work  
+**Scope:** Current-state review of the interop and parity verification surface after the completed queued parity follow-on work
 **Status:** Updated
 
 ## Summary
@@ -90,6 +90,9 @@ The remaining debt is real, but it is narrower:
 
 5. Compare mode still intentionally permits bounded diagnostic drift.
    The former `go-parity/query_graph` hard mismatch is now scored as diagnostic-only because the shared contract no longer over-asserts the `Class -> DEFINES_METHOD -> Method` row. That keeps the full compare focused on genuine shared-surface failures rather than intentional extraction differences outside the asserted floor.
+
+6. The old discovery-scope warning is resolved.
+   The direct Zig/C repro and the full compare both now show `search_code` agreement on the `discovery-scope` fixture: `scopeVisible` returns `src/index.ts`, while `ghostIgnoredHit`, `generatedBundleHit`, and `ghostNestedHit` all return zero results on both implementations. The earlier docs overstated a divergence that is no longer present in the measured baseline.
 
 ## Current Judgment
 
