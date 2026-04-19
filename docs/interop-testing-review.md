@@ -11,9 +11,9 @@ The interop harness is in materially better shape than the 2026-04-12 review des
 Current verified state:
 - `zig build test` passes in the execution worktree.
 - `bash scripts/run_cli_parity.sh --zig-only` passes.
-- `bash scripts/run_interop_alignment.sh --zig-only` passes at `32/32`.
+- `bash scripts/run_interop_alignment.sh --zig-only` passes at `33/33`.
 - `bash scripts/run_interop_alignment.sh` now reports no hard mismatches instead of the earlier six-item set.
-- The current full compare baseline is `32` fixtures, `244` comparisons, `139` strict matches, `37` diagnostic-only comparisons, and `0` mismatches.
+- The current full compare baseline is `33` fixtures, `251` comparisons, `143` strict matches, `38` diagnostic-only comparisons, and `0` mismatches.
 - The nightly workflow no longer hides failures behind `continue-on-error`.
 
 The review from 2026-04-12 is no longer accurate as a live issue register. Several items it flagged have already been resolved in the repo, and the remaining debt is narrower than that review implied.
@@ -31,7 +31,7 @@ The review from 2026-04-12 is no longer accurate as a live issue register. Sever
 ### Fixture Footprint
 
 Current manifest footprint:
-- `32` fixtures in `testdata/interop/manifest.json`
+- `33` fixtures in `testdata/interop/manifest.json`
 - zig-only goldens committed for all manifest fixtures
 - basic, parity, graph-model, enrichment, discovery-scope, error-path, language-expansion, route-expansion, semantic-expansion, and config-expansion coverage all present
 
@@ -71,6 +71,7 @@ The following findings from the 2026-04-12 review are no longer current:
 - `zig-parity` exists.
 - Golden comparison already includes actual node and edge counts alongside thresholds and warns on significant drops.
 - `scripts/run_cli_parity.sh` is executable.
+- The shared manifest now also covers the expanded bounded Go hybrid-resolution sidecar slice.
 
 ## Remaining Verification Debt
 
@@ -100,6 +101,7 @@ The interop and parity verification surface is now strong enough to support the 
 
 - all shared MCP tools are behavior-tested somewhere in the manifest
 - the shared `query_graph` contract is now behavior-tested past simple counts, including bounded `DISTINCT`, boolean-precedence filters, numeric property predicates, and edge-type filtering
+- the bounded Go hybrid-resolution sidecar contract is now exercised on both the original single-call fixture and the expanded multi-document fixture
 - zig-only golden verification is green
 - CLI parity verification is green
 - nightly full reference comparison is visible rather than silent

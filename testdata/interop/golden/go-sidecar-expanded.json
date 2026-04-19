@@ -1,0 +1,70 @@
+{
+  "delete_project": [],
+  "detect_changes_count": 0,
+  "fixture_id": "go-sidecar-expanded",
+  "get_architecture": [],
+  "get_code_snippet": [],
+  "get_graph_schema": [],
+  "index_repository": {
+    "edges_actual": 19,
+    "edges_min": 8,
+    "nodes_actual": 16,
+    "nodes_min": 10
+  },
+  "index_status": [],
+  "list_projects": [
+    "go-sidecar-expanded"
+  ],
+  "manage_adr": [],
+  "query_graph": [
+    {
+      "columns": [
+        "a.name",
+        "b.name"
+      ],
+      "rows": [
+        [
+          "execute",
+          "Handle"
+        ],
+        [
+          "run",
+          "Handle"
+        ]
+      ]
+    }
+  ],
+  "search_code": [],
+  "search_graph": [
+    [
+      {
+        "file_path": "extras.go",
+        "label": "Function",
+        "name": "execute",
+        "qualified_name": "go-sidecar-expanded:extras.go:go:symbol:go:execute"
+      },
+      {
+        "file_path": "main.go",
+        "label": "Function",
+        "name": "run",
+        "qualified_name": "go-sidecar-expanded:main.go:go:symbol:go:run"
+      }
+    ]
+  ],
+  "tools_list": [
+    "delete_project",
+    "detect_changes",
+    "get_architecture",
+    "get_code_snippet",
+    "get_graph_schema",
+    "index_repository",
+    "index_status",
+    "list_projects",
+    "manage_adr",
+    "query_graph",
+    "search_code",
+    "search_graph",
+    "trace_call_path"
+  ],
+  "trace_call_path": []
+}

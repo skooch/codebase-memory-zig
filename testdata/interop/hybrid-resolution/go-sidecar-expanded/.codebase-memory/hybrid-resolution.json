@@ -1,0 +1,33 @@
+{
+  "version": "0.1",
+  "source": "hybrid-resolution",
+  "documents": [
+    {
+      "rel_path": "main.go",
+      "language": "golang",
+      "resolved_calls": [
+        {
+          "caller_qualified_name": "go-sidecar-expanded:main.go:go:symbol:go:run",
+          "callee_name": "Handle",
+          "full_callee_name": "selected.Handle",
+          "resolved_qualified_name": "go-sidecar-expanded:workers.go:go:symbol:go:Primary.Handle",
+          "strategy": "hybrid_sidecar",
+          "confidence": 0.96
+        }
+      ]
+    },
+    {
+      "rel_path": "extras.go",
+      "language": "golang",
+      "resolved_calls": [
+        {
+          "caller_qualified_name": "go-sidecar-expanded:extras.go:go:symbol:go:execute",
+          "callee_name": "Handle",
+          "resolved_qualified_name": "go-sidecar-expanded:workers.go:go:symbol:go:Worker.Handle",
+          "strategy": "hybrid_sidecar",
+          "confidence": 0.95
+        }
+      ]
+    }
+  ]
+}

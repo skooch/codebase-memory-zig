@@ -96,7 +96,8 @@ pub const Sidecar = struct {
 
 fn supportsDocument(language: []const u8) bool {
     if (language.len == 0) return true;
-    return std.ascii.eqlIgnoreCase(language, "go");
+    return std.ascii.eqlIgnoreCase(language, "go") or
+        std.ascii.eqlIgnoreCase(language, "golang");
 }
 
 fn callMatches(
@@ -155,4 +156,37 @@ test "hybrid resolution fixture-backed lookup resolves explicit call target" {
     );
     try std.testing.expectEqualStrings("hybrid_sidecar", resolved.strategy);
     try std.testing.expectApproxEqAbs(@as(f64, 0.97), resolved.confidence, 0.0001);
+}
+
+test "hybrid resolution supports language aliases and callee-name fallback" {
+    const allocator = std.testing.allocator;
+    const repo_dir = "testdata/interop/hybrid-resolution/go-sidecar-expanded";
+
+    var sidecar = try Sidecar.load(allocator, repo_dir);
+    defer sidecar.deinit();
+
+    const explicit = sidecar.resolveCall(
+        "main.go",
+        "go-sidecar-expanded:main.go:go:symbol:go:run",
+        "Handle",
+        "selected.Handle",
+    ) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings(
+        "go-sidecar-expanded:workers.go:go:symbol:go:Primary.Handle",
+        explicit.qualified_name,
+    );
+    try std.testing.expectApproxEqAbs(@as(f64, 0.96), explicit.confidence, 0.0001);
+
+    const fallback = sidecar.resolveCall(
+        "extras.go",
+        "go-sidecar-expanded:extras.go:go:symbol:go:execute",
+        "Handle",
+        "worker.Handle",
+    ) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings(
+        "go-sidecar-expanded:workers.go:go:symbol:go:Worker.Handle",
+        fallback.qualified_name,
+    );
+    try std.testing.expectEqualStrings("hybrid_sidecar", fallback.strategy);
+    try std.testing.expectApproxEqAbs(@as(f64, 0.95), fallback.confidence, 0.0001);
 }

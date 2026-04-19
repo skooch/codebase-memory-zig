@@ -2007,6 +2007,38 @@ test "pipeline prefers hybrid sidecar call targets over ambiguous registry match
     try std.testing.expect(std.mem.indexOf(u8, call_edges[0].properties_json, "\"strategy\":\"hybrid_sidecar\"") != null);
 }
 
+test "pipeline applies expanded hybrid sidecar resolutions across documents" {
+    const allocator = std.testing.allocator;
+    const project_dir = "testdata/interop/hybrid-resolution/go-sidecar-expanded";
+    const project_name = std.fs.path.basename(project_dir);
+
+    var db = try store.Store.openMemory(allocator);
+    defer db.deinit();
+
+    var pipeline = Pipeline.init(allocator, project_dir, .full);
+    defer pipeline.deinit();
+    try pipeline.run(&db);
+
+    const run_id = try findSingleNodeByNameInFile(&db, project_name, "Function", "run", "main.go");
+    const execute_id = try findSingleNodeByNameInFile(&db, project_name, "Function", "execute", "extras.go");
+
+    const run_edges = try db.findEdgesBySource(project_name, run_id, "CALLS");
+    defer db.freeEdges(run_edges);
+    try std.testing.expectEqual(@as(usize, 1), run_edges.len);
+    const run_target = (try db.findNodeById(project_name, run_edges[0].target_id)).?;
+    defer db.freeNode(run_target);
+    try std.testing.expect(std.mem.indexOf(u8, run_target.qualified_name, "Primary.Handle") != null);
+    try std.testing.expect(std.mem.indexOf(u8, run_edges[0].properties_json, "\"strategy\":\"hybrid_sidecar\"") != null);
+
+    const execute_edges = try db.findEdgesBySource(project_name, execute_id, "CALLS");
+    defer db.freeEdges(execute_edges);
+    try std.testing.expectEqual(@as(usize, 1), execute_edges.len);
+    const execute_target = (try db.findNodeById(project_name, execute_edges[0].target_id)).?;
+    defer db.freeNode(execute_target);
+    try std.testing.expect(std.mem.indexOf(u8, execute_target.qualified_name, "Worker.Handle") != null);
+    try std.testing.expect(std.mem.indexOf(u8, execute_edges[0].properties_json, "\"strategy\":\"hybrid_sidecar\"") != null);
+}
+
 test "pipeline falls back cleanly when hybrid sidecar is absent" {
     const allocator = std.testing.allocator;
     const project_id = std.crypto.random.int(u64);

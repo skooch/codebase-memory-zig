@@ -3,12 +3,12 @@
 Refresh date: 2026-04-20
 
 The previously queued parity follow-on work is complete. This file now records
-the next nine backlog plans, ordered by direct parity leverage and bounded
+the next eight backlog plans, ordered by direct parity leverage and bounded
 verification value.
 
 ## Current State
 
-- There are nine queued execution plans under `docs/plans/new/`.
+- There are eight queued execution plans under `docs/plans/new/`.
 - The most recent completed maintenance slices are
   [verification-remediation-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/verification-remediation-plan.md)
   and
@@ -17,31 +17,30 @@ verification value.
   [01-go-parity-query-graph-resolution-plan.md](/Users/skooch/projects/worktrees/go-parity-query-graph-resolution/docs/plans/implemented/01-go-parity-query-graph-resolution-plan.md),
   [02-search-code-discovery-scope-parity-plan.md](/Users/skooch/projects/worktrees/search-code-discovery-scope/docs/plans/implemented/02-search-code-discovery-scope-parity-plan.md),
   [03-full-cypher-query-parity-depth-plan.md](/Users/skooch/projects/worktrees/full-cypher-query-parity-depth/docs/plans/implemented/03-full-cypher-query-parity-depth-plan.md),
+  [04-hybrid-resolution-expansion-plan.md](/Users/skooch/projects/worktrees/hybrid-resolution-expansion/docs/plans/implemented/04-hybrid-resolution-expansion-plan.md),
   and
   [02-cypher-and-query-parity-expansion-plan.md](/Users/skooch/projects/worktrees/cypher-query-parity/docs/plans/implemented/02-cypher-and-query-parity-expansion-plan.md),
   [03-search-and-snippet-contract-normalization-plan.md](/Users/skooch/projects/worktrees/search-snippet-normalization/docs/plans/implemented/03-search-and-snippet-contract-normalization-plan.md),
   [04-route-and-cross-service-framework-expansion-plan.md](/Users/skooch/projects/worktrees/route-cross-service-expansion/docs/plans/implemented/04-route-and-cross-service-framework-expansion-plan.md),
   and
   [05-config-normalization-and-reads-writes-contract-plan.md](/Users/skooch/projects/worktrees/config-normalization-reads-writes/docs/plans/implemented/05-config-normalization-and-reads-writes-contract-plan.md).
-- The next queued execution item is [04-hybrid-resolution-expansion-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/04-hybrid-resolution-expansion-plan.md).
+- The next queued execution item is [05-route-and-cross-service-framework-depth-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/05-route-and-cross-service-framework-depth-plan.md).
 
 ## Next Queue
 
-1. [04-hybrid-resolution-expansion-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/04-hybrid-resolution-expansion-plan.md)
-   Expand hybrid-resolution support beyond the bounded Go sidecar slice.
-2. [05-route-and-cross-service-framework-depth-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/05-route-and-cross-service-framework-depth-plan.md)
+1. [05-route-and-cross-service-framework-depth-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/05-route-and-cross-service-framework-depth-plan.md)
    Broaden framework-specific route registration and broker coverage beyond the current bounded fixtures.
-3. [06-positive-reads-writes-contract-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/06-positive-reads-writes-contract-plan.md)
+2. [06-positive-reads-writes-contract-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/06-positive-reads-writes-contract-plan.md)
    Find and prove a positive-overlap shared `WRITES` / `READS` contract, or document the strongest bounded non-overlap.
-4. [07-go-java-shared-parity-promotion-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/07-go-java-shared-parity-promotion-plan.md)
+3. [07-go-java-shared-parity-promotion-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/07-go-java-shared-parity-promotion-plan.md)
    Promote Go and Java from verified Zig-side expansion to strict shared parity where the evidence supports it.
-5. [08-full-compare-gating-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/08-full-compare-gating-plan.md)
+4. [08-full-compare-gating-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/08-full-compare-gating-plan.md)
    Strengthen the full Zig-vs-C compare as a routine verification gate.
-6. [09-installer-productization-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/09-installer-productization-parity-plan.md)
+5. [09-installer-productization-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/09-installer-productization-parity-plan.md)
    Close the highest-value installer and productization gaps still documented in the comparison matrix.
-7. [10-windows-runtime-edge-coverage-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/10-windows-runtime-edge-coverage-plan.md)
+6. [10-windows-runtime-edge-coverage-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/10-windows-runtime-edge-coverage-plan.md)
     Add bounded but explicit Windows-native runtime and filesystem edge coverage.
-8. [11-language-breadth-expansion-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/11-language-breadth-expansion-plan.md)
+7. [11-language-breadth-expansion-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/11-language-breadth-expansion-plan.md)
     Expand parser-backed language breadth beyond the current tranche.
-9. [12-packaging-hardening-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/12-packaging-hardening-plan.md)
+8. [12-packaging-hardening-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/12-packaging-hardening-plan.md)
     Add release-hardening layers beyond the currently verified packaging flow.

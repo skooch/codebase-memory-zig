@@ -18,7 +18,7 @@ Verification posture today:
 - Treat [port-comparison.md](/Users/skooch/projects/codebase-memory-zig/docs/port-comparison.md) as the authoritative statement of what the repo can truthfully claim today.
 
 Known coverage gaps in the current automated suite:
-- Current local audit on `2026-04-20`: `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh --zig-only`, `bash scripts/run_cli_parity.sh --zig-only`, and the current ops suite entrypoints all pass. The fuller Cypher parity worktree also completed `bash scripts/run_interop_alignment.sh` with `32` fixtures, `244` comparisons, `139` strict matches, `37` diagnostic-only comparisons, and `0` mismatches, and direct Zig/C fixture repro confirmed the added shared query tranche for counts, boolean-precedence filters, and numeric property predicates.
+- Current local audit on `2026-04-20`: `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh --zig-only`, `bash scripts/run_cli_parity.sh --zig-only`, and the current ops suite entrypoints all pass. The hybrid-resolution expansion worktree also completed `bash scripts/run_interop_alignment.sh` with `33` fixtures, `251` comparisons, `143` strict matches, `38` diagnostic-only comparisons, and `0` mismatches, and direct Zig/C fixture repro confirmed the expanded bounded Go sidecar slice across multiple caller documents.
 - Full Zig-vs-C parity is nightly, not per-PR, so merge-blocking CI relies on zig-only goldens plus unit and integration tests.
 - Packaging and setup entrypoints are exercised by verification runs and workflows, but do not yet have exhaustive cross-platform regression automation for every shell or archive flow.
 - Windows coverage is strong at config-path, installer-layout, and PowerShell entrypoint level, but not exhaustive of native runtime and filesystem edge cases.
@@ -58,10 +58,10 @@ Completed now:
   - `Diagnostic-only comparisons: 9`
   - `Mismatches: 0`
 - The expanded full harness currently reports:
-  - `Fixtures: 32`
-  - `Comparisons: 244`
-  - `Strict matches: 139`
-  - `Diagnostic-only comparisons: 37`
+  - `Fixtures: 33`
+  - `Comparisons: 251`
+  - `Strict matches: 143`
+  - `Diagnostic-only comparisons: 38`
   - `Known mismatches: 0`
   - `cli_progress: match`
   - no remaining snippet, search, JavaScript-ordering, Java query-shape, or error-path comparison mismatches
@@ -182,8 +182,7 @@ Observed results:
   - `java-basic`: query-result deltas only
 
 Intentional residual delta after completion:
-- bounded Go hybrid-resolution sidecars are now implemented, but C/C++ hybrid
-  resolution remains deferred
+- bounded Go hybrid-resolution sidecars are now implemented for both the original single-call case and an expanded multi-document sidecar slice, but C/C++ hybrid resolution remains deferred
 - C++, R, Svelte, and Vue parser-backed expansion remain deferred
 - the new Go and Java fixtures are verified Zig-side additions, but not yet a
   strict shared-parity claim because scoped C compare still has query-result

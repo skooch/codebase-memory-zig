@@ -90,7 +90,7 @@ Current audit note on `2026-04-20`:
 - `zig build`: pass
 - `zig build test`: pass
 - `bash scripts/run_cli_parity.sh --zig-only`: pass
-- `bash scripts/run_interop_alignment.sh --zig-only`: pass (`32/32`)
+- `bash scripts/run_interop_alignment.sh --zig-only`: pass (`33/33`)
 - `bash scripts/run_benchmark_suite.sh --zig-only --manifest testdata/bench/stress-manifest.json --report-dir .benchmark_reports/ops`: pass
 - `bash scripts/run_soak_suite.sh --iterations 3 --report-dir .soak_reports/ci`: pass
 - `bash scripts/run_security_audit.sh .security_reports/ci`: pass
@@ -102,7 +102,7 @@ Current audit note on `2026-04-20`:
 | Capability | Original C (`codebase-memory-mcp`) | Zig Port (`codebase-memory-zig`) | Status | Interoperable? | Notes |
 |-----------|-------------------------------------|----------------------------------|--------|----------------|-------|
 | Stated product goal | Full-featured code intelligence engine with 14 MCP tools, UI variant, 66 languages, 10-agent install path | Interoperable, higher-performance and more reliable daily-use port of the original | `Partial` | No | The Zig repo explicitly treats completion of Phase 7 as completion of the current target contract, not exhaustive parity. |
-| Readiness gate | Reference side of the interop harness | Completed and passing: `Strict matches: 58`, `Diagnostic-only comparisons: 9`, `Mismatches: 0` | `Near parity` | Yes | The first-gate harness is green; the expanded full harness now reports 32 fixtures, 244 comparisons, 139 strict matches, 37 diagnostic-only comparisons, 0 mismatches, and `cli_progress: match`. |
+| Readiness gate | Reference side of the interop harness | Completed and passing: `Strict matches: 58`, `Diagnostic-only comparisons: 9`, `Mismatches: 0` | `Near parity` | Yes | The first-gate harness is green; the expanded full harness now reports 33 fixtures, 251 comparisons, 143 strict matches, 38 diagnostic-only comparisons, 0 mismatches, and `cli_progress: match`. |
 | Broader post-readiness target | Everything in the original project | Current target contract only; long-tail parity moved to deferred backlog | `Partial` | No | See `docs/plans/implemented/post-readiness-zig-port-execution-plan.md`. |
 | Built-in graph UI | Yes, optional UI binary / HTTP server | No | `Cut` | No | Original has `src/ui/*` and `--ui` flags. Zig intentionally does not port the UI. |
 | Release/install packaging | Prebuilt release artifacts plus setup scripts and install scripts | Standard `cbm` release archives, checksums, install scripts, setup scripts, install docs, and a repo-owned release workflow | `Near parity` | Yes | The Zig repo now proves standard-binary packaging for macOS and Windows artifacts. UI variants plus signing/attestation remain intentionally narrower than the original pipeline. |
@@ -166,7 +166,7 @@ Current audit note on `2026-04-20`:
 | Parallel extraction | Yes | Yes | `Near parity` | Yes | Zig has per-file local buffers plus merge/remap logic. |
 | Similarity / near-clone detection | Yes (`SIMILAR_TO`) | Yes (`SIMILAR_TO`) | `Near parity` | Yes | Zig ships MinHash/LSH-based similarity edges in the current contract. |
 | Transactional indexing guardrails | Yes | Yes | `Near parity` | Yes | Zig wraps pipeline writes in transactions and uses an index guard. |
-| LSP hybrid type resolution | Present for Go/C/C++ in original | Optional repository sidecar for explicit Go call targets, preferred ahead of heuristic registry matches | `Partial` | No | Zig now accepts `.codebase-memory/hybrid-resolution.json` and proves the bounded Go-backed sidecar contract on a reproducible fixture. C/C++ support, compile-commands ingestion, and live LSP client integration remain deferred. |
+| LSP hybrid type resolution | Present for Go/C/C++ in original | Optional repository sidecar for explicit Go call targets, preferred ahead of heuristic registry matches | `Partial` | No | Zig now accepts `.codebase-memory/hybrid-resolution.json` and proves an expanded bounded Go-backed sidecar contract on reproducible fixtures: the original single-call case plus a multi-document Go slice with `golang` sidecar-language alias support and `callee_name` fallback matching. C/C++ support, compile-commands ingestion, and live LSP client integration remain deferred. |
 | Test tagging pass | Yes | Yes for the verified shared Python fixture slice | `Near parity` | Yes | Zig now derives `TESTS` and `TESTS_FILE` from shared filename and call-edge rules on the parity fixture without reopening broader language-specific enrichment work. |
 | Git history coupling | Yes | Implemented | `Near parity` | Yes | Zig pass uses subprocess `git log` (no libgit2); creates `FILE_CHANGES_WITH` edges with `co_changes` and `coupling_score` properties. |
 | Config linking / config normalization | Yes | Implemented for the graph-model parity fixture contract plus env-style and YAML key-shape follow-on fixtures | `Near parity` | Yes | Zig implements Strategy 1 (key-symbol) and Strategy 2 (dependency-import matching); the strict shared fixtures now lock raw-key query visibility, `maxConnections -> max-connections`, dependency-import deduplication, env-style config keys such as `DATABASE_URL -> load_database_url`, and YAML key-shape cases covering both `api-base-url` and `apiBaseUrl`. |

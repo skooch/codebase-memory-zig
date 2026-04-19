@@ -2665,7 +2665,7 @@
         "search_graph": [
           {
             "args": {
-              "project": "cypher-predicate-floor",
+              "project": "predicate-floor",
               "label": "Function"
             },
             "expect": {
@@ -2729,6 +2729,56 @@
                 "n.name"
               ],
               "required_rows_min": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "go-sidecar-expanded",
+      "path": "testdata/interop/hybrid-resolution/go-sidecar-expanded",
+      "project": "go-sidecar-expanded",
+      "language": "go",
+      "scope_tools": [
+        "index_repository",
+        "search_graph",
+        "query_graph",
+        "list_projects"
+      ],
+      "assertions": {
+        "index_repository": {
+          "expect": {
+            "nodes_min": 10,
+            "edges_min": 8
+          }
+        },
+        "search_graph": [
+          {
+            "args": {
+              "project": "go-sidecar-expanded",
+              "label": "Function"
+            },
+            "expect": {
+              "required_names": [
+                "run",
+                "execute"
+              ]
+            }
+          }
+        ],
+        "query_graph": [
+          {
+            "args": {
+              "query": "MATCH (a:Function)-[:CALLS]->(b:Method) RETURN a.name, b.name ORDER BY a.name ASC, b.name ASC",
+              "project": "go-sidecar-expanded",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": [
+                "a.name",
+                "b.name"
+              ],
+              "required_rows_min": 2
             }
           }
         ]

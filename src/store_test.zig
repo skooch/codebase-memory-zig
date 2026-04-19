@@ -273,6 +273,38 @@ test "store indexes keyword route registrations and send_task semantic fixtures"
     }
 }
 
+test "store persists expanded hybrid sidecar call targets" {
+    const allocator = std.testing.allocator;
+
+    var db = try store.Store.openMemory(allocator);
+    defer db.deinit();
+
+    const project_dir = "testdata/interop/hybrid-resolution/go-sidecar-expanded";
+    const project_name = std.fs.path.basename(project_dir);
+
+    var p = pipeline.Pipeline.init(allocator, project_dir, .full);
+    defer p.deinit();
+    try p.run(&db);
+
+    const run_id = try findSingleNodeInStore(&db, project_name, "Function", "run", "main.go");
+    const execute_id = try findSingleNodeInStore(&db, project_name, "Function", "execute", "extras.go");
+
+    const run_edges = try db.findEdgesBySource(project_name, run_id, "CALLS");
+    defer db.freeEdges(run_edges);
+    try std.testing.expectEqual(@as(usize, 1), run_edges.len);
+    const run_target = (try db.findNodeById(project_name, run_edges[0].target_id)).?;
+    defer db.freeNode(run_target);
+    try std.testing.expect(std.mem.indexOf(u8, run_target.qualified_name, "Primary.Handle") != null);
+    try std.testing.expect(std.mem.indexOf(u8, run_edges[0].properties_json, "\"strategy\":\"hybrid_sidecar\"") != null);
+
+    const execute_edges = try db.findEdgesBySource(project_name, execute_id, "CALLS");
+    defer db.freeEdges(execute_edges);
+    try std.testing.expectEqual(@as(usize, 1), execute_edges.len);
+    const execute_target = (try db.findNodeById(project_name, execute_edges[0].target_id)).?;
+    defer db.freeNode(execute_target);
+    try std.testing.expect(std.mem.indexOf(u8, execute_target.qualified_name, "Worker.Handle") != null);
+}
+
 test "store indexes config key-shape fixture and keeps WRITES/READS absent on bounded edge fixture" {
     const allocator = std.testing.allocator;
 
