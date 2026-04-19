@@ -15,13 +15,11 @@ Everything left in `docs/plans/new/` is optional follow-on work.
 
 ## Recommended Execution Order
 
-1. [08-hybrid-type-resolution-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/ready-to-go/08-hybrid-type-resolution-plan.md)
-   - Hybrid resolution is higher risk and should land only after the repo has a
-     stronger parser-backed baseline and cleaner runtime semantics.
-2. [language-support-expansion-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/language-support-expansion-feature-cluster-plan.md)
+1. [language-support-expansion-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/language-support-expansion-feature-cluster-plan.md)
    - Use this as the broader post-tranche language queue after Plan 07 proves
-     the next parser-backed slice.
-3. [semantic-graph-expansion-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/semantic-graph-expansion-feature-cluster-plan.md)
+     the next parser-backed slice and Plan 08 lands the first bounded hybrid
+     substrate.
+2. [semantic-graph-expansion-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/semantic-graph-expansion-feature-cluster-plan.md)
    - Keep higher-order graph expansion last, after graph correctness, scale,
      and language posture are stronger.
 
@@ -30,6 +28,10 @@ Everything left in `docs/plans/new/` is optional follow-on work.
 - [07-language-coverage-expansion-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/07-language-coverage-expansion-plan.md) is complete.
   [language-support-expansion-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/language-support-expansion-feature-cluster-plan.md)
   is the broader queue and should not start first.
+- [08-hybrid-type-resolution-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/08-hybrid-type-resolution-plan.md)
+  is complete for the bounded Go-backed sidecar slice. Remaining C/C++ and
+  live-resolver work is intentionally deferred into broader future language
+  support rather than left as an unstarted duplicate plan.
 - [windows-installer-and-client-integration-improvements-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/windows-installer-and-client-integration-improvements-plan.md)
   is complete, which cleared its prerequisite role for the completed
   installer-ecosystem plan.
@@ -47,4 +49,4 @@ Everything left in `docs/plans/new/` is optional follow-on work.
 ## Start Here
 
 The next unopened plan is
-[08-hybrid-type-resolution-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/ready-to-go/08-hybrid-type-resolution-plan.md).
+[language-support-expansion-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/improvements/language-support-expansion-feature-cluster-plan.md).

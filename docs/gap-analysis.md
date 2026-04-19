@@ -155,7 +155,8 @@ Observed results:
   - `java-basic`: query-result deltas only
 
 Intentional residual delta after completion:
-- hybrid type or LSP resolution for Go, C, and C++ remains deferred
+- bounded Go hybrid-resolution sidecars are now implemented, but C/C++ hybrid
+  resolution remains deferred
 - C++, R, Svelte, and Vue parser-backed expansion remain deferred
 - the new Go and Java fixtures are verified Zig-side additions, but not yet a
   strict shared-parity claim because scoped C compare still has query-result
@@ -573,7 +574,8 @@ Deferred or optional future slices:
 - Indexing/runtime expansion:
   - deeper usage/type-ref extraction parity beyond the current daily-use slice
 - Language expansion beyond the implemented first tranche:
-  - hybrid type/LSP resolution for Go, C, and C++
+  - hybrid type/LSP resolution beyond the implemented Go sidecar slice,
+    including C/C++ and any live external resolver integrations
   - broader parser-backed families beyond Go and Java
 - Metadata and enrichment:
   - git-history coupling — now implemented (subprocess `git log`, `FILE_CHANGES_WITH` edges)
