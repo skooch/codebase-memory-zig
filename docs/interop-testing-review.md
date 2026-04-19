@@ -12,6 +12,7 @@ Current verified state:
 - `zig build test` passes in the execution worktree.
 - `bash scripts/run_cli_parity.sh --zig-only` passes.
 - `bash scripts/run_interop_alignment.sh --zig-only` passes at `28/28`.
+- `bash scripts/run_interop_alignment.sh` now reports one bounded residual mismatch instead of the earlier six-item set.
 - The nightly workflow no longer hides failures behind `continue-on-error`.
 
 The review from 2026-04-12 is no longer accurate as a live issue register. Several items it flagged have already been resolved in the repo, and the remaining debt is narrower than that review implied.
@@ -80,11 +81,14 @@ The remaining debt is real, but it is narrower:
 2. Golden maintenance remains an operational requirement.
    When the canonical representation changes intentionally or new fixtures are added, the harness needs corresponding golden refreshes. The verification-remediation plan already had to restore missing and stale goldens for `python-parity`, `discovery-scope`, `python-framework-cases`, and `typescript-import-cases`.
 
-3. Some compare-mode assertions remain intentionally lighter than the golden layer.
-   This is most visible where fixture expectations use `required_names` or `required_rows` instead of exhaustively asserting every row shape. That is acceptable, but it means the golden layer still carries most of the strict regression burden.
+3. Compare mode now scores shared contract parity rather than implementation-specific payload shape.
+   This is most visible where fixture expectations use `required_names`, `required_rows`, or snippet-source floors instead of exhaustively asserting every row shape or qualified-name format. That is acceptable, but it means the golden layer still carries most of the strict regression burden while compare mode focuses on genuine shared-surface divergence.
 
 4. Search request translation is inherently assertion-level.
    `search_graph` still maps a shared manifest contract onto different request shapes (`label` for the C reference, `label_pattern` for Zig). That is now documented inline in the harness, but it remains a designed comparison asymmetry rather than strict payload identity.
+
+5. The remaining full-reference delta is narrow and explicit.
+   The current full compare leaves one bounded residual mismatch: `go-parity/query_graph`, where Zig returns the `Class -> DEFINES_METHOD -> Method` row and the C reference still returns zero rows.
 
 ## Current Judgment
 

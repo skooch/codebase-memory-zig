@@ -2,11 +2,10 @@
 
 Refresh date: 2026-04-19
 
-The current target contract, the shared follow-on parity slices, and the
-verification-remediation slice are complete. The first optional parity
-follow-on is now active in `docs/plans/in-progress/`, and the remaining queue
-stays ordered by leverage and boundedness rather than by “biggest possible
-project.”
+The current target contract, the shared follow-on parity slices, the
+verification-remediation slice, and the bounded full-compare mismatch-reduction
+slice are complete. The remaining queue stays ordered by leverage and
+boundedness rather than by “biggest possible project.”
 
 ## Current State
 
@@ -14,10 +13,11 @@ project.”
 - The last ordered plan,
   [semantic-graph-expansion-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/semantic-graph-expansion-feature-cluster-plan.md),
   is now implemented.
-- The most recent completed maintenance slice is
-  [verification-remediation-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/verification-remediation-plan.md).
-- The active execution plan is
-  [01-full-compare-mismatch-reduction-plan.md](/Users/skooch/projects/worktrees/full-compare-mismatch-reduction/docs/plans/in-progress/01-full-compare-mismatch-reduction-plan.md).
+- The most recent completed maintenance slices are
+  [verification-remediation-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/verification-remediation-plan.md)
+  and
+  [01-full-compare-mismatch-reduction-plan.md](/Users/skooch/projects/worktrees/full-compare-mismatch-reduction/docs/plans/implemented/01-full-compare-mismatch-reduction-plan.md).
+- There is no active execution plan in `docs/plans/in-progress/` right now.
 - Remaining work outside the queue below is still unqueued future expansion
   rather than tracked backlog.
 

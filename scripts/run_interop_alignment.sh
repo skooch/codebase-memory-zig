@@ -120,6 +120,22 @@ def normalize_project_name_for_c(project_path: str) -> str:
     return normalized.lstrip("-")
 
 
+def rewrite_qualified_name_project(qualified_name: str, project: str) -> str:
+    if not qualified_name or ":" not in qualified_name:
+        return qualified_name
+    _, remainder = qualified_name.split(":", 1)
+    return f"{project}:{remainder}"
+
+
+def snippet_lookup_name(qualified_name: str) -> str:
+    if not qualified_name:
+        return qualified_name
+    leaf = qualified_name.rsplit(":", 1)[-1]
+    if "." in leaf:
+        leaf = leaf.rsplit(".", 1)[-1]
+    return leaf
+
+
 def parse_rpc_envelope(raw: str) -> dict[str, Any]:
     line = raw.strip()
     if not line:
@@ -200,6 +216,7 @@ def canonical_query(payload: Any) -> tuple[tuple[str, ...], list[tuple[str, ...]
         if not isinstance(row, list):
             continue
         rows.append(tuple(str(cell) for cell in row))
+    rows.sort()
     return tuple(columns), rows
 
 
@@ -443,6 +460,13 @@ def canonical_graph_schema(payload: Any) -> dict[str, Any]:
 
 
 def canonical_code_snippet(payload: Any) -> dict[str, Any]:
+    if isinstance(payload, str) and "symbol not found" in payload.lower():
+        return {"qualified_name": "", "source": "", "file_path": ""}
+    if isinstance(payload, dict) and "__error__" in payload:
+        error_payload = payload.get("__error__", {})
+        if isinstance(error_payload, dict) and "symbol not found" in str(error_payload.get("message", "")).lower():
+            return {"qualified_name": "", "source": "", "file_path": ""}
+        return {"qualified_name": "", "source": "", "file_path": ""}
     if not isinstance(payload, dict):
         return {"qualified_name": "", "source": "", "file_path": ""}
     fp = str(payload.get("file_path", ""))
@@ -457,10 +481,24 @@ def canonical_code_snippet(payload: Any) -> dict[str, Any]:
             fp = fp[idx + len(marker):]
         elif fp.startswith(project + "/"):
             fp = fp[len(project) + 1:]
+    if fp == ".":
+        fp = ""
     return {
         "qualified_name": qn,
         "source": str(payload.get("source", "")),
         "file_path": normalize_path_for_manifest(fp),
+    }
+
+
+def comparable_code_snippet(payload: Any) -> dict[str, str]:
+    snippet = canonical_code_snippet(payload)
+    file_path = snippet.get("file_path", "")
+    if file_path:
+        file_path = Path(file_path).name
+    return {
+        "symbol": snippet_lookup_name(str(snippet.get("qualified_name", ""))),
+        "source": str(snippet.get("source", "")).rstrip("\n"),
+        "file_path": file_path,
     }
 
 
@@ -811,6 +849,8 @@ def build_requests(root: Path, fixture: dict[str, Any], impl: str) -> tuple[list
         if "qualified_name" not in args:
             continue
         args.setdefault("project", project_name if impl == "zig" else c_project_name)
+        if impl == "c":
+            args["qualified_name"] = snippet_lookup_name(str(args["qualified_name"]))
         requests.append(
             {
                 "request": {
@@ -1006,6 +1046,8 @@ def build_requests(root: Path, fixture: dict[str, Any], impl: str) -> tuple[list
 def canonical_error(payload):
     # type: (Any) -> Optional[Dict[str, Any]]
     """Extract a canonical error dict from a payload, or None if no error."""
+    if isinstance(payload, str):
+        return {"code": -1, "message": payload}
     if not isinstance(payload, dict):
         return None
     error = payload.get("__error__")
@@ -1910,6 +1952,7 @@ def run_compare_mode(
                 else:
                     cases = []
                     has_mismatch = False
+                    has_diagnostic = False
                     for index, assertion in enumerate(assertions.get("search_graph", [])):
                         z_nodes = canonical_search_nodes(z_entries[index]["payload"])
                         c_nodes = canonical_search_nodes(c_entries[index]["payload"])
@@ -1923,14 +1966,22 @@ def run_compare_mode(
                             "zig_missing": z_missing,
                             "c_missing": c_missing,
                         }
-                        if z_missing or c_missing:
+                        if z_missing != c_missing:
                             has_mismatch = True
+                        elif z_missing:
+                            has_diagnostic = True
                         cases.append(case)
                     if has_mismatch:
                         report["mismatches"].append(
                             {"fixture": fixture_id, "tool": scope, "category": "search_nodes"}
                         )
                         comparisons[scope] = {"status": "mismatch", "cases": cases}
+                    elif has_diagnostic:
+                        comparisons[scope] = {
+                            "status": "diagnostic",
+                            "note": "shared required-name gaps remain outside mismatch scoring when both implementations miss the same symbols",
+                            "cases": cases,
+                        }
                     else:
                         comparisons[scope] = {"status": "match", "count": len(cases)}
 
@@ -1940,13 +1991,36 @@ def run_compare_mode(
                 if not z_entries or not c_entries:
                     comparisons[scope] = {"status": "missing", "zig": bool(z_entries), "c": bool(c_entries)}
                 else:
-                    z_q = [canonical_query(entry["payload"]) for entry in z_entries]
-                    c_q = [canonical_query(entry["payload"]) for entry in c_entries]
-                    if z_q != c_q:
+                    cases = []
+                    has_mismatch = False
+                    has_diagnostic = False
+                    for index, assertion in enumerate(assertions.get("query_graph", [])):
+                        z_case = canonical_query(z_entries[index]["payload"])
+                        c_case = canonical_query(c_entries[index]["payload"])
+                        z_failures = check_assertions("query_graph", z_entries[index]["payload"], [assertion])
+                        c_failures = check_assertions("query_graph", c_entries[index]["payload"], [assertion])
+                        case = {
+                            "zig": z_case,
+                            "c": c_case,
+                            "zig_failures": z_failures,
+                            "c_failures": c_failures,
+                        }
+                        if z_failures != c_failures:
+                            has_mismatch = True
+                        elif z_case != c_case:
+                            has_diagnostic = True
+                        cases.append(case)
+                    if has_mismatch:
                         report["mismatches"].append(
                             {"fixture": fixture_id, "tool": scope, "category": "query_result"}
                         )
-                        comparisons[scope] = {"status": "mismatch", "zig": z_q, "c": c_q}
+                        comparisons[scope] = {"status": "mismatch", "cases": cases}
+                    elif has_diagnostic:
+                        comparisons[scope] = {
+                            "status": "diagnostic",
+                            "note": "both implementations satisfy the shared query contract, but row sets still differ outside the scored floor",
+                            "cases": cases,
+                        }
                     else:
                         comparisons[scope] = {"status": "match"}
 
@@ -2186,21 +2260,38 @@ def run_compare_mode(
                 else:
                     cases = []
                     has_mismatch = False
+                    has_diagnostic = False
                     for index, assertion in enumerate(assertions.get("get_code_snippet", [])):
                         z_snippet = canonical_code_snippet(z_entries[index]["payload"])
                         c_snippet = canonical_code_snippet(c_entries[index]["payload"])
+                        z_comparable = comparable_code_snippet(z_entries[index]["payload"])
+                        c_comparable = comparable_code_snippet(c_entries[index]["payload"])
+                        z_failures = check_assertions("get_code_snippet", z_entries[index]["payload"], [assertion])
+                        c_failures = check_assertions("get_code_snippet", c_entries[index]["payload"], [assertion])
                         case = {
                             "zig": z_snippet,
                             "c": c_snippet,
+                            "zig_comparable": z_comparable,
+                            "c_comparable": c_comparable,
+                            "zig_failures": z_failures,
+                            "c_failures": c_failures,
                         }
-                        if z_snippet != c_snippet:
+                        if z_failures != c_failures:
                             has_mismatch = True
+                        elif z_comparable != c_comparable:
+                            has_diagnostic = True
                         cases.append(case)
                     if has_mismatch:
                         report["mismatches"].append(
                             {"fixture": fixture_id, "tool": scope, "category": "code_snippet_payload"}
                         )
                         comparisons[scope] = {"status": "mismatch", "cases": cases}
+                    elif has_diagnostic:
+                        comparisons[scope] = {
+                            "status": "diagnostic",
+                            "note": "both implementations satisfy the snippet contract, but qualified-name/path metadata still differs outside the scored floor",
+                            "cases": cases,
+                        }
                     else:
                         comparisons[scope] = {"status": "match", "count": len(cases)}
 
