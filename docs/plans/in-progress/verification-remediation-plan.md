@@ -26,7 +26,7 @@ Phase 1
 ## Phases
 
 ### Phase 1: Stabilize the current red verification surface
-- [ ] Reproduce the current verification state on `main` with `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh --zig-only`, and `bash scripts/run_cli_parity.sh --zig-only`, and record the exact failing scopes in `docs/plans/in-progress/verification-remediation-progress.md` once execution starts.
+- [ ] Reproduce the current verification state in the execution worktree with `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh --zig-only`, and `bash scripts/run_cli_parity.sh --zig-only`, and record the exact failing scopes in `docs/plans/in-progress/verification-remediation-progress.md`.
 - [ ] Update `testdata/interop/golden/python-parity.json` or the corresponding canonicalization in `scripts/run_interop_alignment.sh` so the `get_graph_schema` contract is intentionally represented and the zig-only comparison no longer fails on schema-shape drift alone.
 - [ ] Generate and commit missing zig-only golden snapshots for `discovery-scope`, `python-framework-cases`, and `typescript-import-cases` under `testdata/interop/golden/` so every manifest fixture expected by `bash scripts/run_interop_alignment.sh --zig-only` has a committed baseline.
 - [ ] Re-run `bash scripts/run_interop_alignment.sh --zig-only` until the full zig-only interop harness is green on `main`.
@@ -44,7 +44,7 @@ Phase 1
 - [ ] Update `docs/port-comparison.md` and `docs/gap-analysis.md` so the verification posture reflects the post-remediation state instead of the current drift snapshot.
 - [ ] Re-run the required verification set: `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh --zig-only`, `bash scripts/run_cli_parity.sh --zig-only`, and the current ops suite entrypoints from `.github/workflows/ops-checks.yml`; also run the full Zig-vs-C comparison locally if the adjacent C reference checkout is available.
 - [ ] If any undocumented verification failure mode appears during execution, add the recovery rule to `CLAUDE.md` before continuing.
-- [ ] Move the plan and progress files from `docs/plans/new/` to `docs/plans/in-progress/` before implementation starts, and only move them to `docs/plans/implemented/` after the required verification set is green or any remaining blocker is documented concretely.
+- [x] Move the plan and progress files from `docs/plans/new/` to `docs/plans/in-progress/` before implementation starts, and only move them to `docs/plans/implemented/` after the required verification set is green or any remaining blocker is documented concretely.
 - **Status:** pending
 
 ## Decisions
