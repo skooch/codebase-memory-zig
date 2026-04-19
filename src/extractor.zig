@@ -633,7 +633,7 @@ fn parseGoImports(
 ) !void {
     const trimmed = std.mem.trim(u8, line, " \t");
     if (!std.mem.startsWith(u8, trimmed, "import ")) return;
-    var tail = std.mem.trim(u8, trimmed["import ".len ..], " \t");
+    var tail = std.mem.trim(u8, trimmed["import ".len..], " \t");
     if (tail.len == 0 or tail[0] == '(') return;
 
     var alias: []const u8 = "";
@@ -661,9 +661,9 @@ fn parseJavaImports(
 ) !void {
     const trimmed = std.mem.trim(u8, line, " \t");
     if (!std.mem.startsWith(u8, trimmed, "import ")) return;
-    var tail = std.mem.trim(u8, trimmed["import ".len ..], " \t;");
+    var tail = std.mem.trim(u8, trimmed["import ".len..], " \t;");
     if (std.mem.startsWith(u8, tail, "static ")) {
-        tail = std.mem.trim(u8, tail["static ".len ..], " \t;");
+        tail = std.mem.trim(u8, tail["static ".len..], " \t;");
     }
     if (tail.len == 0) return;
     try out.append(allocator, .{
@@ -1804,7 +1804,7 @@ fn parsePythonVariableName(line: []const u8) ?[]const u8 {
 
 fn supportsTreeSitterDefs(language: discover.Language) bool {
     return switch (language) {
-        .go, .java, .python, .javascript, .typescript, .tsx, .rust, .zig => true,
+        .go, .java, .python, .javascript, .typescript, .tsx, .rust, .zig, .powershell, .gdscript => true,
         else => false,
     };
 }
@@ -1879,6 +1879,8 @@ fn collectDefinitionsWithTreeSitter(
         .tsx => treeSitterLanguageTsx,
         .rust => treeSitterLanguageRust,
         .zig => treeSitterLanguageZig,
+        .powershell => treeSitterLanguagePowershell,
+        .gdscript => treeSitterLanguageGdscript,
         else => return,
     };
 
@@ -2029,6 +2031,21 @@ fn tsNodeLabel(language: discover.Language, node: ts.Node) ?[]const u8 {
             "Constant"
         else
             null,
+        .powershell => if (std.mem.eql(u8, kind, "function_statement"))
+            "Function"
+        else if (std.mem.eql(u8, kind, "class_statement"))
+            "Class"
+        else if (std.mem.eql(u8, kind, "class_method_definition"))
+            "Method"
+        else
+            null,
+        .gdscript => if (std.mem.eql(u8, kind, "function_definition"))
+            if (nodeHasAncestorKind(node, "class_definition")) "Method" else "Function"
+        else if (std.mem.eql(u8, kind, "class_definition") or
+            std.mem.eql(u8, kind, "class_name_statement"))
+            "Class"
+        else
+            null,
         else => null,
     };
 }
@@ -2101,6 +2118,23 @@ fn extractTsName(
     if (language == .go and std.mem.eql(u8, node.kind(), "type_spec")) {
         const name_node = node.childByFieldName("name") orelse return null;
         return try copyTsNodeText(allocator, bytes, name_node);
+    }
+
+    if (language == .powershell) {
+        if (std.mem.eql(u8, node.kind(), "function_statement")) {
+            if (findFirstNamedChildOfKind(node, "function_name")) |name_node| {
+                return try copyTsNodeText(allocator, bytes, name_node);
+            }
+            return null;
+        }
+        if (std.mem.eql(u8, node.kind(), "class_statement") or
+            std.mem.eql(u8, node.kind(), "class_method_definition"))
+        {
+            if (findFirstNamedChildOfKind(node, "simple_name")) |name_node| {
+                return try copyTsNodeText(allocator, bytes, name_node);
+            }
+            return null;
+        }
     }
 
     if (language == .javascript or language == .typescript or language == .tsx) {
@@ -2197,6 +2231,16 @@ fn copyTsNodeText(allocator: std.mem.Allocator, bytes: []const u8, node: ts.Node
     const end = @as(usize, @intCast(node.endByte()));
     if (start >= bytes.len or end > bytes.len or start >= end) return null;
     return try allocator.dupe(u8, bytes[start..end]);
+}
+
+fn findFirstNamedChildOfKind(node: ts.Node, expected_kind: []const u8) ?ts.Node {
+    const child_count = node.namedChildCount();
+    var i: u32 = 0;
+    while (i < child_count) : (i += 1) {
+        const child = node.namedChild(i) orelse continue;
+        if (std.mem.eql(u8, child.kind(), expected_kind)) return child;
+    }
+    return null;
 }
 
 fn tsDefinitionEndLine(node: ts.Node) i32 {
@@ -2346,6 +2390,8 @@ extern "c" fn tree_sitter_rust() *const ts.Language;
 extern "c" fn tree_sitter_zig() *const ts.Language;
 extern "c" fn tree_sitter_go() *const ts.Language;
 extern "c" fn tree_sitter_java() *const ts.Language;
+extern "c" fn tree_sitter_powershell() *const ts.Language;
+extern "c" fn tree_sitter_gdscript() *const ts.Language;
 
 fn treeSitterLanguageGo() *const ts.Language {
     return tree_sitter_go();
@@ -2377,6 +2423,14 @@ fn treeSitterLanguageRust() *const ts.Language {
 
 fn treeSitterLanguageZig() *const ts.Language {
     return tree_sitter_zig();
+}
+
+fn treeSitterLanguagePowershell() *const ts.Language {
+    return tree_sitter_powershell();
+}
+
+fn treeSitterLanguageGdscript() *const ts.Language {
+    return tree_sitter_gdscript();
 }
 
 fn parsePythonDefs(line: []const u8) ?ParsedSymbol {
@@ -2487,7 +2541,7 @@ fn parseGoDefs(line: []const u8) ?ParsedSymbol {
         }
     }
     if (std.mem.startsWith(u8, trimmed, "type ")) {
-        const rest = std.mem.trim(u8, trimmed["type ".len ..], " \t");
+        const rest = std.mem.trim(u8, trimmed["type ".len..], " \t");
         if (std.mem.indexOf(u8, rest, " struct")) |struct_pos| {
             const name = std.mem.trim(u8, rest[0..struct_pos], " \t");
             if (name.len > 0) return .{ .label = "Class", .name = name };
@@ -3710,6 +3764,64 @@ test "tree-sitter extracts java definitions with labels and method ownership" {
     try std.testing.expect(definitionWithContainerPresent(defs.items, "Method", "run", "Worker", 10));
     try std.testing.expect(definitionPresent(defs.items, "Class", "Main", 15));
     try std.testing.expect(definitionWithContainerPresent(defs.items, "Method", "boot", "Main", 16));
+}
+
+test "tree-sitter extracts powershell definitions with method ownership" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\function Invoke-Users {
+        \\    Get-Users
+        \\}
+        \\
+        \\class Worker {
+        \\    [void] Run() {
+        \\        Write-Host "ok"
+        \\    }
+        \\}
+        \\
+    ;
+
+    var defs = std.ArrayList(TsDefinition).empty;
+    defer freePendingTsDefinitions(allocator, &defs);
+    try collectDefinitionsWithTreeSitter(
+        allocator,
+        source,
+        .powershell,
+        &defs,
+    );
+
+    try std.testing.expect(definitionPresent(defs.items, "Function", "Invoke-Users", 1));
+    try std.testing.expect(definitionPresent(defs.items, "Class", "Worker", 5));
+    try std.testing.expect(definitionWithContainerPresent(defs.items, "Method", "Run", "Worker", 6));
+}
+
+test "tree-sitter extracts gdscript definitions with nested class ownership" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\class_name Hero
+        \\
+        \\func boot():
+        \\    pass
+        \\
+        \\class Worker:
+        \\    func run():
+        \\        pass
+        \\
+    ;
+
+    var defs = std.ArrayList(TsDefinition).empty;
+    defer freePendingTsDefinitions(allocator, &defs);
+    try collectDefinitionsWithTreeSitter(
+        allocator,
+        source,
+        .gdscript,
+        &defs,
+    );
+
+    try std.testing.expect(definitionPresent(defs.items, "Class", "Hero", 1));
+    try std.testing.expect(definitionPresent(defs.items, "Function", "boot", 3));
+    try std.testing.expect(definitionPresent(defs.items, "Class", "Worker", 6));
+    try std.testing.expect(definitionWithContainerPresent(defs.items, "Method", "run", "Worker", 7));
 }
 
 test "tree-sitter tracks rust multiline body end lines" {

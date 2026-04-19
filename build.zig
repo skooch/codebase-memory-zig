@@ -15,6 +15,8 @@ fn configureCbmModule(
     mod.addIncludePath(b.path("vendored/grammars/zig"));
     mod.addIncludePath(b.path("vendored/grammars/go"));
     mod.addIncludePath(b.path("vendored/grammars/java"));
+    mod.addIncludePath(b.path("vendored/grammars/powershell"));
+    mod.addIncludePath(b.path("vendored/grammars/gdscript"));
     mod.addCSourceFile(.{
         .file = b.path("vendored/grammars/rust/parser.c"),
         .flags = &.{},
@@ -65,6 +67,22 @@ fn configureCbmModule(
     });
     mod.addCSourceFile(.{
         .file = b.path("vendored/grammars/java/parser.c"),
+        .flags = &.{},
+    });
+    mod.addCSourceFile(.{
+        .file = b.path("vendored/grammars/powershell/parser.c"),
+        .flags = &.{},
+    });
+    mod.addCSourceFile(.{
+        .file = b.path("vendored/grammars/powershell/scanner.c"),
+        .flags = &.{},
+    });
+    mod.addCSourceFile(.{
+        .file = b.path("vendored/grammars/gdscript/parser.c"),
+        .flags = &.{},
+    });
+    mod.addCSourceFile(.{
+        .file = b.path("vendored/grammars/gdscript/scanner.c"),
         .flags = &.{},
     });
     mod.addCSourceFile(.{

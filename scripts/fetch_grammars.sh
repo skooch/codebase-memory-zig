@@ -21,43 +21,63 @@ if [[ "$FORCE" == false ]] && [[ -f "$GRAMMAR_DIR/rust/parser.c" ]]; then
     exit 0
 fi
 
-# Pinned versions - update these when upgrading grammars
-declare -A GRAMMAR_REPOS=(
-    [go]="https://github.com/tree-sitter/tree-sitter-go"
-    [java]="https://github.com/tree-sitter/tree-sitter-java"
-    [rust]="https://github.com/tree-sitter/tree-sitter-rust"
-    [python]="https://github.com/tree-sitter/tree-sitter-python"
-    [javascript]="https://github.com/tree-sitter/tree-sitter-javascript"
-    [typescript]="https://github.com/tree-sitter/tree-sitter-typescript"
-    [tsx]="https://github.com/tree-sitter/tree-sitter-typescript"
-    [zig]="https://github.com/tree-sitter-grammars/tree-sitter-zig"
-)
+grammar_repo() {
+    case "$1" in
+        go) echo "https://github.com/tree-sitter/tree-sitter-go" ;;
+        java) echo "https://github.com/tree-sitter/tree-sitter-java" ;;
+        rust) echo "https://github.com/tree-sitter/tree-sitter-rust" ;;
+        python) echo "https://github.com/tree-sitter/tree-sitter-python" ;;
+        javascript) echo "https://github.com/tree-sitter/tree-sitter-javascript" ;;
+        typescript) echo "https://github.com/tree-sitter/tree-sitter-typescript" ;;
+        tsx) echo "https://github.com/tree-sitter/tree-sitter-typescript" ;;
+        zig) echo "https://github.com/tree-sitter-grammars/tree-sitter-zig" ;;
+        powershell) echo "https://github.com/airbus-cert/tree-sitter-powershell" ;;
+        gdscript) echo "https://github.com/PrestonKnopp/tree-sitter-gdscript" ;;
+        *)
+            echo "ERROR: unsupported grammar $1" >&2
+            return 1
+            ;;
+    esac
+}
 
-declare -A GRAMMAR_TAGS=(
-    [go]="v0.25.0"
-    [java]="v0.23.5"
-    [rust]="v0.24.2"
-    [python]="v0.25.0"
-    [javascript]="v0.25.0"
-    [typescript]="v0.23.2"
-    [tsx]="v0.23.2"
-    [zig]="v1.1.2"
-)
+grammar_tag() {
+    case "$1" in
+        go) echo "v0.25.0" ;;
+        java) echo "v0.23.5" ;;
+        rust) echo "v0.24.2" ;;
+        python) echo "v0.25.0" ;;
+        javascript) echo "v0.25.0" ;;
+        typescript) echo "v0.23.2" ;;
+        tsx) echo "v0.23.2" ;;
+        zig) echo "v1.1.2" ;;
+        powershell) echo "v0.26.3" ;;
+        gdscript) echo "v6.1.0" ;;
+        *)
+            echo "ERROR: unsupported grammar $1" >&2
+            return 1
+            ;;
+    esac
+}
 
-# Subdirectory within repo where src/ lives (for monorepos)
-declare -A GRAMMAR_SUBDIRS=(
-    [typescript]="typescript"
-    [tsx]="tsx"
-)
+grammar_subdir() {
+    case "$1" in
+        typescript) echo "typescript" ;;
+        tsx) echo "tsx" ;;
+        *) echo "" ;;
+    esac
+}
 
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
 
 fetch_grammar() {
     local name="$1"
-    local repo="${GRAMMAR_REPOS[$name]}"
-    local tag="${GRAMMAR_TAGS[$name]}"
-    local subdir="${GRAMMAR_SUBDIRS[$name]:-}"
+    local repo
+    repo="$(grammar_repo "$name")"
+    local tag
+    tag="$(grammar_tag "$name")"
+    local subdir
+    subdir="$(grammar_subdir "$name")"
     local dest="$GRAMMAR_DIR/$name"
     local clone_dir="$TMPDIR/$name"
 
@@ -100,7 +120,7 @@ if [[ "$FORCE" == true ]]; then
 fi
 
 # typescript and tsx share a repo but are cloned separately for simplicity
-for lang in go java rust python javascript typescript tsx zig; do
+for lang in go java rust python javascript typescript tsx zig powershell gdscript; do
     fetch_grammar "$lang"
 done
 

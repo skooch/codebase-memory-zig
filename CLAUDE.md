@@ -70,6 +70,7 @@ src/
 - If `bash scripts/bootstrap_worktree.sh` prints success but `zig build` still fails on missing `vendored/grammars/*/parser.c`, check for a partially populated `vendored/grammars/` directory in the worktree. The bootstrap script must copy missing grammar subdirectories, not just skip work because the top-level directory already exists.
 - If `zig build` fails after adding a vendored grammar with errors like `unknown type name 'TSFieldMapSlice'`, check whether that grammar's local `tree_sitter/` header directory was copied alongside `parser.c`. Existing grammars here rely on grammar-local headers first; copy `vendored/grammars/<lang>/tree_sitter/` before changing the shared `vendored/tree_sitter/` headers.
 - The agent comparison harness is intentionally `zsh`-only via `scripts/run_agent_comparison.zsh`; keep that entrypoint canonical instead of reintroducing a shell-compat wrapper.
+- The system `bash` on this macOS host is `3.2`, so helper scripts must not rely on associative arrays. If `scripts/fetch_grammars.sh` fails at `declare -A` with `set -u`, rewrite the mapping layer with portable `case` helpers before retrying.
 
 ## Porting from C
 

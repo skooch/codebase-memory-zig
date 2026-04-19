@@ -2,8 +2,9 @@
 
 const std = @import("std");
 
-// Language enum — mirrors CBMLanguage in the C codebase.
-// Order matches lang_specs tables for grammar array indexing.
+// Language enum — the shared ordering mirrors CBMLanguage in the C codebase.
+// Zig-only language-expansion lanes are appended after the shared set so the
+// original overlap keeps stable enum positions.
 pub const Language = enum(u8) {
     go = 0,
     python,
@@ -71,6 +72,8 @@ pub const Language = enum(u8) {
     wolfram,
     kustomize,
     k8s,
+    powershell,
+    gdscript,
 
     pub const count = @typeInfo(Language).@"enum".fields.len;
 
@@ -568,13 +571,16 @@ pub fn languageForExtension(ext: []const u8) ?Language {
         .{ ".mat", .matlab },
         .{ ".lean", .lean },
         .{ ".wl", .wolfram },
+        .{ ".ps1", .powershell },
+        .{ ".psm1", .powershell },
+        .{ ".psd1", .powershell },
+        .{ ".gd", .gdscript },
     });
     return map.get(ext);
 }
 
 test "language enum count" {
-    // 66 languages in the C codebase (CBM_LANG_COUNT sentinel excluded).
-    try std.testing.expectEqual(@as(usize, 66), Language.count);
+    try std.testing.expectEqual(@as(usize, 68), Language.count);
 }
 
 test "extension detection" {

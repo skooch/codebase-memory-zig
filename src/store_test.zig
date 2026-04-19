@@ -164,6 +164,59 @@ test "store persists derived TESTS and TESTS_FILE edges with test metadata" {
     try std.testing.expect(std.mem.indexOf(u8, file_nodes[0].properties_json, "\"is_test\":true") != null);
 }
 
+test "store indexes powershell and gdscript fixture definitions" {
+    const allocator = std.testing.allocator;
+
+    {
+        var db = try store.Store.openMemory(allocator);
+        defer db.deinit();
+
+        const project_dir = "testdata/interop/language-expansion/powershell-basic";
+        const project_name = std.fs.path.basename(project_dir);
+
+        var p = pipeline.Pipeline.init(allocator, project_dir, .full);
+        defer p.deinit();
+        try p.run(&db);
+
+        _ = try findSingleNodeInStore(&db, project_name, "Function", "Invoke-Users", "main.ps1");
+        _ = try findSingleNodeInStore(&db, project_name, "Class", "Worker", "main.ps1");
+        const method_nodes = try db.searchNodes(.{
+            .project = project_name,
+            .label_pattern = "Method",
+            .name_pattern = "Run",
+            .file_pattern = "main.ps1",
+            .limit = 10,
+        });
+        defer db.freeNodes(method_nodes);
+        try std.testing.expect(method_nodes.len > 0);
+    }
+
+    {
+        var db = try store.Store.openMemory(allocator);
+        defer db.deinit();
+
+        const project_dir = "testdata/interop/language-expansion/gdscript-basic";
+        const project_name = std.fs.path.basename(project_dir);
+
+        var p = pipeline.Pipeline.init(allocator, project_dir, .full);
+        defer p.deinit();
+        try p.run(&db);
+
+        _ = try findSingleNodeInStore(&db, project_name, "Class", "Hero", "main.gd");
+        _ = try findSingleNodeInStore(&db, project_name, "Function", "boot", "main.gd");
+
+        const run_nodes = try db.searchNodes(.{
+            .project = project_name,
+            .label_pattern = "Method",
+            .name_pattern = "run",
+            .file_pattern = "main.gd",
+            .limit = 10,
+        });
+        defer db.freeNodes(run_nodes);
+        try std.testing.expect(run_nodes.len > 0);
+    }
+}
+
 fn edgeTargetsContain(edges: []const store.Edge, target_id: i64) bool {
     for (edges) |edge| {
         if (edge.target_id == target_id) return true;
