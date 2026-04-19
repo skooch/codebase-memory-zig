@@ -8,7 +8,7 @@ verification value.
 
 ## Current State
 
-- There are twelve queued execution plans under `docs/plans/new/`.
+- There are eleven queued execution plans under `docs/plans/new/`.
 - The most recent completed maintenance slices are
   [verification-remediation-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/verification-remediation-plan.md)
   and
@@ -19,7 +19,8 @@ verification value.
   [04-route-and-cross-service-framework-expansion-plan.md](/Users/skooch/projects/worktrees/route-cross-service-expansion/docs/plans/implemented/04-route-and-cross-service-framework-expansion-plan.md),
   and
   [05-config-normalization-and-reads-writes-contract-plan.md](/Users/skooch/projects/worktrees/config-normalization-reads-writes/docs/plans/implemented/05-config-normalization-and-reads-writes-contract-plan.md).
-- The next queued execution item is [01-go-parity-query-graph-resolution-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/01-go-parity-query-graph-resolution-plan.md).
+- The active execution plan is [01-go-parity-query-graph-resolution-plan.md](/Users/skooch/projects/worktrees/go-parity-query-graph-resolution/docs/plans/in-progress/01-go-parity-query-graph-resolution-plan.md).
+- The next queued execution item is [02-search-code-discovery-scope-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/02-search-code-discovery-scope-parity-plan.md).
 
 ## Next Queue
 
