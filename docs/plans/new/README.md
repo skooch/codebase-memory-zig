@@ -17,7 +17,7 @@ boundedness rather than by “biggest possible project.”
   [verification-remediation-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/verification-remediation-plan.md)
   and
   [01-full-compare-mismatch-reduction-plan.md](/Users/skooch/projects/worktrees/full-compare-mismatch-reduction/docs/plans/implemented/01-full-compare-mismatch-reduction-plan.md).
-- There is no active execution plan in `docs/plans/in-progress/` right now.
+- The active execution plan is [02-cypher-and-query-parity-expansion-plan.md](/Users/skooch/projects/worktrees/cypher-query-parity/docs/plans/in-progress/02-cypher-and-query-parity-expansion-plan.md).
 - Remaining work outside the queue below is still unqueued future expansion
   rather than tracked backlog.
 
