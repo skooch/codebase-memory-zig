@@ -43,10 +43,12 @@
   - `testdata/interop/semantic-expansion/celery_send_task/`
 
 ### Phase 3: Rebaseline parity evidence and docs
-- **Status:** in_progress
+- **Status:** completed
 - Actions:
-  - Updating `docs/port-comparison.md` and `docs/gap-analysis.md` from the new baseline: 30 fixtures, 230 comparisons, 132 strict matches, 34 diagnostic-only comparisons, and 1 remaining hard mismatch.
-  - Describing the new route/framework tranche as verified Zig-side expansion with diagnostic-only full-compare evidence rather than overstating it as strict shared parity.
+  - Updated `docs/port-comparison.md` and `docs/gap-analysis.md` to the new measured baseline: 30 fixtures, 230 comparisons, 132 strict matches, 34 diagnostic-only comparisons, and 1 remaining hard mismatch.
+  - Recorded the new route/framework tranche as verified Zig-side expansion with diagnostic-only full-compare evidence rather than overstating it as strict shared parity.
+  - Refreshed `docs/plans/new/README.md` so the next queued execution item is the config-normalization and `WRITES` / `READS` contract plan.
+  - Carried forward the stray `adr-parity` golden rebaseline produced by the verified `--update-golden` run so the checked-in snapshots match the current harness output.
 - Files modified:
   - `docs/port-comparison.md`
   - `docs/gap-analysis.md`

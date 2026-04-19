@@ -9,7 +9,7 @@ boundedness rather than by “biggest possible project.”
 
 ## Current State
 
-- There are two queued execution plans under `docs/plans/new/`.
+- There is one queued execution plan under `docs/plans/new/`.
 - The last ordered plan,
   [semantic-graph-expansion-feature-cluster-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/semantic-graph-expansion-feature-cluster-plan.md),
   is now implemented.
@@ -17,8 +17,8 @@ boundedness rather than by “biggest possible project.”
   [verification-remediation-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/verification-remediation-plan.md)
   and
   [01-full-compare-mismatch-reduction-plan.md](/Users/skooch/projects/worktrees/full-compare-mismatch-reduction/docs/plans/implemented/01-full-compare-mismatch-reduction-plan.md).
-- The newest completed follow-on slices are [02-cypher-and-query-parity-expansion-plan.md](/Users/skooch/projects/worktrees/cypher-query-parity/docs/plans/implemented/02-cypher-and-query-parity-expansion-plan.md) and [03-search-and-snippet-contract-normalization-plan.md](/Users/skooch/projects/worktrees/search-snippet-normalization/docs/plans/implemented/03-search-and-snippet-contract-normalization-plan.md).
-- The active execution plan is [04-route-and-cross-service-framework-expansion-plan.md](/Users/skooch/projects/worktrees/route-cross-service-expansion/docs/plans/in-progress/04-route-and-cross-service-framework-expansion-plan.md).
+- The newest completed follow-on slices are [02-cypher-and-query-parity-expansion-plan.md](/Users/skooch/projects/worktrees/cypher-query-parity/docs/plans/implemented/02-cypher-and-query-parity-expansion-plan.md), [03-search-and-snippet-contract-normalization-plan.md](/Users/skooch/projects/worktrees/search-snippet-normalization/docs/plans/implemented/03-search-and-snippet-contract-normalization-plan.md), and [04-route-and-cross-service-framework-expansion-plan.md](/Users/skooch/projects/worktrees/route-cross-service-expansion/docs/plans/implemented/04-route-and-cross-service-framework-expansion-plan.md).
+- The next queued execution item is [05-config-normalization-and-reads-writes-contract-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/05-config-normalization-and-reads-writes-contract-plan.md).
 - Remaining work outside the queue below is still unqueued future expansion
   rather than tracked backlog.
 
