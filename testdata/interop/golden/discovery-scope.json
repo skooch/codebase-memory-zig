@@ -1,0 +1,88 @@
+{
+  "delete_project": [],
+  "detect_changes_count": 0,
+  "fixture_id": "discovery-scope",
+  "get_architecture": [],
+  "get_code_snippet": [],
+  "get_graph_schema": [
+    {
+      "edge_types": [
+        "CONTAINS_FILE",
+        "CONTAINS_FOLDER",
+        "DEFINES"
+      ],
+      "languages": [
+        "typescript"
+      ],
+      "node_labels": [
+        "File",
+        "Folder",
+        "Function",
+        "Module",
+        "Project"
+      ]
+    }
+  ],
+  "index_repository": {
+    "edges_actual": 4,
+    "edges_min": 3,
+    "nodes_actual": 5,
+    "nodes_min": 4
+  },
+  "index_status": [],
+  "list_projects": [
+    "discovery-scope"
+  ],
+  "manage_adr": [],
+  "query_graph": [],
+  "search_code": [
+    {
+      "results": [
+        {
+          "file_path": "src/index.ts",
+          "label": "",
+          "name": ""
+        }
+      ],
+      "total_results": 1
+    },
+    {
+      "results": [],
+      "total_results": 0
+    },
+    {
+      "results": [],
+      "total_results": 0
+    },
+    {
+      "results": [],
+      "total_results": 0
+    }
+  ],
+  "search_graph": [
+    [
+      {
+        "file_path": "src/index.ts",
+        "label": "Function",
+        "name": "scopeVisible",
+        "qualified_name": "discovery-scope:src/index.ts:typescript:symbol:typescript:scopeVisible"
+      }
+    ]
+  ],
+  "tools_list": [
+    "delete_project",
+    "detect_changes",
+    "get_architecture",
+    "get_code_snippet",
+    "get_graph_schema",
+    "index_repository",
+    "index_status",
+    "list_projects",
+    "manage_adr",
+    "query_graph",
+    "search_code",
+    "search_graph",
+    "trace_call_path"
+  ],
+  "trace_call_path": []
+}

@@ -26,11 +26,11 @@ Phase 1
 ## Phases
 
 ### Phase 1: Stabilize the current red verification surface
-- [ ] Reproduce the current verification state in the execution worktree with `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh --zig-only`, and `bash scripts/run_cli_parity.sh --zig-only`, and record the exact failing scopes in `docs/plans/in-progress/verification-remediation-progress.md`.
-- [ ] Update `testdata/interop/golden/python-parity.json` or the corresponding canonicalization in `scripts/run_interop_alignment.sh` so the `get_graph_schema` contract is intentionally represented and the zig-only comparison no longer fails on schema-shape drift alone.
-- [ ] Generate and commit missing zig-only golden snapshots for `discovery-scope`, `python-framework-cases`, and `typescript-import-cases` under `testdata/interop/golden/` so every manifest fixture expected by `bash scripts/run_interop_alignment.sh --zig-only` has a committed baseline.
-- [ ] Re-run `bash scripts/run_interop_alignment.sh --zig-only` until the full zig-only interop harness is green on `main`.
-- **Status:** pending
+- [x] Reproduce the current verification state in the execution worktree with `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh --zig-only`, and `bash scripts/run_cli_parity.sh --zig-only`, and record the exact failing scopes in `docs/plans/in-progress/verification-remediation-progress.md`.
+- [x] Update `testdata/interop/golden/python-parity.json` or the corresponding canonicalization in `scripts/run_interop_alignment.sh` so the `get_graph_schema` contract is intentionally represented and the zig-only comparison no longer fails on schema-shape drift alone.
+- [x] Generate and commit missing zig-only golden snapshots for `discovery-scope`, `python-framework-cases`, and `typescript-import-cases` under `testdata/interop/golden/` so every manifest fixture expected by `bash scripts/run_interop_alignment.sh --zig-only` has a committed baseline.
+- [x] Re-run `bash scripts/run_interop_alignment.sh --zig-only` until the full zig-only interop harness is green on `main`.
+- **Status:** complete
 
 ### Phase 2: Close the known harness and assertion debt from the audit
 - [ ] Update `testdata/interop/manifest.json` so the shared interop fixtures exercise `get_code_snippet`, `get_graph_schema`, `index_status`, and `delete_project` with concrete assertions rather than tool-list presence only.

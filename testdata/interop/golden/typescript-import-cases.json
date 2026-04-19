@@ -1,0 +1,89 @@
+{
+  "delete_project": [],
+  "detect_changes_count": 0,
+  "fixture_id": "typescript-import-cases",
+  "get_architecture": [],
+  "get_code_snippet": [],
+  "get_graph_schema": [],
+  "index_repository": {
+    "edges_actual": 16,
+    "edges_min": 13,
+    "nodes_actual": 12,
+    "nodes_min": 12
+  },
+  "index_status": [],
+  "list_projects": [
+    "typescript-import-cases"
+  ],
+  "manage_adr": [],
+  "query_graph": [],
+  "search_code": [],
+  "search_graph": [
+    [
+      {
+        "file_path": "server.ts",
+        "label": "Function",
+        "name": "handleRequest",
+        "qualified_name": "typescript-import-cases:server.ts:typescript:symbol:typescript:handleRequest"
+      },
+      {
+        "file_path": "index.ts",
+        "label": "Function",
+        "name": "localOnly",
+        "qualified_name": "typescript-import-cases:index.ts:typescript:symbol:typescript:localOnly"
+      },
+      {
+        "file_path": "telemetry.ts",
+        "label": "Function",
+        "name": "markStart",
+        "qualified_name": "typescript-import-cases:telemetry.ts:typescript:symbol:typescript:markStart"
+      },
+      {
+        "file_path": "server.ts",
+        "label": "Function",
+        "name": "parsePayload",
+        "qualified_name": "typescript-import-cases:server.ts:typescript:symbol:typescript:parsePayload"
+      },
+      {
+        "file_path": "index.ts",
+        "label": "Function",
+        "name": "run",
+        "qualified_name": "typescript-import-cases:index.ts:typescript:symbol:typescript:run"
+      }
+    ]
+  ],
+  "tools_list": [
+    "delete_project",
+    "detect_changes",
+    "get_architecture",
+    "get_code_snippet",
+    "get_graph_schema",
+    "index_repository",
+    "index_status",
+    "list_projects",
+    "manage_adr",
+    "query_graph",
+    "search_code",
+    "search_graph",
+    "trace_call_path"
+  ],
+  "trace_call_path": [
+    [
+      [
+        "run",
+        "handleRequest",
+        "CALLS"
+      ],
+      [
+        "run",
+        "markStart",
+        "CALLS"
+      ],
+      [
+        "run",
+        "parsePayload",
+        "CALLS"
+      ]
+    ]
+  ]
+}

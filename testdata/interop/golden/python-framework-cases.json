@@ -1,0 +1,84 @@
+{
+  "delete_project": [],
+  "detect_changes_count": 0,
+  "fixture_id": "python-framework-cases",
+  "get_architecture": [],
+  "get_code_snippet": [],
+  "get_graph_schema": [],
+  "index_repository": {
+    "edges_actual": 12,
+    "edges_min": 11,
+    "nodes_actual": 10,
+    "nodes_min": 10
+  },
+  "index_status": [],
+  "list_projects": [
+    "python-framework-cases"
+  ],
+  "manage_adr": [],
+  "query_graph": [
+    {
+      "columns": [
+        "a.name",
+        "b.name"
+      ],
+      "rows": [
+        [
+          "health_check",
+          "/health"
+        ]
+      ]
+    }
+  ],
+  "search_code": [],
+  "search_graph": [
+    [
+      {
+        "file_path": "main.py",
+        "label": "Function",
+        "name": "build_router",
+        "qualified_name": "python-framework-cases:main.py:python:symbol:python:build_router"
+      },
+      {
+        "file_path": "main.py",
+        "label": "Function",
+        "name": "create_app",
+        "qualified_name": "python-framework-cases:main.py:python:symbol:python:create_app"
+      },
+      {
+        "file_path": "main.py",
+        "label": "Function",
+        "name": "health_check",
+        "qualified_name": "python-framework-cases:main.py:python:symbol:python:health_check"
+      },
+      {
+        "file_path": "main.py",
+        "label": "Function",
+        "name": "not_a_route",
+        "qualified_name": "python-framework-cases:main.py:python:symbol:python:not_a_route"
+      },
+      {
+        "file_path": "main.py",
+        "label": "Function",
+        "name": "read_status",
+        "qualified_name": "python-framework-cases:main.py:python:symbol:python:read_status"
+      }
+    ]
+  ],
+  "tools_list": [
+    "delete_project",
+    "detect_changes",
+    "get_architecture",
+    "get_code_snippet",
+    "get_graph_schema",
+    "index_repository",
+    "index_status",
+    "list_projects",
+    "manage_adr",
+    "query_graph",
+    "search_code",
+    "search_graph",
+    "trace_call_path"
+  ],
+  "trace_call_path": []
+}

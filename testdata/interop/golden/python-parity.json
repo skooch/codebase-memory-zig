@@ -39,23 +39,27 @@
   "get_graph_schema": [
     {
       "edge_types": [
-        "{'type': 'CALLS', 'count': 2}",
-        "{'type': 'CONFIGURES', 'count': 1}",
-        "{'type': 'CONTAINS_FILE', 'count': 3}",
-        "{'type': 'DECORATES', 'count': 1}",
-        "{'type': 'DEFINES', 'count': 15}",
-        "{'type': 'DEFINES_METHOD', 'count': 3}",
-        "{'type': 'IMPORTS', 'count': 1}",
-        "{'type': 'USAGE', 'count': 3}"
+        "CALLS",
+        "CONFIGURES",
+        "CONTAINS_FILE",
+        "DECORATES",
+        "DEFINES",
+        "DEFINES_METHOD",
+        "IMPORTS",
+        "USAGE"
+      ],
+      "languages": [
+        "python",
+        "yaml"
       ],
       "node_labels": [
-        "{'label': 'Class', 'count': 2}",
-        "{'label': 'File', 'count': 3}",
-        "{'label': 'Function', 'count': 3}",
-        "{'label': 'Method', 'count': 3}",
-        "{'label': 'Module', 'count': 3}",
-        "{'label': 'Project', 'count': 1}",
-        "{'label': 'Variable', 'count': 4}"
+        "Class",
+        "File",
+        "Function",
+        "Method",
+        "Module",
+        "Project",
+        "Variable"
       ]
     }
   ],
