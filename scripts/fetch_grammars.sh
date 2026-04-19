@@ -16,7 +16,17 @@ if [[ "${1:-}" == "--force" ]]; then
     FORCE=true
 fi
 
-if [[ "$FORCE" == false ]] && [[ -f "$GRAMMAR_DIR/rust/parser.c" ]]; then
+all_grammars_present() {
+    local lang=""
+    for lang in go java rust python javascript typescript tsx zig powershell gdscript; do
+        if [[ ! -f "$GRAMMAR_DIR/$lang/parser.c" ]]; then
+            return 1
+        fi
+    done
+    return 0
+}
+
+if [[ "$FORCE" == false ]] && all_grammars_present; then
     echo "Grammars already present. Use --force to re-fetch."
     exit 0
 fi
