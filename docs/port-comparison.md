@@ -81,7 +81,7 @@ What this does **not** justify claiming:
 - exhaustive tool-surface parity for every MCP edge case
 - exhaustive framework-specific route or async-broker coverage
 - exhaustive Windows-native runtime, installer, and archive behavior beyond the verified path-root and no-`HOME` fallback contract
-- exhaustive packaging and setup regression coverage across all shells and platforms
+- exhaustive packaging and setup regression coverage across all shells, hosts, and archive flows
 
 The current automated posture is strong enough to support the repo's daily-use parity claims. It is not strong enough to claim that every implemented feature and every error path is exhaustively locked down.
 
@@ -105,7 +105,7 @@ Current audit note on `2026-04-20`:
 | Readiness gate | Reference side of the interop harness | Completed and passing: `Strict matches: 58`, `Diagnostic-only comparisons: 9`, `Mismatches: 0` | `Near parity` | Yes | The first-gate harness is green; the expanded full harness now reports 33 fixtures, 251 comparisons, 143 strict matches, 38 diagnostic-only comparisons, 0 mismatches, and `cli_progress: match`. |
 | Broader post-readiness target | Everything in the original project | Current target contract only; long-tail parity moved to deferred backlog | `Partial` | No | See `docs/plans/implemented/post-readiness-zig-port-execution-plan.md`. |
 | Built-in graph UI | Yes, optional UI binary / HTTP server | No | `Cut` | No | Original has `src/ui/*` and `--ui` flags. Zig intentionally does not port the UI. |
-| Release/install packaging | Prebuilt release artifacts plus setup scripts and install scripts | Standard `cbm` release archives, checksums, install scripts, setup scripts, install docs, and a repo-owned release workflow | `Near parity` | Yes | The Zig repo now proves standard-binary packaging for macOS and Windows artifacts. UI variants plus signing/attestation remain intentionally narrower than the original pipeline. |
+| Release/install packaging | Prebuilt release artifacts plus setup scripts and install scripts | Standard `cbm` release archives, checksums, a repo-owned release manifest, install scripts, setup scripts, install docs, and a validating release workflow | `Near parity` | Yes | The Zig repo now proves standard-binary packaging for macOS, Linux, and Windows artifacts, with merged-manifest validation in the release workflow. UI variants plus signing/attestation remain intentionally narrower than the original pipeline. |
 
 ## 2. MCP Protocol and Tool Surface
 
@@ -240,8 +240,8 @@ This section compares what kinds of graph entities the two systems are built to 
 
 | Capability | Original C | Zig Port | Status | Interoperable? | Notes |
 |-----------|------------|----------|--------|----------------|-------|
-| Primary build system | Make + shell scripts | `zig build` plus repo-owned packaging and release scripts | `Partial` | No | Both repos now ship build and release scaffolding. The remaining difference is that Zig intentionally packages only the standard binary surface, not the original UI-oriented release variants. |
-| Setup scripts | Yes (`scripts/setup.sh`, `setup-windows.ps1`) | Yes (`install.sh`, `install.ps1`, `scripts/setup.sh`, `scripts/setup-windows.ps1`) | `Near parity` | Yes | Zig now verifies both shell and PowerShell entrypoints against local packaged archives, while keeping the scope on the standard binary rather than the original's broader UI release set. |
+| Primary build system | Make + shell scripts | `zig build` plus repo-owned packaging, manifest emission, and release-validation scripts | `Partial` | No | Both repos now ship build and release scaffolding. The remaining difference is that Zig intentionally packages only the standard binary surface, not the original UI-oriented release variants or external trust layers. |
+| Setup scripts | Yes (`scripts/setup.sh`, `setup-windows.ps1`) | Yes (`install.sh`, `install.ps1`, `scripts/setup.sh`, `scripts/setup-windows.ps1`) | `Near parity` | Yes | Zig now verifies both shell and PowerShell entrypoints against local packaged archives, with manifest-backed archive verification when `release-manifest.json` is present, while keeping the scope on the standard binary rather than the original's broader UI release set. |
 | UI asset embedding | Yes | No | `Cut` | No | Tied to the UI subsystem. |
 | Security / audit / benchmark script set | Broad script suite | Bounded repo-owned benchmark, soak, and static audit suite | `Near parity` | No | Zig now provides reproducible local and CI entrypoints for benchmark, soak, and static audit coverage. It still intentionally stops short of the original's binary-string, network-trace, fuzz, and multi-hour soak layers. |
 | Interop harness against the original | Not applicable | Yes | `Near parity` | No | This is a Zig-side advantage for tracking compatibility over time. |

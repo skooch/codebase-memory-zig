@@ -2,13 +2,12 @@
 
 Refresh date: 2026-04-20
 
-The previously queued parity follow-on work remains in motion. This file now
-records the remaining one backlog plan, ordered by direct parity leverage and
-bounded verification value.
+The previously queued parity follow-on work is complete. This file now records
+the current queue state after those execution slices landed.
 
 ## Current State
 
-- There is one queued execution plan under `docs/plans/new/`.
+- There are no queued execution plans under `docs/plans/new/`.
 - The most recent completed maintenance slices are
   [verification-remediation-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/verification-remediation-plan.md)
   and
@@ -25,15 +24,15 @@ bounded verification value.
   [09-installer-productization-parity-plan.md](/Users/skooch/projects/worktrees/installer-productization-parity/docs/plans/implemented/09-installer-productization-parity-plan.md),
   [10-windows-runtime-edge-coverage-plan.md](/Users/skooch/projects/worktrees/windows-runtime-edge-coverage/docs/plans/implemented/10-windows-runtime-edge-coverage-plan.md),
   [11-language-breadth-expansion-plan.md](/Users/skooch/projects/worktrees/language-breadth-expansion-2/docs/plans/implemented/11-language-breadth-expansion-plan.md),
+  [12-packaging-hardening-plan.md](/Users/skooch/projects/worktrees/packaging-hardening/docs/plans/implemented/12-packaging-hardening-plan.md),
   and
   [02-cypher-and-query-parity-expansion-plan.md](/Users/skooch/projects/worktrees/cypher-query-parity/docs/plans/implemented/02-cypher-and-query-parity-expansion-plan.md),
   [03-search-and-snippet-contract-normalization-plan.md](/Users/skooch/projects/worktrees/search-snippet-normalization/docs/plans/implemented/03-search-and-snippet-contract-normalization-plan.md),
   [04-route-and-cross-service-framework-expansion-plan.md](/Users/skooch/projects/worktrees/route-cross-service-expansion/docs/plans/implemented/04-route-and-cross-service-framework-expansion-plan.md),
   and
   [05-config-normalization-and-reads-writes-contract-plan.md](/Users/skooch/projects/worktrees/config-normalization-reads-writes/docs/plans/implemented/05-config-normalization-and-reads-writes-contract-plan.md).
-- The next queued execution item is [12-packaging-hardening-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/12-packaging-hardening-plan.md).
+- The queued execution backlog is exhausted.
 
 ## Next Queue
 
-1. [12-packaging-hardening-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/12-packaging-hardening-plan.md)
-   Add release-hardening layers beyond the currently verified packaging flow.
+There are no remaining queued execution plans.

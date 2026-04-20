@@ -12,7 +12,8 @@ $Repo = "skooch/codebase-memory-zig"
 if ($Help) {
     Write-Host "Usage: ./install.ps1 [-InstallDir <path>] [-SkipConfig] [-BaseUrl <url-or-path>]"
     Write-Host ""
-    Write-Host "Downloads a packaged cbm release archive, verifies checksums when available,"
+    Write-Host "Downloads a packaged cbm release archive, verifies checksums and the release"
+    Write-Host "manifest when available,"
     Write-Host "installs the binary, and optionally runs 'cbm install -y'."
     exit 0
 }
@@ -51,6 +52,33 @@ function Get-ArchiveInfo {
 function Get-Sha256 {
     param([string]$Path)
     return (Get-FileHash -Path $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+}
+
+function Test-ReleaseManifest {
+    param(
+        [string]$ManifestPath,
+        [string]$ArchiveName,
+        [string]$ExpectedSha
+    )
+
+    $manifest = Get-Content -Raw -LiteralPath $ManifestPath | ConvertFrom-Json
+    if (-not $manifest.artifacts) {
+        throw "Release manifest missing artifacts list"
+    }
+
+    $matches = @($manifest.artifacts | Where-Object { $_.archive -eq $ArchiveName })
+    if ($matches.Count -ne 1) {
+        throw "Release manifest did not contain exactly one entry for $ArchiveName"
+    }
+
+    $artifact = $matches[0]
+    if (-not $artifact.sha256) {
+        throw "Release manifest entry for $ArchiveName is missing sha256"
+    }
+
+    if ($artifact.sha256.ToLowerInvariant() -ne $ExpectedSha.ToLowerInvariant()) {
+        throw "Release manifest checksum mismatch for $ArchiveName"
+    }
 }
 
 function Resolve-BaseUrl {
@@ -107,16 +135,29 @@ try {
         $checksumsPath = $null
     }
 
+    $manifestPath = Join-Path $tmpDir "release-manifest.json"
+    try {
+        Copy-Or-Download -Base $BaseUrl -Name "release-manifest.json" -OutputPath $manifestPath
+    } catch {
+        $manifestPath = $null
+    }
+
+    $actual = Get-Sha256 $archivePath
+
     if ($checksumsPath -and (Test-Path $checksumsPath)) {
         $line = Get-Content $checksumsPath | Where-Object { $_ -match ("  " + [regex]::Escape($archiveName) + "$") }
         if ($line) {
             $expected = ($line -split '\s+')[0].ToLowerInvariant()
-            $actual = Get-Sha256 $archivePath
             if ($expected -ne $actual) {
                 throw "Checksum mismatch for $archiveName"
             }
             Write-Host "Checksum verified."
         }
+    }
+
+    if ($manifestPath -and (Test-Path $manifestPath)) {
+        Test-ReleaseManifest -ManifestPath $manifestPath -ArchiveName $archiveName -ExpectedSha $actual
+        Write-Host "Release manifest verified."
     }
 
     if ($archiveType -eq "zip") {

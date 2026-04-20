@@ -10,7 +10,8 @@ usage() {
     cat <<EOF
 Usage: install.sh [--dir <path>] [--dir=<path>] [--skip-config] [--base-url <url>] [--base-url=<url>]
 
-Downloads a packaged cbm release archive, verifies checksums when available,
+Downloads a packaged cbm release archive, verifies checksums and the release
+manifest when available,
 installs the binary, and optionally runs \`cbm install -y\`.
 EOF
 }
@@ -53,6 +54,33 @@ sha256_file() {
         return
     fi
     die "no SHA-256 tool available"
+}
+
+verify_manifest_entry() {
+    local manifest_path="$1"
+    local archive_name="$2"
+    local expected_sha="$3"
+    need_cmd python3
+    python3 - "$manifest_path" "$archive_name" "$expected_sha" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+manifest_path, archive_name, expected_sha = sys.argv[1:4]
+manifest = json.loads(Path(manifest_path).read_text())
+artifacts = manifest.get("artifacts")
+if not isinstance(artifacts, list):
+    raise SystemExit("release manifest missing artifacts list")
+matches = [item for item in artifacts if item.get("archive") == archive_name]
+if len(matches) != 1:
+    raise SystemExit(f"release manifest did not contain exactly one entry for {archive_name}")
+artifact = matches[0]
+manifest_sha = artifact.get("sha256")
+if not isinstance(manifest_sha, str) or not manifest_sha:
+    raise SystemExit(f"release manifest entry for {archive_name} is missing sha256")
+if manifest_sha.lower() != expected_sha.lower():
+    raise SystemExit(f"release manifest checksum mismatch for {archive_name}")
+PY
 }
 
 detect_os() {
@@ -124,17 +152,22 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 echo "Downloading ${ARCHIVE}..."
 download_file "${BASE_URL}/${ARCHIVE}" "${TMP_DIR}/${ARCHIVE}"
 
-if download_file "${BASE_URL}/checksums.txt" "${TMP_DIR}/checksums.txt" 2>/dev/null; then
-    :
-fi
+download_file "${BASE_URL}/checksums.txt" "${TMP_DIR}/checksums.txt" 2>/dev/null || true
+download_file "${BASE_URL}/release-manifest.json" "${TMP_DIR}/release-manifest.json" 2>/dev/null || true
+
+ACTUAL_SHA="$(sha256_file "${TMP_DIR}/${ARCHIVE}")"
 
 if [ -f "${TMP_DIR}/checksums.txt" ]; then
     EXPECTED="$(awk -v name="$ARCHIVE" '$2 == name { print $1 }' "${TMP_DIR}/checksums.txt")"
     if [ -n "$EXPECTED" ]; then
-        ACTUAL="$(sha256_file "${TMP_DIR}/${ARCHIVE}")"
-        [ "$EXPECTED" = "$ACTUAL" ] || die "checksum mismatch for ${ARCHIVE}"
+        [ "$EXPECTED" = "$ACTUAL_SHA" ] || die "checksum mismatch for ${ARCHIVE}"
         echo "Checksum verified."
     fi
+fi
+
+if [ -f "${TMP_DIR}/release-manifest.json" ]; then
+    verify_manifest_entry "${TMP_DIR}/release-manifest.json" "${ARCHIVE}" "${ACTUAL_SHA}"
+    echo "Release manifest verified."
 fi
 
 tar -xzf "${TMP_DIR}/${ARCHIVE}" -C "$TMP_DIR"

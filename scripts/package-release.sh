@@ -11,7 +11,8 @@ usage() {
     cat <<EOF
 Usage: scripts/package-release.sh --version <version> [--output-dir <path>] [--target <zig-target> ...]
 
-Builds release-safe cbm archives for one or more targets and writes checksums.txt.
+Builds release-safe cbm archives for one or more targets and writes checksums.txt
+plus release-manifest.json.
 If no --target values are supplied, the host target is used.
 EOF
 }
@@ -50,11 +51,11 @@ host_target() {
 
 archive_info() {
     case "$1" in
-        aarch64-macos) echo "cbm-darwin-arm64.tar.gz|cbm|tar.gz" ;;
-        x86_64-macos) echo "cbm-darwin-amd64.tar.gz|cbm|tar.gz" ;;
-        aarch64-linux-musl) echo "cbm-linux-arm64.tar.gz|cbm|tar.gz" ;;
-        x86_64-linux-musl) echo "cbm-linux-amd64.tar.gz|cbm|tar.gz" ;;
-        x86_64-windows|x86_64-windows-gnu) echo "cbm-windows-amd64.zip|cbm.exe|zip" ;;
+        aarch64-macos) echo "cbm-darwin-arm64.tar.gz|cbm|tar.gz|darwin|arm64" ;;
+        x86_64-macos) echo "cbm-darwin-amd64.tar.gz|cbm|tar.gz|darwin|amd64" ;;
+        aarch64-linux-musl) echo "cbm-linux-arm64.tar.gz|cbm|tar.gz|linux|arm64" ;;
+        x86_64-linux-musl) echo "cbm-linux-amd64.tar.gz|cbm|tar.gz|linux|amd64" ;;
+        x86_64-windows|x86_64-windows-gnu) echo "cbm-windows-amd64.zip|cbm.exe|zip|windows|amd64" ;;
         *) die "unsupported release target: $1" ;;
     esac
 }
@@ -102,6 +103,7 @@ done
 command -v zig >/dev/null 2>&1 || die "zig is required"
 command -v tar >/dev/null 2>&1 || die "tar is required"
 command -v zip >/dev/null 2>&1 || die "zip is required"
+command -v python3 >/dev/null 2>&1 || die "python3 is required"
 
 if [ "${#TARGETS[@]}" -eq 0 ]; then
     TARGETS=("$(host_target)")
@@ -110,12 +112,16 @@ fi
 mkdir -p "$OUTPUT_DIR"
 OUTPUT_DIR="$(cd "$OUTPUT_DIR" && pwd)"
 rm -f "${OUTPUT_DIR}/checksums.txt"
+rm -f "${OUTPUT_DIR}/release-manifest.json"
 
 WORK_ROOT="$(mktemp -d)"
 trap 'rm -rf "$WORK_ROOT"' EXIT
+METADATA_TSV="${WORK_ROOT}/release-metadata.tsv"
+: > "${METADATA_TSV}"
+SOURCE_COMMIT="$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")"
 
 for target in "${TARGETS[@]}"; do
-    IFS='|' read -r archive_name binary_name archive_type <<EOF
+    IFS='|' read -r archive_name binary_name archive_type os_name arch_name <<EOF
 $(archive_info "$target")
 EOF
     build_root="${WORK_ROOT}/${target}"
@@ -147,8 +153,56 @@ EOF
         tar -czf "${OUTPUT_DIR}/${archive_name}" -C "$stage_dir" .
     fi
 
-    printf '%s  %s\n' "$(sha256_file "${OUTPUT_DIR}/${archive_name}")" "${archive_name}" >> "${OUTPUT_DIR}/checksums.txt"
+    archive_path="${OUTPUT_DIR}/${archive_name}"
+    checksum="$(sha256_file "${archive_path}")"
+    size_bytes="$(wc -c < "${archive_path}" | tr -d ' ')"
+
+    printf '%s  %s\n' "${checksum}" "${archive_name}" >> "${OUTPUT_DIR}/checksums.txt"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "${target}" \
+        "${os_name}" \
+        "${arch_name}" \
+        "${archive_name}" \
+        "${binary_name}" \
+        "${archive_type}" \
+        "${checksum}" \
+        "${size_bytes}" >> "${METADATA_TSV}"
     echo "packaged ${archive_name}"
 done
 
+python3 - "${VERSION}" "${SOURCE_COMMIT}" "${METADATA_TSV}" "${OUTPUT_DIR}/release-manifest.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+version, source_commit, metadata_path, manifest_path = sys.argv[1:5]
+rows = []
+for line in Path(metadata_path).read_text().splitlines():
+    if not line.strip():
+        continue
+    target, os_name, arch_name, archive_name, binary_name, archive_type, checksum, size_bytes = line.split("\t")
+    rows.append(
+        {
+            "target": target,
+            "os": os_name,
+            "arch": arch_name,
+            "archive": archive_name,
+            "binary": binary_name,
+            "archive_type": archive_type,
+            "sha256": checksum,
+            "size_bytes": int(size_bytes),
+        }
+    )
+
+rows.sort(key=lambda item: item["target"])
+manifest = {
+    "schema_version": 1,
+    "version": version,
+    "source_commit": source_commit,
+    "artifacts": rows,
+}
+Path(manifest_path).write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+PY
+
 echo "wrote ${OUTPUT_DIR}/checksums.txt"
+echo "wrote ${OUTPUT_DIR}/release-manifest.json"

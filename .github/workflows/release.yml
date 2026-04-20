@@ -108,7 +108,91 @@ jobs:
           mkdir -p release
           find artifacts -type f \( -name '*.tar.gz' -o -name '*.zip' \) -exec cp {} release/ \;
           cat artifacts/*/checksums.txt > release/checksums.txt
+          find artifacts -type f -name 'release-manifest.json' | while IFS= read -r path; do
+            parent="$(basename "$(dirname "$path")")"
+            cp "$path" "release/${parent}-release-manifest.json"
+          done
           ls -la release
+
+      - name: Merge and validate release manifest
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          release_dir = Path("release")
+          manifest_paths = sorted(path for path in release_dir.glob("*release-manifest.json") if path.name != "release-manifest.json")
+          if not manifest_paths:
+              raise SystemExit("no per-job release manifests found")
+
+          merged = {}
+          expected_version = None
+          expected_commit = None
+
+          for manifest_path in manifest_paths:
+              manifest = json.loads(manifest_path.read_text())
+              if manifest.get("schema_version") != 1:
+                  raise SystemExit(f"{manifest_path} has unsupported schema_version")
+              version = manifest.get("version")
+              commit = manifest.get("source_commit")
+              if expected_version is None:
+                  expected_version = version
+                  expected_commit = commit
+              elif version != expected_version or commit != expected_commit:
+                  raise SystemExit("per-job manifests disagree on version or source_commit")
+              for artifact in manifest.get("artifacts", []):
+                  archive = artifact.get("archive")
+                  if not archive:
+                      raise SystemExit(f"{manifest_path} contains an artifact without archive")
+                  prior = merged.get(archive)
+                  if prior is not None and prior != artifact:
+                      raise SystemExit(f"conflicting manifest entries for {archive}")
+                  merged[archive] = artifact
+
+          archive_paths = sorted(
+              path for path in release_dir.iterdir()
+              if path.is_file() and (path.name.endswith(".tar.gz") or path.name.endswith(".zip"))
+          )
+          archive_names = {path.name for path in archive_paths}
+          if archive_names != set(merged):
+              missing = sorted(archive_names - set(merged))
+              extra = sorted(set(merged) - archive_names)
+              raise SystemExit(f"manifest/archive mismatch missing={missing} extra={extra}")
+
+          checksum_lines = [line for line in (release_dir / "checksums.txt").read_text().splitlines() if line.strip()]
+          checksum_map = {}
+          for line in checksum_lines:
+              parts = line.split()
+              if len(parts) != 2:
+                  raise SystemExit(f"invalid checksums.txt line: {line}")
+              checksum_map[parts[1]] = parts[0].lower()
+          if set(checksum_map) != archive_names:
+              missing = sorted(archive_names - set(checksum_map))
+              extra = sorted(set(checksum_map) - archive_names)
+              raise SystemExit(f"checksums/archive mismatch missing={missing} extra={extra}")
+
+          for archive_path in archive_paths:
+              digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+              size_bytes = archive_path.stat().st_size
+              if checksum_map[archive_path.name] != digest:
+                  raise SystemExit(f"checksums.txt mismatch for {archive_path.name}")
+              artifact = merged[archive_path.name]
+              if artifact.get("sha256", "").lower() != digest:
+                  raise SystemExit(f"manifest checksum mismatch for {archive_path.name}")
+              if int(artifact.get("size_bytes", -1)) != size_bytes:
+                  raise SystemExit(f"manifest size mismatch for {archive_path.name}")
+
+          combined_manifest = {
+              "schema_version": 1,
+              "version": expected_version,
+              "source_commit": expected_commit,
+              "artifacts": [merged[name] for name in sorted(merged)],
+          }
+          (release_dir / "release-manifest.json").write_text(json.dumps(combined_manifest, indent=2, sort_keys=True) + "\n")
+          for manifest_path in manifest_paths:
+              manifest_path.unlink()
+          PY
 
       - name: Create draft GitHub release
         env:

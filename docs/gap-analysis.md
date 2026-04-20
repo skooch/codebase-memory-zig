@@ -20,7 +20,7 @@ Verification posture today:
 Known coverage gaps in the current automated suite:
 - Current local audit on `2026-04-20`: `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh --zig-only`, `bash scripts/run_cli_parity.sh --zig-only`, and the current ops suite entrypoints all pass. The route-cross-service framework-depth worktree also completed `bash scripts/run_interop_alignment.sh` with `33` fixtures, `251` comparisons, `143` strict matches, `38` diagnostic-only comparisons, and `0` mismatches, confirming that `route-expansion-httpx` is already a strict shared route slice while `keyword_request_styles` and `semantic-expansion-send-task` remain diagnostic-only because the current C reference still returns empty row sets there.
 - Merge-blocking CI now includes the full Zig-vs-C compare for interop-touching pull requests and pushes to `main`, while non-interop changes still rely on zig-only goldens plus unit and integration tests.
-- Packaging and setup entrypoints are exercised by verification runs and workflows, but do not yet have exhaustive cross-platform regression automation for every shell or archive flow.
+- Packaging and setup entrypoints are exercised by verification runs and workflows, and the release workflow now merges and validates a repo-owned `release-manifest.json`, but the repo still does not have exhaustive cross-platform regression automation for every shell, host, or archive flow.
 - Windows coverage is strong at config-path, installer-layout, no-`HOME` env fallback, runtime DB root creation, and PowerShell entrypoint level, but not exhaustive of native runtime and filesystem edge cases.
 - Framework-specific route registration, broker-specific event semantics, and richer Cypher permutations are covered by bounded fixtures rather than exhaustive matrix testing.
 - Error-path and state-transition coverage exists in unit tests for several subsystems, but not as a comprehensive end-to-end parity matrix across every MCP tool and CLI surface.
@@ -631,13 +631,17 @@ Completion evidence for this plan:
 - `build.zig` now exposes `zig build release` for a ReleaseSafe installable
   binary target
 - `scripts/package-release.sh` now produces release-style archives plus
-  `checksums.txt`, including a verified Windows zip artifact
+  `checksums.txt` and `release-manifest.json`, including a verified Windows zip
+  artifact
 - `install.sh`, `install.ps1`, `scripts/setup.sh`, and
   `scripts/setup-windows.ps1` now verify and install the packaged binary from a
   release directory or build it from source
 - `.github/workflows/release.yml` now assembles those artifacts into a draft
-  GitHub release
+  GitHub release and validates the merged manifest against the final release
+  archive set
 - `docs/install.md` now documents the standard-binary release/install contract
+- `docs/release-hardening.md` now documents the repo-owned manifest contract and
+  the deliberate exclusion of signing and external attestation
 
 Intentional omissions after completion:
 
