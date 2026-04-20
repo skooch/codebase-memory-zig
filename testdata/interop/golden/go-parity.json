@@ -90,6 +90,7 @@
     "get_graph_schema",
     "index_repository",
     "index_status",
+    "ingest_traces",
     "list_projects",
     "manage_adr",
     "query_graph",

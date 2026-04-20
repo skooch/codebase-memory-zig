@@ -1,0 +1,80 @@
+{
+  "contract_checks": {
+    "tool_calls": [
+      {
+        "label": "moderate_mode_contract",
+        "name": "index_repository",
+        "result": {
+          "error": {
+            "code": -32602,
+            "message": "Unsupported index_repository mode"
+          }
+        }
+      }
+    ],
+    "tools_list": {
+      "tool_schemas": {
+        "index_repository": {
+          "mode_enum": [
+            "full",
+            "fast"
+          ],
+          "property_keys": [
+            "mode",
+            "repo_path"
+          ],
+          "required": [
+            "repo_path"
+          ]
+        },
+        "ingest_traces": {
+          "property_keys": [
+            "project",
+            "traces"
+          ],
+          "required": [
+            "project",
+            "traces"
+          ]
+        }
+      }
+    }
+  },
+  "delete_project": [],
+  "detect_changes_count": 0,
+  "fixture_id": "tool-surface-parity",
+  "get_architecture": [],
+  "get_code_snippet": [],
+  "get_graph_schema": [],
+  "index_repository": {
+    "edges_actual": 6,
+    "edges_min": 2,
+    "nodes_actual": 5,
+    "nodes_min": 4
+  },
+  "index_status": [],
+  "list_projects": [
+    "tool-surface-parity"
+  ],
+  "manage_adr": [],
+  "query_graph": [],
+  "search_code": [],
+  "search_graph": [],
+  "tools_list": [
+    "delete_project",
+    "detect_changes",
+    "get_architecture",
+    "get_code_snippet",
+    "get_graph_schema",
+    "index_repository",
+    "index_status",
+    "ingest_traces",
+    "list_projects",
+    "manage_adr",
+    "query_graph",
+    "search_code",
+    "search_graph",
+    "trace_call_path"
+  ],
+  "trace_call_path": []
+}

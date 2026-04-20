@@ -34,6 +34,12 @@ const max_request_line_bytes = 1024 * 1024;
 const max_response_bytes = 4 * 1024 * 1024;
 const response_too_large_code: i64 = -32001;
 pub const default_idle_store_timeout_ms: u64 = 60_000;
+const supported_protocol_versions = [_][]const u8{
+    "2025-11-25",
+    "2025-06-18",
+    "2025-03-26",
+    "2024-11-05",
+};
 
 const SupportedTool = enum {
     index_repository,
@@ -49,6 +55,7 @@ const SupportedTool = enum {
     index_status,
     detect_changes,
     manage_adr,
+    ingest_traces,
 };
 
 const RpcRequest = struct {
@@ -238,15 +245,18 @@ pub const McpServer = struct {
 
         if (std.mem.eql(u8, request.value.method, "initialize")) {
             if (self.lifecycle_ref) |lifecycle| lifecycle.startUpdateCheck();
-            return self.successResponse(
-                request.value.id,
-                "{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"codebase-memory-zig\",\"version\":\"0.0.0\"}}",
+            const payload = try std.fmt.allocPrint(
+                self.allocator,
+                "{{\"protocolVersion\":\"{s}\",\"capabilities\":{{\"tools\":{{}}}},\"serverInfo\":{{\"name\":\"codebase-memory-zig\",\"version\":\"{s}\"}}}}",
+                .{ negotiatedProtocolVersion(request.value.params), "0.0.0" },
             );
+            defer self.allocator.free(payload);
+            return self.successResponse(request.value.id, payload);
         }
         if (std.mem.eql(u8, request.value.method, "tools/list")) {
             const payload =
                 \\{"tools":[
-                \\{"name":"index_repository","description":"Index a repository into the graph store","inputSchema":{"type":"object","properties":{"project_path":{"type":"string"},"mode":{"type":"string","enum":["full","fast"]}}}},
+                \\{"name":"index_repository","description":"Index a repository into the knowledge graph","inputSchema":{"type":"object","properties":{"repo_path":{"type":"string","description":"Path to the repository"},"mode":{"type":"string","enum":["full","fast"],"default":"full","description":"full: all passes. fast: structure-first discovery."}},"required":["repo_path"]}},
                 \\{"name":"search_graph","description":"Structured graph search with filtering, degree-aware ranking, pagination, and optional connected-node context","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"label":{"type":"string"},"label_pattern":{"type":"string"},"name_pattern":{"type":"string"},"qn_pattern":{"type":"string"},"file_pattern":{"type":"string"},"relationship":{"type":"string"},"exclude_entry_points":{"type":"boolean"},"include_connected":{"type":"boolean"},"limit":{"type":"number"},"offset":{"type":"number"},"min_degree":{"type":"number"},"max_degree":{"type":"number"},"sort_by":{"type":"string"},"sort_direction":{"type":"string"}}}},
                 \\{"name":"query_graph","description":"Run a read-only Cypher-like query","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"query":{"type":"string"},"max_rows":{"type":"number"}}}},
                 \\{"name":"trace_call_path","description":"Trace call paths between nodes with configurable edge types, modes, risk labels, and test filtering","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"start_node_qn":{"type":"string","description":"Qualified name of start node"},"function_name":{"type":"string","description":"Alias for start_node_qn (bare name lookup)"},"direction":{"type":"string","enum":["in","out","both"]},"depth":{"type":"number"},"mode":{"type":"string","enum":["calls","data_flow","cross_service"],"description":"Preset edge type set (default: calls)"},"edge_types":{"type":"array","items":{"type":"string"},"description":"Explicit edge types override (takes priority over mode)"},"risk_labels":{"type":"boolean","description":"Include hop-based risk classification per node"},"include_tests":{"type":"boolean","description":"Include test-file nodes in results (default: true)"}}}},
@@ -258,7 +268,8 @@ pub const McpServer = struct {
                 \\{"name":"delete_project","description":"Delete a project from the index","inputSchema":{"type":"object","properties":{"project":{"type":"string"}},"required":["project"]}},
                 \\{"name":"index_status","description":"Get the indexing status of a project","inputSchema":{"type":"object","properties":{"project":{"type":"string"}}}},
                 \\{"name":"detect_changes","description":"Map local git changes to affected symbols and nearby blast radius","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"base_branch":{"type":"string"},"scope":{"type":"string"},"depth":{"type":"number"}},"required":["project"]}},
-                \\{"name":"manage_adr","description":"Create or update Architecture Decision Records","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"mode":{"type":"string","enum":["get","update","sections"]},"content":{"type":"string"},"sections":{"type":"array","items":{"type":"string"}}},"required":["project"]}}
+                \\{"name":"manage_adr","description":"Create or update Architecture Decision Records","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"mode":{"type":"string","enum":["get","update","sections"]},"content":{"type":"string"},"sections":{"type":"array","items":{"type":"string"}}},"required":["project"]}},
+                \\{"name":"ingest_traces","description":"Ingest runtime traces to enhance the knowledge graph","inputSchema":{"type":"object","properties":{"traces":{"type":"array","items":{"type":"object"}},"project":{"type":"string"}},"required":["traces","project"]}}
                 \\]}
             ;
             const response = try self.successResponse(request.value.id, payload);
@@ -364,15 +375,21 @@ pub const McpServer = struct {
             .index_status => self.handleIndexStatus(request_id, call.arguments orelse .null),
             .detect_changes => self.handleDetectChanges(request_id, call.arguments orelse .null),
             .manage_adr => self.handleManageAdr(request_id, call.arguments orelse .null),
+            .ingest_traces => self.handleIngestTraces(request_id, call.arguments orelse .null),
         };
     }
 
     fn handleIndexRepository(self: *McpServer, request_id: ?std.json.Value, args: std.json.Value) !?[]const u8 {
-        const project_path = stringArg(args, "project_path") orelse return self.errorResponse(request_id, -32602, "Missing project_path");
+        const repo_path = indexRepositoryPathArg(args) orelse return self.errorResponse(request_id, -32602, "Missing repo_path");
         const mode_raw = stringArg(args, "mode") orelse "full";
-        const mode = if (std.mem.eql(u8, mode_raw, "fast")) pipeline.IndexMode.fast else pipeline.IndexMode.full;
+        const mode = if (std.mem.eql(u8, mode_raw, "fast"))
+            pipeline.IndexMode.fast
+        else if (std.mem.eql(u8, mode_raw, "full"))
+            pipeline.IndexMode.full
+        else
+            return self.errorResponse(request_id, -32602, "Unsupported index_repository mode");
 
-        const normalized_path = std.fs.cwd().realpathAlloc(self.allocator, project_path) catch try self.allocator.dupe(u8, project_path);
+        const normalized_path = std.fs.cwd().realpathAlloc(self.allocator, repo_path) catch try self.allocator.dupe(u8, repo_path);
         defer self.allocator.free(normalized_path);
         const project_name = std.fs.path.basename(normalized_path);
         if (self.index_guard) |index_guard| {
@@ -396,7 +413,7 @@ pub const McpServer = struct {
         const payload = try std.fmt.allocPrint(
             self.allocator,
             "{{\"project\":\"{s}\",\"mode\":\"{s}\",\"nodes\":{d},\"edges\":{d}}}",
-            .{ project_name, if (mode == .fast) "fast" else "full", node_count, edge_count },
+            .{ project_name, indexModeText(mode), node_count, edge_count },
         );
         defer self.allocator.free(payload);
         return self.successResponse(request_id, payload);
@@ -897,6 +914,21 @@ pub const McpServer = struct {
         return self.successResponse(request_id, owned_payload);
     }
 
+    fn handleIngestTraces(self: *McpServer, request_id: ?std.json.Value, args: std.json.Value) !?[]const u8 {
+        _ = stringArg(args, "project") orelse return self.errorResponse(request_id, -32602, "Missing project");
+        if (args != .object) return self.errorResponse(request_id, -32602, "Missing traces");
+        const traces = args.object.get("traces") orelse return self.errorResponse(request_id, -32602, "Missing traces");
+        if (traces != .array) return self.errorResponse(request_id, -32602, "Invalid traces");
+
+        const payload = try std.fmt.allocPrint(
+            self.allocator,
+            "{{\"status\":\"accepted\",\"traces_received\":{d},\"note\":\"Runtime edge creation from traces not yet implemented\"}}",
+            .{traces.array.items.len},
+        );
+        defer self.allocator.free(payload);
+        return self.successResponse(request_id, payload);
+    }
+
     fn collectNeighborNames(
         self: *McpServer,
         project: []const u8,
@@ -1008,6 +1040,37 @@ fn parseSearchCodeMode(raw: ?[]const u8) SearchCodeMode {
     return .compact;
 }
 
+fn negotiatedProtocolVersion(params: ?std.json.Value) []const u8 {
+    if (params) |value| {
+        if (value == .object) {
+            if (value.object.get("protocolVersion")) |version| {
+                if (version == .string and isSupportedProtocolVersion(version.string)) {
+                    return version.string;
+                }
+            }
+        }
+    }
+    return supported_protocol_versions[0];
+}
+
+fn isSupportedProtocolVersion(version: []const u8) bool {
+    for (supported_protocol_versions) |candidate| {
+        if (std.mem.eql(u8, version, candidate)) return true;
+    }
+    return false;
+}
+
+fn indexRepositoryPathArg(args: std.json.Value) ?[]const u8 {
+    return stringArg(args, "repo_path") orelse stringArg(args, "project_path");
+}
+
+fn indexModeText(mode: pipeline.IndexMode) []const u8 {
+    return switch (mode) {
+        .full => "full",
+        .fast => "fast",
+    };
+}
+
 fn signedIntArg(value: std.json.Value, key: []const u8) ?i32 {
     if (value != .object) return null;
     const child = value.object.get(key) orelse return null;
@@ -1104,6 +1167,7 @@ fn SupportedToolFromString(name: []const u8) error{UnsupportedTool}!SupportedToo
     if (std.mem.eql(u8, name, "index_status")) return .index_status;
     if (std.mem.eql(u8, name, "detect_changes")) return .detect_changes;
     if (std.mem.eql(u8, name, "manage_adr")) return .manage_adr;
+    if (std.mem.eql(u8, name, "ingest_traces")) return .ingest_traces;
     return error.UnsupportedTool;
 }
 
@@ -1321,6 +1385,7 @@ test "tool enum coverage" {
     try std.testing.expectEqual(SupportedTool.search_code, try SupportedToolFromString("search_code"));
     try std.testing.expectEqual(SupportedTool.detect_changes, try SupportedToolFromString("detect_changes"));
     try std.testing.expectEqual(SupportedTool.manage_adr, try SupportedToolFromString("manage_adr"));
+    try std.testing.expectEqual(SupportedTool.ingest_traces, try SupportedToolFromString("ingest_traces"));
     try std.testing.expectError(error.UnsupportedTool, SupportedToolFromString("missing"));
 }
 
@@ -1335,6 +1400,40 @@ test "tools/list advertises manage_adr" {
     )).?;
     defer std.testing.allocator.free(response);
     try std.testing.expect(std.mem.indexOf(u8, response, "\"manage_adr\"") != null);
+}
+
+test "tools/list advertises ingest_traces and repo_path" {
+    var s = try store.Store.openMemory(std.testing.allocator);
+    defer s.deinit();
+    var srv = McpServer.init(std.testing.allocator, &s);
+    defer srv.deinit();
+
+    const response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":43,"method":"tools/list","params":{}}
+    )).?;
+    defer std.testing.allocator.free(response);
+    try std.testing.expect(std.mem.indexOf(u8, response, "\"ingest_traces\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, response, "\"repo_path\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, response, "\"project_path\"") == null);
+}
+
+test "initialize negotiates supported protocol versions" {
+    var s = try store.Store.openMemory(std.testing.allocator);
+    defer s.deinit();
+    var srv = McpServer.init(std.testing.allocator, &s);
+    defer srv.deinit();
+
+    const supported_response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":44,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}
+    )).?;
+    defer std.testing.allocator.free(supported_response);
+    try std.testing.expect(std.mem.indexOf(u8, supported_response, "\"protocolVersion\":\"2024-11-05\"") != null);
+
+    const fallback_response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":45,"method":"initialize","params":{"protocolVersion":"2026-01-01"}}
+    )).?;
+    defer std.testing.allocator.free(fallback_response);
+    try std.testing.expect(std.mem.indexOf(u8, fallback_response, "\"protocolVersion\":\"2025-11-25\"") != null);
 }
 
 test "successResponse converts oversized payloads into deterministic errors" {
@@ -1817,7 +1916,7 @@ test "index_repository registers watcher state and delete_project unwatches it" 
 
     const index_request = try std.fmt.allocPrint(
         allocator,
-        "{{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"tools/call\",\"params\":{{\"name\":\"index_repository\",\"arguments\":{{\"project_path\":\"{s}\"}}}}}}",
+        "{{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"tools/call\",\"params\":{{\"name\":\"index_repository\",\"arguments\":{{\"repo_path\":\"{s}\"}}}}}}",
         .{project_dir},
     );
     defer allocator.free(index_request);
@@ -1875,7 +1974,7 @@ test "runFiles processes multiple newline-delimited requests" {
     const input = try std.fmt.allocPrint(
         allocator,
         "{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{{}}}}\n" ++
-            "{{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{{\"name\":\"index_repository\",\"arguments\":{{\"project_path\":\"{s}\"}}}}}}\n",
+            "{{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{{\"name\":\"index_repository\",\"arguments\":{{\"repo_path\":\"{s}\"}}}}}}\n",
         .{project_dir},
     );
     defer allocator.free(input);
@@ -2009,6 +2108,22 @@ test "notifications do not consume the first update notice response" {
     try std.testing.expect(std.mem.indexOf(u8, initialize_response, "\"protocolVersion\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, tools_response, "\"update_notice\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, tools_response, "Update available: 0.0.0 -> 9.9.9") != null);
+}
+
+test "ingest_traces returns accepted stub payload" {
+    var s = try store.Store.openMemory(std.testing.allocator);
+    defer s.deinit();
+    var srv = McpServer.init(std.testing.allocator, &s);
+    defer srv.deinit();
+
+    const response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":46,"method":"tools/call","params":{"name":"ingest_traces","arguments":{"project":"demo","traces":[{"kind":"span"},{"kind":"span"}]}}}
+    )).?;
+    defer std.testing.allocator.free(response);
+
+    try std.testing.expect(std.mem.indexOf(u8, response, "\"status\":\"accepted\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, response, "\"traces_received\":2") != null);
+    try std.testing.expect(std.mem.indexOf(u8, response, "not yet implemented") != null);
 }
 
 test "idle store eviction closes the runtime db and reopens on the next tool call" {

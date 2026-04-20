@@ -1,6 +1,6 @@
 # Interop Testing Review
 
-**Date:** 2026-04-20
+**Date:** 2026-04-21
 **Scope:** Current-state review of the interop and parity verification surface after the completed queued parity follow-on work
 **Status:** Updated
 
@@ -11,9 +11,9 @@ The interop harness is in materially better shape than the 2026-04-12 review des
 Current verified state:
 - `zig build test` passes in the execution worktree.
 - `bash scripts/run_cli_parity.sh --zig-only` passes.
-- `bash scripts/run_interop_alignment.sh --zig-only` passes at `33/33`.
+- `bash scripts/run_interop_alignment.sh --zig-only` passes at `35/35`.
 - `bash scripts/run_interop_alignment.sh` now reports no hard mismatches instead of the earlier six-item set.
-- The current full compare baseline is `33` fixtures, `251` comparisons, `143` strict matches, `38` diagnostic-only comparisons, and `0` mismatches.
+- The current full compare baseline is `35` fixtures, `267` comparisons, `150` strict matches, `39` diagnostic-only comparisons, and `0` mismatches.
 - The full-compare workflow no longer hides failures behind `continue-on-error` and now runs as a path-scoped PR or `main` gate in addition to the weekly scheduled sweep.
 
 The review from 2026-04-12 is no longer accurate as a live issue register. Several items it flagged have already been resolved in the repo, and the remaining debt is narrower than that review implied.
@@ -31,9 +31,9 @@ The review from 2026-04-12 is no longer accurate as a live issue register. Sever
 ### Fixture Footprint
 
 Current manifest footprint:
-- `33` fixtures in `testdata/interop/manifest.json`
+- `35` fixtures in `testdata/interop/manifest.json`
 - zig-only goldens committed for all manifest fixtures
-- basic, parity, graph-model, enrichment, discovery-scope, error-path, language-expansion, route-expansion, semantic-expansion, and config-expansion coverage all present
+- basic, parity, graph-model, enrichment, discovery-scope, error-path, language-expansion, route-expansion, semantic-expansion, config-expansion, and exact protocol-contract coverage all present
 
 ### MCP Tool Assertion Coverage
 
@@ -54,8 +54,9 @@ Current manifest assertion coverage across the shared tool surface:
 | `get_graph_schema` | yes |
 | `index_status` | yes |
 | `delete_project` | yes |
+| exact `initialize` / `tools/list` / `tools/call` / one-shot CLI contract layer | yes |
 
-This closes the largest blind spot from the earlier review: the shared tool surface is no longer only presence-checked through `tools/list`.
+This closes the largest blind spot from the earlier review: the shared tool surface is no longer only presence-checked through `tools/list`, and the protocol handshake plus one-shot CLI layer now have dedicated named fixtures.
 
 ## Resolved Since The Earlier Review
 
@@ -72,6 +73,7 @@ The following findings from the 2026-04-12 review are no longer current:
 - Golden comparison already includes actual node and edge counts alongside thresholds and warns on significant drops.
 - `scripts/run_cli_parity.sh` is executable.
 - The shared manifest now also covers the expanded bounded Go hybrid-resolution sidecar slice.
+- The shared manifest now also includes exact `protocol-contract` and `tool-surface-parity` fixtures for the public MCP handshake and tool surface.
 
 ## Remaining Verification Debt
 
@@ -95,11 +97,15 @@ The remaining debt is real, but it is narrower:
 6. The old discovery-scope warning is resolved.
    The direct Zig/C repro and the full compare both now show `search_code` agreement on the `discovery-scope` fixture: `scopeVisible` returns `src/index.ts`, while `ghostIgnoredHit`, `generatedBundleHit`, and `ghostNestedHit` all return zero results on both implementations. The earlier docs overstated a divergence that is no longer present in the measured baseline.
 
+7. Latest-upstream tool-surface parity still has one deliberate diagnostic row.
+   The new `tool-surface-parity` fixture proves exact inventory/schema coverage for the shared public surface, but it intentionally stays diagnostic-only because Zig still rejects `index_repository(mode="moderate")` while the upstream release accepts it.
+
 ## Current Judgment
 
 The interop and parity verification surface is now strong enough to support the repo's documented daily-use contract:
 
 - all shared MCP tools are behavior-tested somewhere in the manifest
+- the MCP handshake and tool-surface layer now have dedicated exact fixtures via `protocol-contract` and `tool-surface-parity`
 - the shared `query_graph` contract is now behavior-tested past simple counts, including bounded `DISTINCT`, boolean-precedence filters, numeric property predicates, and edge-type filtering
 - the bounded Go hybrid-resolution sidecar contract is now exercised on both the original single-call fixture and the expanded multi-document fixture
 - the broader route surface now explicitly includes one additional strict shared framework slice via `route-expansion-httpx`, while `keyword_request_styles` and `semantic-expansion-send-task` stay diagnostic-only by design

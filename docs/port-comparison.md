@@ -11,6 +11,11 @@ It is intentionally not a wish list. It describes:
 - where the Zig port is near-parity for the current target contract
 - where the Zig port is intentionally narrower, deferred, or not ported
 
+Baseline note:
+
+- The original C side in this document is the latest released upstream baseline, `codebase-memory-mcp` `v0.6.0` from `2026-04-06`.
+- The local checkout at `../codebase-memory-mcp` is older than that tag, so release-facing claims below are grounded in the tagged `v0.6.0` sources, not the stale local working tree.
+
 ## Sources Used
 
 - Planning and status docs in this repo:
@@ -32,15 +37,20 @@ It is intentionally not a wish list. It describes:
   - `src/watcher.zig`
   - `src/minhash.zig`
   - `src/cli.zig`
-- Original C implementation:
-  - `../codebase-memory-mcp/README.md`
-  - `../codebase-memory-mcp/src/main.c`
-  - `../codebase-memory-mcp/src/mcp/mcp.c`
-  - `../codebase-memory-mcp/src/pipeline/pipeline.h`
-  - `../codebase-memory-mcp/src/store/store.c`
-  - `../codebase-memory-mcp/src/discover/language.c`
-  - `../codebase-memory-mcp/src/cli/cli.c`
-  - `../codebase-memory-mcp/src/cli/progress_sink.c`
+- Original C release baseline (`DeusData/codebase-memory-mcp` `v0.6.0`):
+  - release metadata from `gh release view v0.6.0 --repo DeusData/codebase-memory-mcp`
+  - `README.md`
+  - `src/main.c`
+  - `src/mcp/mcp.c`
+  - `src/pipeline/pipeline.h`
+  - `src/pipeline/pass_definitions.c`
+  - `src/pipeline/pass_semantic_edges.c`
+  - `src/pipeline/pass_similarity.c`
+  - `src/store/store.c`
+  - `src/store/store.h`
+  - `src/discover/discover.c`
+  - `src/discover/discover.h`
+  - `src/cli/cli.c`
 
 ## Status Legend
 
@@ -59,13 +69,13 @@ It is intentionally not a wish list. It describes:
 | Area | Original C | Zig Port | Status | Interoperable? |
 |------|------------|----------|--------|----------------|
 | Readiness/interoperability gate | Full shared-capability reference implementation | Expanded shared-capability parity harness completed, automated, and passing | `Near parity` | Yes |
-| Daily-use MCP surface | Full 14-tool surface, though `ingest_traces` is stubbed | All 13 meaningful shared tools are implemented, with stable hybrid routing behind the MCP contract | `Near parity` | Yes |
-| Core indexing pipeline | Broad multi-pass pipeline including routes, tests, config links, infra scans, git history, similarity | Strong core pipeline for structure, definitions, imports, calls, usages, semantics, incremental, parallel, similarity, plus embedded FTS5 refresh and optional SCIP sidecar import | `Partial` | No |
+| Daily-use MCP surface | Full 14-tool surface, with `v0.6.0` widening `search_graph` via BM25 `query` search and vector-backed `semantic_query`; `ingest_traces` remains stubbed | All 13 previously meaningful shared tools are implemented, but Zig does not ship the new `search_graph` discovery modes | `Partial` | No |
+| Core indexing pipeline | Broad multi-pass pipeline including `full` / `moderate` / `fast` modes, `SIMILAR_TO`, `SEMANTICALLY_RELATED`, persisted `IMPORTS`, route/data-flow, channel edges, tests, config links, infra scans, and git history | Strong core pipeline for structure, definitions, calls, usages, incremental, parallel, similarity, route/event slices, plus embedded FTS5 refresh and optional SCIP sidecar import | `Partial` | No |
 | Runtime lifecycle | Watcher, auto-index, update notifications, UI-capable runtime | Watcher, auto-index, incremental, transactional indexing, persistent runtime DB | `Near parity` | Yes |
 | CLI/productization | Rich install/update/config for 10 agents plus hooks/instructions | Source-build-friendly install/update/config for the broader 10-agent matrix, with parity-tested shared flows and fixture-backed extras coverage | `Partial` | No |
-| Optional/long-tail systems | UI, route graph, infra/resource indexing, git history, config linking | Git history coupling implemented; graph-model parity fixture contract completed for route nodes and config linking; UI and infra scanning remain deferred or cut | `Partial` / `Cut` | No |
+| Optional/long-tail systems | UI, semantic/vector search, route and channel graph expansion, infra/resource indexing, git history, config linking | Git history coupling implemented; graph-model parity fixture contract completed for route nodes and config linking; UI and infra scanning remain deferred or cut | `Partial` / `Cut` | No |
 
-As of `2026-04-20`, the comparison is no longer mostly about open shared-surface gaps. Most of the historically important day-to-day parity rows are now closed. The remaining differences are concentrated in deliberate scope choices: the original UI binary, infra/resource scanning families, deeper Cypher and LSP breadth, and the upstream-stub `ingest_traces` tool.
+As of `2026-04-21`, the pre-`v0.6.0` shared contract is still largely closed. The newest latest-upstream gaps are concentrated in `search_graph` discovery modes (`query` / `semantic_query`), `moderate` indexing, `SEMANTICALLY_RELATED`, persisted `IMPORTS`, and the newer channel graph vocabulary (`Channel`, `EMITS`, `LISTENS_ON`). Older intentional scope choices such as the UI binary, infra/resource indexing, and deeper Cypher/LSP breadth still remain.
 
 ## Verification Posture
 
@@ -87,12 +97,12 @@ What this does **not** justify claiming:
 
 The current automated posture is strong enough to support the repo's daily-use parity claims. It is not strong enough to claim that every implemented feature and every error path is exhaustively locked down.
 
-Current audit note on `2026-04-20`:
+Current audit note on `2026-04-21`:
 
 - `zig build`: pass
 - `zig build test`: pass
 - `bash scripts/run_cli_parity.sh --zig-only`: pass
-- `bash scripts/run_interop_alignment.sh --zig-only`: pass (`33/33`)
+- `bash scripts/run_interop_alignment.sh --zig-only`: pass (`35/35`)
 - `bash scripts/run_benchmark_suite.sh --zig-only --manifest testdata/bench/stress-manifest.json --report-dir .benchmark_reports/ops`: pass
 - `bash scripts/run_soak_suite.sh --iterations 3 --report-dir .soak_reports/ci`: pass
 - `bash scripts/run_security_audit.sh .security_reports/ci`: pass
@@ -103,8 +113,8 @@ Current audit note on `2026-04-20`:
 
 | Capability | Original C (`codebase-memory-mcp`) | Zig Port (`codebase-memory-zig`) | Status | Interoperable? | Notes |
 |-----------|-------------------------------------|----------------------------------|--------|----------------|-------|
-| Stated product goal | Full-featured code intelligence engine with 14 MCP tools, UI variant, 66 languages, 10-agent install path | Interoperable, higher-performance and more reliable daily-use port of the original | `Partial` | No | The Zig repo explicitly treats completion of Phase 7 as completion of the current target contract, not exhaustive parity. |
-| Readiness gate | Reference side of the interop harness | Completed and passing: `Strict matches: 58`, `Diagnostic-only comparisons: 9`, `Mismatches: 0` | `Near parity` | Yes | The first-gate harness is green; the expanded full harness now reports 33 fixtures, 251 comparisons, 143 strict matches, 38 diagnostic-only comparisons, 0 mismatches, and `cli_progress: match`. |
+| Stated product goal | Full-featured code intelligence engine with 14 MCP tools, UI variant, 66 languages, 10-agent install path, plus `v0.6.0` semantic search and `moderate` indexing | Interoperable, higher-performance and more reliable daily-use port of the original | `Partial` | No | The Zig repo explicitly treats completion of Phase 7 as completion of the older target contract, not exhaustive parity with the latest upstream release. |
+| Readiness gate | Reference side of the interop harness | Completed and passing: `Strict matches: 58`, `Diagnostic-only comparisons: 9`, `Mismatches: 0` | `Near parity` | Yes | The first-gate harness is green; the expanded full harness now reports 35 fixtures, 267 comparisons, 150 strict matches, 39 diagnostic-only comparisons, 0 mismatches, and `cli_progress: match`. |
 | Broader post-readiness target | Everything in the original project | Current target contract only; long-tail parity moved to deferred backlog | `Partial` | No | See `docs/plans/implemented/post-readiness-zig-port-execution-plan.md`. |
 | Built-in graph UI | Yes, optional UI binary / HTTP server | No | `Cut` | No | Original has `src/ui/*` and `--ui` flags. Zig intentionally does not port the UI. |
 | Release/install packaging | Prebuilt release artifacts plus setup scripts and install scripts | Standard `cbm` release archives, checksums, a repo-owned release manifest, install scripts, setup scripts, install docs, and a validating release workflow | `Near parity` | Yes | The Zig repo now proves standard-binary packaging for macOS, Linux, and Windows artifacts, with merged-manifest validation in the release workflow. UI variants plus signing/attestation remain intentionally narrower than the original pipeline. |
@@ -115,10 +125,10 @@ Current audit note on `2026-04-20`:
 
 | Capability | Original C | Zig Port | Status | Interoperable? | Notes |
 |-----------|------------|----------|--------|----------------|-------|
-| `initialize` | Yes | Yes | `Near parity` | Yes | Both serve stdio JSON-RPC MCP. |
-| `tools/list` | Yes, advertises 14 tools | Yes, advertises the 13 overlapping implemented tools | `Near parity` | Yes | Shared tool-schema parity is now green; the only remaining count difference is the original's stub `ingest_traces`. |
-| `tools/call` | Yes | Yes | `Near parity` | Yes | Core RPC path is implemented in both. |
-| One-shot CLI tool execution | `codebase-memory-mcp cli ...` | `cbm cli ...` | `Near parity` | Yes | Both support direct command-line tool invocation. |
+| `initialize` | Yes | Yes | `Near parity` | Yes | The exact `protocol-contract` fixture now locks supported-version negotiation rather than only presence-checking the MCP handshake. |
+| `tools/list` | Yes, advertises 14 tools | Yes, but the latest-upstream advertised schema still differs in visible ways | `Partial` | No | The exact `tool-surface-parity` fixture now locks tool inventory, `repo_path`, and the visible `ingest_traces` stub, but full parity is still blocked by the newer upstream `index_repository.mode` and `search_graph` discovery-mode contract. |
+| `tools/call` | Yes | Yes | `Near parity` | Yes | The `protocol-contract` fixture now locks the exact shared `tools/call` protocol layer, including the accepted `ingest_traces` stub response. |
+| One-shot CLI tool execution | `codebase-memory-mcp cli ...` | `cbm cli ...` | `Near parity` | Yes | The `protocol-contract` fixture now covers one-shot CLI tool execution at the exact contract layer rather than relying only on broader fixture assertions. |
 | CLI progress output | Rich progress sink with per-stage pipeline events | Shared phase-aware progress stream for overlapping commands | `Near parity` | Yes | The temp-HOME CLI parity check in the interop harness now reports `cli_progress: match`; richer original-only lifecycle/runtime extras remain separate rows. |
 | Idle-store / session-lifecycle extras | Present in the original MCP runtime | Timed idle eviction of the shared runtime DB plus reopen on the next stdio tool call | `Near parity` | Yes | Zig now proves the overlapping idle close/reopen behavior with `bash scripts/test_runtime_lifecycle_extras.sh`. The original's per-project cached-store topology remains an internal design difference rather than a public contract gap for this repo. |
 | Signal-driven graceful shutdown | Yes | Yes | `Near parity` | Yes | Zig now installs `SIGINT` / `SIGTERM` handlers and the runtime harness verifies clean shutdown while stdio is active. |
@@ -127,8 +137,8 @@ Current audit note on `2026-04-20`:
 
 | Tool | Original C | Zig Port | Status | Interoperable? | Notes |
 |------|------------|----------|--------|----------------|-------|
-| `index_repository` | Full | Implemented | `Near parity` | Yes | Core readiness tool; interop-gated. |
-| `search_graph` | Full | Implemented with rich filters and pagination | `Near parity` | Yes | The Zig Phase 5 work specifically broadened this toward daily-use parity. |
+| `index_repository` | Full | Implemented, but without a real `moderate` mode | `Partial` | No | The exact `tool-surface-parity` fixture now proves `repo_path` compatibility and the public error contract for unsupported `moderate`, which keeps this row intentionally below full parity until the pipeline really supports that mode. |
+| `search_graph` | Full, with `name_pattern`, BM25 `query`, and vector-backed `semantic_query` discovery modes | Implemented with rich structured filters and pagination, but without the upstream `query` / `semantic_query` paths | `Partial` | No | Zig matches much of the structured filter surface, including degree filters and `include_connected`, but not the newer release's lexical and semantic discovery modes or `semantic_results` payload. |
 | `query_graph` | Full Cypher-oriented surface | Shared read-only Cypher parity floor for node and edge reads, filtering, counts, distinct selection, boolean-precedence predicates, numeric property predicates, and bounded edge-type conditions | `Near parity` | Yes | The compare harness now proves an additional `cypher-predicate-floor` slice covering `COUNT(...)`, `OR`/`AND` precedence, and numeric `start_line` filters as an exact Zig/C match, and the exercised Go and Java language fixtures now also sit fully inside the scored shared query floor. |
 | `trace_call_path` / `trace_path` | Calls, data-flow, cross-service, risk labels, include-tests | Calls, data-flow, cross-service modes; multi-edge-type BFS; risk labels; test-file filtering; function_name alias; structured callees/callers response | `Near parity` | Yes | Zig now implements trace modes, risk classification, test filtering, and the richer response format matching the C reference surface. |
 | `get_code_snippet` | Full | Implemented | `Near parity` | Yes | Zig supports exact lookup, suffix fallback, ambiguity suggestions, neighbor info. The full-compare harness now normalizes the shared snippet contract instead of scoring implementation-specific qualified-name formatting. |
@@ -138,30 +148,34 @@ Current audit note on `2026-04-20`:
 | `list_projects` | Full | Implemented | `Near parity` | Yes | Core readiness tool; counts remain diagnostic in first-gate comparisons. |
 | `delete_project` | Full | Implemented | `Near parity` | Yes | Includes watcher unregistration in Zig. |
 | `index_status` | Full | Implemented | `Near parity` | Yes | Exposed during Phase 3. |
-| `detect_changes` | Git diff + impact + blast radius + risk classification | Shared git-diff, impacted-symbol, blast-radius, and reporting contract aligned for the parity fixtures | `Near parity` | Yes | Zig now matches the original's overlapping `scope` mode behavior and shared reporting shape on the verified fixture scenarios. |
+| `detect_changes` | Git diff + impact + blast radius + risk classification, with `since` in `v0.6.0` | Shared git-diff, impacted-symbol, blast-radius, and reporting contract aligned for the parity fixtures | `Partial` | No | Zig matches the established `base_branch` and `scope` behavior on the verified fixtures, but it does not expose the newer upstream `since` selector yet. |
 | `manage_adr` | Implemented | Implemented with shared `get`, `update`, and `sections` parity | `Near parity` | Yes | The interop harness now verifies the overlapping ADR tool contract on a local parity fixture. |
-| `ingest_traces` | Stubbed in original | Not implemented | `N/A` | No | Not a meaningful parity gap because the original feature is also not real. |
+| `ingest_traces` | Stubbed in original | Stubbed public tool surface is the honest parity target | `N/A` | No | The upstream feature is still not real, but the public tool inventory now matters for exact `tools/list` parity. |
 
 ### 2.3 Important Tool-Contract Differences
 
 | Difference | Original C | Zig Port | Why it matters |
 |-----------|------------|----------|----------------|
-| Indexing argument name | `repo_path` | `project_path` | Wrappers or fixtures must normalize this difference. |
+| Indexing argument name | `repo_path` | Public `repo_path`, with `project_path` retained only as a compatibility alias | The public contract should converge on the upstream name while preserving local compatibility during the transition. |
+| `search_graph` discovery modes | Regex-style `name_pattern`, BM25 `query`, and vector-backed `semantic_query` | Structured graph search only | Latest-upstream discovery claims are no longer equivalent even though the tool name still overlaps. |
 | Trace tool naming | `trace_path` plus `trace_call_path` alias | `trace_call_path` only | The Zig port follows the clearer explicit name. |
 | Trace entry argument | `function_name` | `start_node_qn` (with `function_name` alias) | Zig accepts both; prefers qualified name but falls back to name-based search. |
 | Trace modes | `calls`, `data_flow`, `cross_service` | `calls`, `data_flow`, `cross_service` | Zig now implements all three trace modes with matching edge type presets. |
-| Tools advertised via `tools/list` | 14 total | 13 overlapping implemented tools | Shared overlap is aligned; the remaining count difference is the original's stub `ingest_traces`. |
+| Change baseline selector | `base_branch` or `since` | `base_branch` only | Latest-upstream change-detection workflows can scope by tag/ref/date in C but not yet in Zig. |
+| Tools advertised via `tools/list` | 14 total, including stub `ingest_traces` | Tool inventory is converging, but exact schema parity still depends on unresolved latest-upstream contract deltas | Exact tool-surface parity is no longer just a count question; `index_repository.mode` and `search_graph` discovery modes are user-visible parts of the surface. |
 
 ## 3. Indexing Pipeline and Graph Construction
 
 | Capability | Original C | Zig Port | Status | Interoperable? | Notes |
 |-----------|------------|----------|--------|----------------|-------|
 | Structure pass | Yes | Yes | `Near parity` | Yes | Both build project/folder/file/module structure. |
+| Index modes | `full`, `moderate`, `fast` | `full`, `fast` | `Partial` | No | Zig lacks the upstream `moderate` mode, which is now part of the public indexing contract and the path that enables semantic search without full indexing. |
 | Shared target-language definitions extraction | Broad AST extraction across the original language set | Parser-backed extraction aligned with the verified shared Python, JavaScript, TypeScript, Rust, Go, and Java contract, plus Zig-side expansion tranches for C#, PowerShell, and GDScript | `Near parity` | Yes | The parity fixtures now lock shared definition inventory, ownership, and label behavior for the overlapping target languages. The additional Zig-side C#, PowerShell, and GDScript tranche is fixture-verified for parser-backed definitions, but remains a local expansion claim rather than an interoperability claim. |
-| Import resolution | Yes | Yes | `Near parity` | Yes | Zig improved alias preservation and namespace-aware resolution in Phase 4, and the `typescript-import-cases` accuracy fixture now keeps that shared contract under interop coverage. |
+| Import resolution | Yes, now also persisted as explicit `IMPORTS` graph edges in the `v0.6.0` baseline | Yes for shared call and query behavior, but without explicit persisted `IMPORTS` edges | `Partial` | No | Zig improved alias preservation and namespace-aware resolution in Phase 4, but the latest upstream release now treats `IMPORTS` as a first-class graph edge family. |
 | Shared call-resolution cases | Registry + import-aware resolution + some LSP hybrid paths | Registry + import-aware resolution aligned on the verified alias-heavy shared cases | `Near parity` | Yes | The interop harness now protects the overlapping call-edge contract directly, including the new `typescript-import-cases` fixture. The original's broader LSP-assisted path remains a separate deferred row. |
 | Shared usage and type-reference edges | Yes | Yes for the verified shared fixture slice | `Near parity` | Yes | Phase 3 now locks the overlapping declaration-time `USAGE` and shared type-reference behavior on the parity fixtures; deeper data-flow remains outside this row. |
 | Shared semantic-edge contract | Inherits / decorates / implements and related enrichment | Implemented and aligned for the shared decorator-focused overlap | `Near parity` | Yes | The verified shared contract now matches the original on persisted decorator edges and on the exercised empty-result cases for unsupported inheritance/implements rows. |
+| Semantic relatedness / embedding layer | `SEMANTICALLY_RELATED` edges plus vector data that powers `search_graph.semantic_query` in `moderate` / `full` modes | Not implemented | `Deferred` | No | This is the biggest new latest-upstream gap introduced by `v0.6.0`. Zig has lexical FTS5 for `search_code`, but not the upstream semantic-search contract. |
 | Qualified-name helpers | Yes | Yes | `Near parity` | Yes | Explicit Phase 2 substrate work. |
 | Registry / symbol lookup | Yes | Yes | `Near parity` | Yes | Explicit Phase 2 and Phase 4 work in Zig. |
 | Incremental indexing | Yes | Yes | `Near parity` | Yes | Zig persists file hashes and reindexes changed slices. |
@@ -184,10 +198,12 @@ This section compares what kinds of graph entities the two systems are built to 
 |----------------------------|------------|----------|--------|----------------|-------|
 | Core code graph (`Project`, `Folder`, `File`, `Module`, `Class`, `Function`, `Method`, `Interface`, `Enum`) | Yes | Yes | `Near parity` | Yes | These are the backbone of the shipped Zig graph. |
 | Core code edges (`CONTAINS_*`, `DEFINES`, `DEFINES_METHOD`, `CALLS`, `USAGE`) | Yes | Yes | `Near parity` | Yes | All are part of the current Zig daily-use contract. |
+| `IMPORTS` | Yes | No explicit persisted edge family | `Partial` | No | The upstream `v0.6.0` baseline now emits `IMPORTS` edges for relative and language-aware imports; Zig currently uses import knowledge for resolution without exposing the same graph edge contract. |
 | `SIMILAR_TO` | Yes | Yes | `Near parity` | Yes | Landed in Zig Phase 6. |
+| `SEMANTICALLY_RELATED` | Yes | No | `Deferred` | No | Upstream `v0.6.0` adds a second semantic-similarity family distinct from MinHash clone detection. |
 | Shared `CONFIGURES` contract | Yes | Yes for the verified shared fixture slices | `Near parity` | Yes | The parity fixtures now compare overlapping `CONFIGURES` rows directly, including the graph-model key-symbol normalization case; broader config-link systems remain deferred elsewhere. |
 | Internal serving architecture | Graph-centric serving path | Hybrid internal serving path: SQLite graph core, FTS5 lexical index, optional SCIP sidecar overlay, and query router | `Near parity` | Yes | This is an internal implementation improvement in the Zig port; it deliberately preserves the interoperable MCP surface rather than creating a new client contract. |
-| Route and event graph (`Route`, `EventTopic`, `HTTP_CALLS`, `ASYNC_CALLS`, `HANDLES`, `EMITS`, `SUBSCRIBES`, route-linked data flows) | Yes | Partial | `Partial` | No | Zig now creates concrete URL/path/topic `Route` nodes, verified decorator-backed `HANDLES`, strict shared route-linked `DATA_FLOWS`, strict shared async topic caller rows, one additional strict shared `httpx` caller slice, fixture-backed `EventTopic` nodes, and derived `EMITS` / `SUBSCRIBES` edges with architecture and cross-service trace visibility. The broader keyword-registration, generic `requests.request`, and `celery.send_task` slices remain diagnostic-only in the full compare because the current C reference still returns empty row sets there. Higher-order analytics and broader framework coverage still remain open. |
+| Route and message graph (`Route`, `Channel` in C vs `EventTopic` in Zig, `HTTP_CALLS`, `ASYNC_CALLS`, `HANDLES`, `EMITS`, `LISTENS_ON` in C vs `SUBSCRIBES` in Zig, route-linked data flows) | Yes | Partial | `Partial` | No | Zig now creates concrete URL/path/topic route nodes, verified decorator-backed `HANDLES`, strict shared route-linked `DATA_FLOWS`, strict shared async topic caller rows, one additional strict shared `httpx` caller slice, fixture-backed topic nodes, and derived `EMITS` / `SUBSCRIBES` edges with architecture and cross-service trace visibility. The latest upstream release now models channels as `Channel` nodes with `LISTENS_ON`, so the message-edge vocabulary is no longer identical even where the bounded behavior overlaps. |
 | Resource / infra graph (`Resource`, K8s/Kustomize entities) | Yes | Not shipped | `Cut` | No | Intentionally outside the Zig scope. |
 | `TESTS` / test metadata | Yes | Yes for the verified shared Python fixture slice | `Near parity` | Yes | The parity fixture now locks shared `TESTS` and `TESTS_FILE` rows plus file-level `is_test` metadata for the exercised Python naming rules. |
 | `FILE_CHANGES_WITH` | Yes | Yes | `Near parity` | Yes | Zig git-history pass creates `FILE_CHANGES_WITH` edges with `co_changes` and `coupling_score` properties via subprocess `git log`. |
@@ -255,6 +271,7 @@ This section compares what kinds of graph entities the two systems are built to 
 | It is a useful daily-use MCP server for structural code intelligence | Yes |
 | It matches the original on the documented readiness gate | Yes |
 | It implements the completed post-readiness target contract described in this repo | Yes |
+| It is near-parity with the latest upstream `v0.6.0` release | No |
 | It is a full feature-for-feature port of the original C project | No |
 | Its automated suite is exhaustive of all implemented features and edge cases | No |
 | It has no meaningful remaining work in its chosen daily-use target | Yes |

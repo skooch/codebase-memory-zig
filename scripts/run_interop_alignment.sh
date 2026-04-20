@@ -306,6 +306,45 @@ def canonical_tools_list(payload: Any) -> list[str]:
     return normalized
 
 
+def canonical_initialize_result(payload: Any) -> dict[str, str]:
+    if not isinstance(payload, dict):
+        return {"protocolVersion": ""}
+    return {
+        "protocolVersion": str(payload.get("protocolVersion", "")),
+    }
+
+
+def canonical_tool_schema_contract(payload: Any) -> dict[str, dict[str, Any]]:
+    if not isinstance(payload, dict):
+        return {}
+    tools = payload.get("tools", [])
+    if not isinstance(tools, list):
+        return {}
+
+    normalized: dict[str, dict[str, Any]] = {}
+    for tool in tools:
+        if not isinstance(tool, dict):
+            continue
+        name = str(tool.get("name", ""))
+        if name == "trace_path":
+            name = "trace_call_path"
+        if not name:
+            continue
+        schema = tool.get("inputSchema", {})
+        properties = schema.get("properties", {}) if isinstance(schema, dict) else {}
+        if not isinstance(properties, dict):
+            properties = {}
+        entry: dict[str, Any] = {
+            "property_keys": sorted(str(key) for key in properties.keys()),
+            "required": sorted(str(item) for item in schema.get("required", [])) if isinstance(schema, dict) and isinstance(schema.get("required", []), list) else [],
+        }
+        mode = properties.get("mode")
+        if isinstance(mode, dict) and isinstance(mode.get("enum"), list):
+            entry["mode_enum"] = [str(item) for item in mode.get("enum", [])]
+        normalized[name] = entry
+    return normalized
+
+
 def canonical_architecture(payload: Any) -> dict[str, list[str]]:
     if not isinstance(payload, dict):
         return {"node_labels": [], "edge_types": []}
@@ -423,6 +462,27 @@ def canonical_manage_adr(payload: Any) -> dict[str, Any]:
         "content": decode_text(str(payload.get("content", ""))),
         "sections": normalized_sections,
     }
+
+
+def canonical_contract_tool_result(payload: Any) -> dict[str, Any]:
+    error = canonical_error(payload)
+    if error is not None:
+        return {"error": error}
+    if not isinstance(payload, dict):
+        return {"value": payload}
+
+    if "nodes" in payload or "edges" in payload or payload.get("status") == "indexed":
+        return {
+            "status": "indexed",
+            "has_nodes": "nodes" in payload,
+            "has_edges": "edges" in payload,
+        }
+
+    normalized: dict[str, Any] = {}
+    for key in ("status", "project", "mode", "traces_received", "note"):
+        if key in payload:
+            normalized[key] = payload.get(key)
+    return normalized
 
 
 def canonical_graph_schema(payload: Any) -> dict[str, Any]:
@@ -693,12 +753,29 @@ def canonical_progress_lines(stderr_lines: list[str]) -> list[str]:
     return normalized
 
 
+def expand_contract_value(value: Any, impl: str, tool_ctx: dict[str, str]) -> Any:
+    if isinstance(value, str):
+        if value == "$PROJECT":
+            return tool_ctx["project"] if impl == "zig" else tool_ctx["c_project"]
+        if value == "$PROJECT_PATH":
+            return tool_ctx["project_path"]
+        return value
+    if isinstance(value, list):
+        return [expand_contract_value(item, impl, tool_ctx) for item in value]
+    if isinstance(value, dict):
+        return {
+            str(key): expand_contract_value(item, impl, tool_ctx)
+            for key, item in value.items()
+        }
+    return value
+
+
 def run_cli_progress(bin_path: str, project_path: str, impl: str) -> dict[str, Any]:
     env = os.environ.copy()
     temp_home = tempfile.TemporaryDirectory(prefix=f"cbm-progress-{impl}-")
     env["HOME"] = temp_home.name
     env["CBM_CACHE_DIR"] = str(Path(temp_home.name) / ".cache" / "codebase-memory-zig")
-    args = json.dumps({"project_path": project_path} if impl == "zig" else {"repo_path": project_path})
+    args = json.dumps({"repo_path": project_path})
     proc = subprocess.run(
         [bin_path, "cli", "--progress", "index_repository", args],
         cwd=str(Path(project_path).parent),
@@ -713,6 +790,58 @@ def run_cli_progress(bin_path: str, project_path: str, impl: str) -> dict[str, A
         "stdout": [line for line in proc.stdout.splitlines() if line.strip()],
         "stderr": [line for line in proc.stderr.splitlines() if line.strip()],
         "progress": canonical_progress_lines(proc.stderr.splitlines()),
+    }
+
+
+def parse_cli_tool_payload(stdout_lines: list[str]) -> Any:
+    if not stdout_lines:
+        return {}
+    raw = stdout_lines[-1].strip()
+    if not raw:
+        return {}
+    try:
+        payload = json.loads(raw)
+    except Exception:
+        return {"__raw__": raw}
+
+    if isinstance(payload, dict) and "jsonrpc" in payload and ("result" in payload or "error" in payload):
+        result, _ = extract_tool_payload(raw)
+        return result
+
+    if isinstance(payload, dict) and "content" in payload:
+        content = payload.get("content")
+        if isinstance(content, list) and content:
+            text = str(content[0].get("text", ""))
+            try:
+                return json.loads(text)
+            except Exception:
+                return {"text": text}
+
+    return payload
+
+
+def run_cli_tool(bin_path: str, project_path: str, impl: str, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    env = os.environ.copy()
+    temp_home = tempfile.TemporaryDirectory(prefix=f"cbm-cli-{impl}-")
+    env["HOME"] = temp_home.name
+    env["CBM_CACHE_DIR"] = str(Path(temp_home.name) / ".cache" / "codebase-memory-zig")
+    proc = subprocess.run(
+        [bin_path, "cli", name, json.dumps(arguments)],
+        cwd=str(Path(project_path).parent),
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
+    )
+    stdout_lines = [line for line in proc.stdout.splitlines() if line.strip()]
+    stderr_lines = [line for line in proc.stderr.splitlines() if line.strip()]
+    payload = parse_cli_tool_payload(stdout_lines)
+    temp_home.cleanup()
+    return {
+        "returncode": proc.returncode,
+        "stdout": stdout_lines,
+        "stderr": stderr_lines,
+        "payload": payload,
     }
 
 
@@ -753,11 +882,7 @@ def build_requests(root: Path, fixture: dict[str, Any], impl: str) -> tuple[list
                 "method": "tools/call",
                 "params": {
                     "name": "index_repository",
-                    "arguments": (
-                        {"project_path": project_path}
-                        if impl == "zig"
-                        else {"repo_path": project_path}
-                    ),
+                    "arguments": {"repo_path": project_path},
                 },
             },
             "compare_key": "index_repository",
@@ -766,6 +891,23 @@ def build_requests(root: Path, fixture: dict[str, Any], impl: str) -> tuple[list
 
     tool_id = 4
     assertions = fixture.get("assertions", {})
+    contract_checks = fixture.get("contract_checks", {})
+
+    for check in contract_checks.get("initialize", []):
+        params = expand_contract_value(check.get("params", {}), impl, tool_ctx)
+        requests.append(
+            {
+                "request": {
+                    "jsonrpc": "2.0",
+                    "id": tool_id,
+                    "method": "initialize",
+                    "params": params,
+                },
+                "compare_key": "initialize_contract",
+                "assertion": check,
+            }
+        )
+        tool_id += 1
 
     for assertion in assertions.get("get_graph_schema", []):
         args = dict(assertion.get("args", {}))
@@ -1040,6 +1182,28 @@ def build_requests(root: Path, fixture: dict[str, Any], impl: str) -> tuple[list
         )
         tool_id += 1
 
+    for check in contract_checks.get("tool_calls", []):
+        args = expand_contract_value(check.get("arguments", {}), impl, tool_ctx)
+        tool_name = str(check.get("name", ""))
+        if impl == "c" and tool_name == "trace_call_path":
+            tool_name = "trace_path"
+        requests.append(
+            {
+                "request": {
+                    "jsonrpc": "2.0",
+                    "id": tool_id,
+                    "method": "tools/call",
+                    "params": {
+                        "name": tool_name,
+                        "arguments": args,
+                    },
+                },
+                "compare_key": "contract_tool_call",
+                "assertion": check,
+            }
+        )
+        tool_id += 1
+
     return requests, tool_ctx
 
 
@@ -1243,12 +1407,88 @@ def check_assertions(tool_name: str, tool_payload: Any, assertions: list[dict[st
     return failures
 
 
+def build_contract_snapshot(
+    fixture: Dict[str, Any],
+    impl_results: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    contract_checks = fixture.get("contract_checks", {})
+    if not contract_checks:
+        return None
+
+    impl_payloads = impl_results.get("tool", {})
+    snapshot: Dict[str, Any] = {}
+
+    initialize_checks = contract_checks.get("initialize", [])
+    if initialize_checks:
+        entries = impl_payloads.get("initialize_contract", [])
+        cases = []
+        for index, check in enumerate(initialize_checks):
+            payload = entries[index]["payload"] if index < len(entries) else {}
+            cases.append(
+                {
+                    "label": str(check.get("label", f"initialize_{index}")),
+                    "requested_protocol_version": str(check.get("params", {}).get("protocolVersion", "")),
+                    "selected_protocol_version": canonical_initialize_result(payload).get("protocolVersion", ""),
+                }
+            )
+        snapshot["initialize"] = cases
+
+    tools_list_check = contract_checks.get("tools_list", {})
+    if tools_list_check:
+        tl_entries = impl_payloads.get("tools_list", [])
+        tl_payload = tl_entries[0]["payload"] if tl_entries else {}
+        tool_snapshot: Dict[str, Any] = {}
+        if "tools" in tools_list_check:
+            tool_snapshot["tools"] = canonical_tools_list(tl_payload)
+        requested_schemas = tools_list_check.get("tool_schemas", {})
+        if requested_schemas:
+            available_schemas = canonical_tool_schema_contract(tl_payload)
+            selected: Dict[str, Any] = {}
+            for tool_name in requested_schemas.keys():
+                selected[tool_name] = available_schemas.get(tool_name, {"missing": True})
+            tool_snapshot["tool_schemas"] = selected
+        snapshot["tools_list"] = tool_snapshot
+
+    tool_call_checks = contract_checks.get("tool_calls", [])
+    if tool_call_checks:
+        entries = impl_payloads.get("contract_tool_call", [])
+        cases = []
+        for index, check in enumerate(tool_call_checks):
+            payload = entries[index]["payload"] if index < len(entries) else {}
+            cases.append(
+                {
+                    "label": str(check.get("label", f"tool_call_{index}")),
+                    "name": str(check.get("name", "")),
+                    "result": canonical_contract_tool_result(payload),
+                }
+            )
+        snapshot["tool_calls"] = cases
+
+    cli_call_checks = contract_checks.get("cli_calls", [])
+    if cli_call_checks:
+        entries = impl_results.get("cli_contract", [])
+        cases = []
+        for index, check in enumerate(cli_call_checks):
+            payload = entries[index]["payload"] if index < len(entries) else {}
+            cases.append(
+                {
+                    "label": str(check.get("label", f"cli_call_{index}")),
+                    "name": str(check.get("name", "")),
+                    "result": canonical_contract_tool_result(payload),
+                }
+            )
+        snapshot["cli_calls"] = cases
+
+    return snapshot
+
+
 def build_golden_snapshot(
-    fixture_id: str,
+    fixture: Dict[str, Any],
     zig_results: Dict[str, Any],
     assertions: Dict[str, Any],
 ) -> Dict[str, Any]:
     """Build a golden snapshot dict from Zig canonical outputs for one fixture."""
+    fixture_id = fixture.get("id", fixture.get("project", "unknown"))
     impl_payloads = zig_results.get("tool", {})
     snapshot = {"fixture_id": fixture_id}  # type: Dict[str, Any]
 
@@ -1354,11 +1594,15 @@ def build_golden_snapshot(
         "edges_actual": edges_actual,
     }
 
+    contract_snapshot = build_contract_snapshot(fixture, zig_results)
+    if contract_snapshot is not None:
+        snapshot["contract_checks"] = contract_snapshot
+
     return snapshot
 
 
 def compare_golden_snapshot(
-    fixture_id: str,
+    fixture: Dict[str, Any],
     zig_results: Dict[str, Any],
     golden: Dict[str, Any],
     assertions: Dict[str, Any],
@@ -1368,7 +1612,7 @@ def compare_golden_snapshot(
     Returns (mismatches, warnings) where mismatches cause failure and warnings are informational."""
     mismatches = []  # type: List[str]
     warnings = []  # type: List[str]
-    current = build_golden_snapshot(fixture_id, zig_results, assertions)
+    current = build_golden_snapshot(fixture, zig_results, assertions)
 
     # tools_list
     if current["tools_list"] != golden.get("tools_list", []):
@@ -1615,6 +1859,9 @@ def compare_golden_snapshot(
             "list_projects: %s vs golden %s" % (current_lp, golden_lp)
         )
 
+    if current.get("contract_checks") != golden.get("contract_checks"):
+        mismatches.append("contract_checks: differs")
+
     # errors - compare error responses for expect_error assertions
     current_errors = current.get("errors", {})
     golden_errors = golden.get("errors", {})
@@ -1724,6 +1971,8 @@ def run_golden_mode(
         fixture_id = fixture.get("id", fixture.get("project", "unknown"))
         root_path = root / fixture.get("path", "")
         assertions = fixture.get("assertions", {})
+        contract_checks = fixture.get("contract_checks", {})
+        contract_checks = fixture.get("contract_checks", {})
         fixture_count += 1
 
         # Only run Zig
@@ -1731,6 +1980,19 @@ def run_golden_mode(
         try:
             zig_results = call_mcp_sequence(str(zig_bin), str(root_path), requests, "zig")
             zig_results["tool_ctx"] = tool_ctx
+            contract_checks = fixture.get("contract_checks", {})
+            cli_calls = contract_checks.get("cli_calls", [])
+            if cli_calls:
+                zig_results["cli_contract"] = [
+                    run_cli_tool(
+                        str(zig_bin),
+                        str(root_path),
+                        "zig",
+                        str(check.get("name", "")),
+                        expand_contract_value(check.get("arguments", {}), "zig", tool_ctx),
+                    )
+                    for check in cli_calls
+                ]
         except Exception as err:
             print("ERROR: fixture %s zig failed: %s" % (fixture_id, err))
             all_mismatches.append({"fixture": fixture_id, "error": str(err)})
@@ -1748,7 +2010,7 @@ def run_golden_mode(
         golden_path = golden_dir / ("%s.json" % fixture_id)
 
         if mode == "update-golden":
-            snapshot = build_golden_snapshot(fixture_id, zig_results, assertions)
+            snapshot = build_golden_snapshot(fixture, zig_results, assertions)
             golden_path.write_text(json.dumps(snapshot, indent=2, sort_keys=True) + "\n")
             updated_count += 1
             print("  updated: %s" % golden_path)
@@ -1763,7 +2025,7 @@ def run_golden_mode(
                 continue
 
             golden = json.loads(golden_path.read_text())
-            diffs, warns = compare_golden_snapshot(fixture_id, zig_results, golden, assertions)
+            diffs, warns = compare_golden_snapshot(fixture, zig_results, golden, assertions)
             if diffs:
                 print("FAIL: %s" % fixture_id)
                 for diff in diffs:
@@ -1824,6 +2086,7 @@ def run_compare_mode(
         fixture_id = fixture.get("id", fixture.get("project", "unknown"))
         root_path = root / fixture.get("path", "")
         assertions = fixture.get("assertions", {})
+        contract_checks = fixture.get("contract_checks", {})
 
         results = {
             "zig": {},
@@ -1840,6 +2103,18 @@ def run_compare_mode(
             try:
                 tool_results = call_mcp_sequence(bin_path, str(root_path), requests, impl)
                 tool_results["tool_ctx"] = tool_ctx
+                cli_calls = contract_checks.get("cli_calls", [])
+                if cli_calls:
+                    tool_results["cli_contract"] = [
+                        run_cli_tool(
+                            bin_path,
+                            str(root_path),
+                            impl,
+                            str(check.get("name", "")),
+                            expand_contract_value(check.get("arguments", {}), impl, tool_ctx),
+                        )
+                        for check in cli_calls
+                    ]
                 results[impl] = tool_results
             except Exception as err:
                 results["errors"].append(f"{impl}: {err}")
@@ -1919,6 +2194,7 @@ def run_compare_mode(
             "delete_project",
             "list_projects",
             "index_repository",
+            "contract_checks",
         ):
             if scope == "tools_list":
                 z_entries = get_entries("zig", scope)
@@ -2381,6 +2657,38 @@ def run_compare_mode(
                         "zig": {"nodes": int(z.get("nodes", 0)), "edges": int(z.get("edges", 0))},
                         "c": {"nodes": int(c.get("nodes", 0)), "edges": int(c.get("edges", 0))},
                     }
+
+            if scope == "contract_checks":
+                if not contract_checks:
+                    comparisons[scope] = {"status": "not_requested"}
+                else:
+                    z_contract = build_contract_snapshot(fixture, results["zig"])
+                    c_contract = build_contract_snapshot(fixture, results["c"])
+                    if z_contract is None or c_contract is None:
+                        comparisons[scope] = {
+                            "status": "missing",
+                            "zig": z_contract is not None,
+                            "c": c_contract is not None,
+                        }
+                    elif z_contract != c_contract:
+                        if contract_checks.get("compare_mode") == "diagnostic":
+                            comparisons[scope] = {
+                                "status": "diagnostic",
+                                "note": contract_checks.get("compare_note", "known tool-surface divergence"),
+                                "zig": z_contract,
+                                "c": c_contract,
+                            }
+                        else:
+                            report["mismatches"].append(
+                                {"fixture": fixture_id, "tool": scope, "category": "contract_checks"}
+                            )
+                            comparisons[scope] = {
+                                "status": "mismatch",
+                                "zig": z_contract,
+                                "c": c_contract,
+                            }
+                    else:
+                        comparisons[scope] = {"status": "match"}
 
         results["comparison"] = comparisons
         report["fixtures"][fixture_id] = results

@@ -1,13 +1,22 @@
 # Remaining Backlog Order
 
-Refresh date: 2026-04-20
+Refresh date: 2026-04-21
 
 The previously queued parity follow-on work is complete. This file now records
 the current queue state after those execution slices landed.
 
 ## Current State
 
-- There are no queued execution plans under `docs/plans/new/`.
+- There are four queued execution plans under `docs/plans/new/`:
+  [13-near-parity-promotion-program-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/13-near-parity-promotion-program-plan.md),
+  [15-query-analysis-full-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/15-query-analysis-full-parity-plan.md),
+  [16-graph-exactness-full-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/16-graph-exactness-full-parity-plan.md),
+  and
+  [17-runtime-cli-packaging-full-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/17-runtime-cli-packaging-full-parity-plan.md)
+- The protocol/tool-surface parity slice is complete:
+  [14-protocol-tool-surface-full-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/14-protocol-tool-surface-full-parity-plan.md)
+  and
+  [14-protocol-tool-surface-full-parity-progress.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/14-protocol-tool-surface-full-parity-progress.md).
 - The most recent completed maintenance slices are
   [verification-remediation-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/verification-remediation-plan.md)
   and
@@ -31,8 +40,11 @@ the current queue state after those execution slices landed.
   [04-route-and-cross-service-framework-expansion-plan.md](/Users/skooch/projects/worktrees/route-cross-service-expansion/docs/plans/implemented/04-route-and-cross-service-framework-expansion-plan.md),
   and
   [05-config-normalization-and-reads-writes-contract-plan.md](/Users/skooch/projects/worktrees/config-normalization-reads-writes/docs/plans/implemented/05-config-normalization-and-reads-writes-contract-plan.md).
-- The queued execution backlog is exhausted.
+- The remaining queued execution backlog is the four plans listed below.
 
 ## Next Queue
 
-There are no remaining queued execution plans.
+1. [13-near-parity-promotion-program-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/13-near-parity-promotion-program-plan.md)
+2. [15-query-analysis-full-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/15-query-analysis-full-parity-plan.md)
+3. [16-graph-exactness-full-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/16-graph-exactness-full-parity-plan.md)
+4. [17-runtime-cli-packaging-full-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/17-runtime-cli-packaging-full-parity-plan.md)

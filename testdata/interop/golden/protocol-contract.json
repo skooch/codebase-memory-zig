@@ -1,0 +1,118 @@
+{
+  "contract_checks": {
+    "cli_calls": [
+      {
+        "label": "cli_index_repository",
+        "name": "index_repository",
+        "result": {
+          "has_edges": true,
+          "has_nodes": true,
+          "status": "indexed"
+        }
+      }
+    ],
+    "initialize": [
+      {
+        "label": "negotiated_supported",
+        "requested_protocol_version": "2024-11-05",
+        "selected_protocol_version": "2024-11-05"
+      },
+      {
+        "label": "fallback_latest",
+        "requested_protocol_version": "2026-01-01",
+        "selected_protocol_version": "2025-11-25"
+      }
+    ],
+    "tool_calls": [
+      {
+        "label": "ingest_traces_stub",
+        "name": "ingest_traces",
+        "result": {
+          "note": "Runtime edge creation from traces not yet implemented",
+          "status": "accepted",
+          "traces_received": 2
+        }
+      }
+    ],
+    "tools_list": {
+      "tool_schemas": {
+        "index_repository": {
+          "mode_enum": [
+            "full",
+            "fast"
+          ],
+          "property_keys": [
+            "mode",
+            "repo_path"
+          ],
+          "required": [
+            "repo_path"
+          ]
+        },
+        "ingest_traces": {
+          "property_keys": [
+            "project",
+            "traces"
+          ],
+          "required": [
+            "project",
+            "traces"
+          ]
+        }
+      },
+      "tools": [
+        "delete_project",
+        "detect_changes",
+        "get_architecture",
+        "get_code_snippet",
+        "get_graph_schema",
+        "index_repository",
+        "index_status",
+        "ingest_traces",
+        "list_projects",
+        "manage_adr",
+        "query_graph",
+        "search_code",
+        "search_graph",
+        "trace_call_path"
+      ]
+    }
+  },
+  "delete_project": [],
+  "detect_changes_count": 0,
+  "fixture_id": "protocol-contract",
+  "get_architecture": [],
+  "get_code_snippet": [],
+  "get_graph_schema": [],
+  "index_repository": {
+    "edges_actual": 6,
+    "edges_min": 2,
+    "nodes_actual": 5,
+    "nodes_min": 4
+  },
+  "index_status": [],
+  "list_projects": [
+    "protocol-contract"
+  ],
+  "manage_adr": [],
+  "query_graph": [],
+  "search_code": [],
+  "search_graph": [],
+  "tools_list": [
+    "delete_project",
+    "detect_changes",
+    "get_architecture",
+    "get_code_snippet",
+    "get_graph_schema",
+    "index_repository",
+    "index_status",
+    "ingest_traces",
+    "list_projects",
+    "manage_adr",
+    "query_graph",
+    "search_code",
+    "search_graph",
+    "trace_call_path"
+  ],
+  "trace_call_path": []
+}

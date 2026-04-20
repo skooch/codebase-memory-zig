@@ -16,15 +16,28 @@ The detailed subsystem tables below are historical backlog references. When a ta
 
 ## Current Snapshot
 
+Baseline note:
+- Treat the latest upstream release, `codebase-memory-mcp` `v0.6.0` from `2026-04-06`, as the C-side comparison baseline for current port-state claims.
+- The older "target contract complete" language in this repo still applies to the pre-`v0.6.0` execution plan, but it no longer implies latest-upstream parity.
+
 Verification posture today:
-- The current target contract is complete; the remaining backlog is mostly optional exhaustive parity work, deliberate scope exclusions, or historical subsystem notes.
+- The pre-`v0.6.0` target contract is complete; the remaining backlog is now a mix of latest-upstream parity work, deliberate scope exclusions, and historical subsystem notes.
 - The repo has broad automated coverage across `zig build test`, zig-only interop goldens, zig-only CLI parity goldens, and CI-run benchmark, soak, and static security checks.
 - CI now also runs the full Zig-vs-C interop and CLI parity comparison against the reference implementation on pull requests and pushes to `main` when interop-relevant files change, while retaining a weekly scheduled sweep.
 - That coverage is broad enough to support the current daily-use contract claims, but it is **not** exhaustive of every feature and edge case.
 - Treat [port-comparison.md](/Users/skooch/projects/codebase-memory-zig/docs/port-comparison.md) as the authoritative statement of what the repo can truthfully claim today.
 
+Newest latest-upstream deltas reopened by `v0.6.0`:
+- `search_graph` in the original now has BM25 `query` search and vector-backed `semantic_query`; Zig still only exposes the structured graph-search path.
+- `index_repository` in the original now supports `full`, `moderate`, and `fast`; Zig still exposes only `full` and `fast`.
+- The original now emits `SEMANTICALLY_RELATED`, persisted `IMPORTS`, and channel `LISTENS_ON` edges; Zig still lacks those exact graph contracts, even where bounded route/topic behavior overlaps.
+- `detect_changes` in the original now accepts `since`; Zig still exposes the older `base_branch`-oriented surface.
+- Protocol/tool-surface exactness also now requires the visible `ingest_traces`
+  stub and upstream-style `repo_path` naming, but those are surface-plumbing
+  tasks rather than substantive graph-model gaps.
+
 Known coverage gaps in the current automated suite:
-- Current local audit on `2026-04-20`: `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh --zig-only`, `bash scripts/run_cli_parity.sh --zig-only`, and the current ops suite entrypoints all pass. The route-cross-service framework-depth worktree also completed `bash scripts/run_interop_alignment.sh` with `33` fixtures, `251` comparisons, `143` strict matches, `38` diagnostic-only comparisons, and `0` mismatches, confirming that `route-expansion-httpx` is already a strict shared route slice while `keyword_request_styles` and `semantic-expansion-send-task` remain diagnostic-only because the current C reference still returns empty row sets there.
+- Current local audit on `2026-04-21`: `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh --zig-only`, `bash scripts/run_cli_parity.sh --zig-only`, and the current ops suite entrypoints all pass. The current `bash scripts/run_interop_alignment.sh` baseline now reports `35` fixtures, `267` comparisons, `150` strict matches, `39` diagnostic-only comparisons, and `0` mismatches, with the new `protocol-contract` fixture scoring as a strict shared match and `tool-surface-parity` remaining diagnostic-only because Zig still lacks a real `moderate` indexing mode.
 - Merge-blocking CI now includes the full Zig-vs-C compare for interop-touching pull requests and pushes to `main`, while non-interop changes still rely on zig-only goldens plus unit and integration tests.
 - Packaging and setup entrypoints are exercised by verification runs and workflows, and the release workflow now merges and validates a repo-owned `release-manifest.json`, but the repo still does not have exhaustive cross-platform regression automation for every shell, host, or archive flow.
 - Windows coverage is strong at config-path, installer-layout, no-`HOME` env fallback, runtime DB root creation, and PowerShell entrypoint level, but not exhaustive of native runtime and filesystem edge cases.
@@ -65,12 +78,14 @@ Completed now:
   - `Diagnostic-only comparisons: 9`
   - `Mismatches: 0`
 - The expanded full harness currently reports:
-  - `Fixtures: 33`
-  - `Comparisons: 251`
-  - `Strict matches: 143`
-  - `Diagnostic-only comparisons: 38`
+  - `Fixtures: 35`
+  - `Comparisons: 267`
+  - `Strict matches: 150`
+  - `Diagnostic-only comparisons: 39`
   - `Known mismatches: 0`
   - `cli_progress: match`
+  - `protocol-contract`: strict shared match
+  - `tool-surface-parity`: diagnostic-only by design because latest-upstream `moderate` mode is still missing in Zig
   - no remaining snippet, search, JavaScript-ordering, Java query-shape, or error-path comparison mismatches
   - the former Go method-ownership delta is now diagnostic-only instead of a hard mismatch
 

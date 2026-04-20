@@ -2812,6 +2812,166 @@
           }
         ]
       }
+    },
+    {
+      "id": "protocol-contract",
+      "path": "testdata/interop/protocol-contract",
+      "project": "protocol-contract",
+      "language": "python",
+      "scope_tools": [
+        "index_repository",
+        "list_projects",
+        "ingest_traces"
+      ],
+      "assertions": {
+        "index_repository": {
+          "expect": {
+            "nodes_min": 4,
+            "edges_min": 2
+          }
+        }
+      },
+      "contract_checks": {
+        "compare_mode": "strict",
+        "initialize": [
+          {
+            "label": "negotiated_supported",
+            "params": {
+              "protocolVersion": "2024-11-05"
+            }
+          },
+          {
+            "label": "fallback_latest",
+            "params": {
+              "protocolVersion": "2026-01-01"
+            }
+          }
+        ],
+        "tools_list": {
+          "tools": [
+            "delete_project",
+            "detect_changes",
+            "get_architecture",
+            "get_code_snippet",
+            "get_graph_schema",
+            "index_repository",
+            "index_status",
+            "ingest_traces",
+            "list_projects",
+            "manage_adr",
+            "query_graph",
+            "search_code",
+            "search_graph",
+            "trace_call_path"
+          ],
+          "tool_schemas": {
+            "index_repository": {
+              "required": [
+                "repo_path"
+              ],
+              "property_keys": [
+                "mode",
+                "repo_path"
+              ]
+            },
+            "ingest_traces": {
+              "required": [
+                "project",
+                "traces"
+              ],
+              "property_keys": [
+                "project",
+                "traces"
+              ]
+            }
+          }
+        },
+        "tool_calls": [
+          {
+            "label": "ingest_traces_stub",
+            "name": "ingest_traces",
+            "arguments": {
+              "project": "$PROJECT",
+              "traces": [
+                {
+                  "kind": "span"
+                },
+                {
+                  "kind": "span"
+                }
+              ]
+            }
+          }
+        ],
+        "cli_calls": [
+          {
+            "label": "cli_index_repository",
+            "name": "index_repository",
+            "arguments": {
+              "repo_path": "$PROJECT_PATH"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "tool-surface-parity",
+      "path": "testdata/interop/tool-surface-parity",
+      "project": "tool-surface-parity",
+      "language": "python",
+      "scope_tools": [
+        "index_repository",
+        "list_projects"
+      ],
+      "assertions": {
+        "index_repository": {
+          "expect": {
+            "nodes_min": 4,
+            "edges_min": 2
+          }
+        }
+      },
+      "contract_checks": {
+        "compare_mode": "diagnostic",
+        "compare_note": "latest-upstream tool schema still differs because Zig does not expose a real moderate indexing mode",
+        "tools_list": {
+          "tool_schemas": {
+            "index_repository": {
+              "required": [
+                "repo_path"
+              ],
+              "property_keys": [
+                "mode",
+                "repo_path"
+              ],
+              "mode_enum": [
+                "full",
+                "fast"
+              ]
+            },
+            "ingest_traces": {
+              "required": [
+                "project",
+                "traces"
+              ],
+              "property_keys": [
+                "project",
+                "traces"
+              ]
+            }
+          }
+        },
+        "tool_calls": [
+          {
+            "label": "moderate_mode_contract",
+            "name": "index_repository",
+            "arguments": {
+              "repo_path": "$PROJECT_PATH",
+              "mode": "moderate"
+            }
+          }
+        ]
+      }
     }
   ]
 }

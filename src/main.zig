@@ -355,13 +355,9 @@ fn emitCliProgressStart(
     args: std.json.Value,
 ) !void {
     if (!std.mem.eql(u8, tool_name, "index_repository")) return;
-    const project_path = if (args == .object)
-        (args.object.get("project_path") orelse .null)
-    else
-        .null;
-    if (project_path != .string) return;
+    const repo_path = cliIndexRepositoryPath(args) orelse return;
 
-    const files = cbm.discover.discoverFiles(allocator, project_path.string, .{ .mode = .full }) catch {
+    const files = cbm.discover.discoverFiles(allocator, repo_path, .{ .mode = .full }) catch {
         try stderr_file.writeAll("  Discovering files...\n");
         try stderr_file.writeAll("  Starting full index\n");
         return;
@@ -381,6 +377,13 @@ fn emitCliProgressStart(
     try stderr_file.writeAll("[7/9] Analyzing git history\n");
     try stderr_file.writeAll("[8/9] Linking config files\n");
     try stderr_file.writeAll("[9/9] Writing database\n");
+}
+
+fn cliIndexRepositoryPath(args: std.json.Value) ?[]const u8 {
+    if (args != .object) return null;
+    const repo_path = args.object.get("repo_path") orelse args.object.get("project_path") orelse return null;
+    if (repo_path != .string) return null;
+    return repo_path.string;
 }
 
 fn emitCliProgressDone(
@@ -933,7 +936,7 @@ test "cli progress emits phase-style output for index_repository" {
         var progress_file = try std.fs.cwd().createFile(progress_path, .{ .truncate = true });
         defer progress_file.close();
 
-        const args_json = try std.fmt.allocPrint(allocator, "{{\"project_path\":\"{s}\"}}", .{project_dir});
+        const args_json = try std.fmt.allocPrint(allocator, "{{\"repo_path\":\"{s}\"}}", .{project_dir});
         defer allocator.free(args_json);
         const args = try std.json.parseFromSlice(std.json.Value, allocator, args_json, .{});
         defer args.deinit();
@@ -950,4 +953,43 @@ test "cli progress emits phase-style output for index_repository" {
     try std.testing.expect(std.mem.indexOf(u8, output, "[5/9] Detecting tests") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "[8/9] Linking config files") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "Done: 3 nodes, 5 edges") != null);
+}
+
+test "cli progress accepts project_path compatibility alias" {
+    const allocator = std.testing.allocator;
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(allocator, "/tmp/cbm-cli-progress-alias-{x}", .{project_id});
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    const main_path = try std.fs.path.join(allocator, &.{ project_dir, "main.py" });
+    defer allocator.free(main_path);
+    var main_file = try std.fs.cwd().createFile(main_path, .{});
+    defer main_file.close();
+    try main_file.writeAll(
+        \\def run():
+        \\    return 1
+        \\
+    );
+
+    const progress_path = try std.fmt.allocPrint(allocator, "/tmp/cbm-cli-progress-alias-output-{x}.log", .{project_id});
+    defer allocator.free(progress_path);
+
+    {
+        var progress_file = try std.fs.cwd().createFile(progress_path, .{ .truncate = true });
+        defer progress_file.close();
+
+        const args_json = try std.fmt.allocPrint(allocator, "{{\"project_path\":\"{s}\"}}", .{project_dir});
+        defer allocator.free(args_json);
+        const args = try std.json.parseFromSlice(std.json.Value, allocator, args_json, .{});
+        defer args.deinit();
+        try emitCliProgressStart(allocator, progress_file, "index_repository", args.value);
+    }
+
+    const output = try std.fs.cwd().readFileAlloc(allocator, progress_path, 64 * 1024);
+    defer allocator.free(output);
+    defer std.fs.cwd().deleteFile(progress_path) catch {};
+
+    try std.testing.expect(std.mem.indexOf(u8, output, "Discovering files") != null);
 }
