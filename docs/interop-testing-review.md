@@ -72,6 +72,10 @@ The following findings from the 2026-04-12 review are no longer current:
 - `detect_changes.since` now also has direct Zig unit coverage for commit-ish
   refs, ISO-date selectors, and invalid-selector errors because the released
   upstream surface moved ahead of the stale local C compare checkout.
+- `search_graph.query` now also has direct Zig unit coverage for the released
+  BM25 response shape, schema advertisement, and fallback-to-structured-search
+  behavior because the local C compare checkout still stops short of the latest
+  upstream discovery contract.
 - The nightly full-comparison workflow no longer uses `continue-on-error`.
 - Progress phase normalization includes `[5/9]`, `[7/9]`, and `[8/9]`, with `[6/9]` explicitly absent.
 - Go fixtures exist.

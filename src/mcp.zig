@@ -27,6 +27,7 @@ const pipeline = @import("pipeline.zig");
 const query_router = @import("query_router.zig");
 const runtime_lifecycle = @import("runtime_lifecycle.zig");
 const cypher = @import("cypher.zig");
+const search_index = @import("search_index.zig");
 const watcher = @import("watcher.zig");
 
 const Store = store.Store;
@@ -257,7 +258,7 @@ pub const McpServer = struct {
             const payload =
                 \\{"tools":[
                 \\{"name":"index_repository","description":"Index a repository into the knowledge graph","inputSchema":{"type":"object","properties":{"repo_path":{"type":"string","description":"Path to the repository"},"mode":{"type":"string","enum":["full","fast"],"default":"full","description":"full: all passes. fast: structure-first discovery."}},"required":["repo_path"]}},
-                \\{"name":"search_graph","description":"Structured graph search with filtering, degree-aware ranking, pagination, and optional connected-node context","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"label":{"type":"string"},"label_pattern":{"type":"string"},"name_pattern":{"type":"string"},"qn_pattern":{"type":"string"},"file_pattern":{"type":"string"},"relationship":{"type":"string"},"exclude_entry_points":{"type":"boolean"},"include_connected":{"type":"boolean"},"limit":{"type":"number"},"offset":{"type":"number"},"min_degree":{"type":"number"},"max_degree":{"type":"number"},"sort_by":{"type":"string"},"sort_direction":{"type":"string"}}}},
+                \\{"name":"search_graph","description":"Structured graph search with filtering, degree-aware ranking, pagination, and optional connected-node context","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"query":{"type":"string","description":"Natural-language or keyword full-text search using BM25 ranking over indexed project files. When this yields usable terms, name_pattern is ignored and the response includes search_mode:\"bm25\"."},"label":{"type":"string"},"label_pattern":{"type":"string"},"name_pattern":{"type":"string"},"qn_pattern":{"type":"string"},"file_pattern":{"type":"string"},"relationship":{"type":"string"},"exclude_entry_points":{"type":"boolean"},"include_connected":{"type":"boolean"},"limit":{"type":"number"},"offset":{"type":"number"},"min_degree":{"type":"number"},"max_degree":{"type":"number"},"sort_by":{"type":"string"},"sort_direction":{"type":"string"}}}},
                 \\{"name":"query_graph","description":"Run a read-only Cypher-like query","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"query":{"type":"string"},"max_rows":{"type":"number"}}}},
                 \\{"name":"trace_call_path","description":"Trace call paths between nodes with configurable edge types, modes, risk labels, and test filtering","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"start_node_qn":{"type":"string","description":"Qualified name of start node"},"function_name":{"type":"string","description":"Alias for start_node_qn (bare name lookup)"},"direction":{"type":"string","enum":["in","out","both"]},"depth":{"type":"number"},"mode":{"type":"string","enum":["calls","data_flow","cross_service"],"description":"Preset edge type set (default: calls)"},"edge_types":{"type":"array","items":{"type":"string"},"description":"Explicit edge types override (takes priority over mode)"},"risk_labels":{"type":"boolean","description":"Include hop-based risk classification per node"},"include_tests":{"type":"boolean","description":"Include test-file nodes in results (default: false)"}}}},
                 \\{"name":"get_code_snippet","description":"Read source code for a function/class/symbol. IMPORTANT: First call search_graph to find the exact qualified_name, then pass it here. This is a read tool, not a search tool. Accepts full qualified_name (exact match) or short function name (returns suggestions if ambiguous).","inputSchema":{"type":"object","properties":{"qualified_name":{"type":"string","description":"Full qualified_name from search_graph, or short function name"},"project":{"type":"string"},"include_neighbors":{"type":"boolean","default":false}},"required":["qualified_name","project"]}},
@@ -426,6 +427,44 @@ pub const McpServer = struct {
         const include_connected = boolArg(args, "include_connected") orelse false;
         const sort_by = stringArg(args, "sort_by");
         const sort_direction = stringArg(args, "sort_direction");
+        const limit = intArg(args, "limit") orelse 100;
+        const offset = intArg(args, "offset") orelse 0;
+
+        if (stringArg(args, "query")) |query| {
+            if (query.len > 0) {
+                if (try search_index.buildFtsQuery(self.allocator, query, false)) |fts_query| {
+                    defer self.allocator.free(fts_query);
+                    const page = try self.db.searchGraphQuery(project, fts_query, limit, offset);
+                    defer self.db.freeGraphQueryPage(page);
+
+                    var query_payload = std.ArrayList(u8).empty;
+                    try query_payload.writer(self.allocator).print(
+                        "{{\"total\":{d},\"search_mode\":\"bm25\",\"results\":[",
+                        .{page.total},
+                    );
+                    for (page.hits, 0..) |hit, idx| {
+                        if (idx > 0) try query_payload.append(self.allocator, ',');
+                        try query_payload.appendSlice(self.allocator, "{");
+                        try appendJsonStringField(&query_payload, self.allocator, "name", hit.node.name, true);
+                        try appendJsonStringField(&query_payload, self.allocator, "qualified_name", hit.node.qualified_name, false);
+                        try appendJsonStringField(&query_payload, self.allocator, "label", hit.node.label, false);
+                        try appendJsonStringField(&query_payload, self.allocator, "file_path", hit.node.file_path, false);
+                        try appendJsonIntField(&query_payload, self.allocator, "start_line", hit.node.start_line, false);
+                        try appendJsonIntField(&query_payload, self.allocator, "end_line", hit.node.end_line, false);
+                        try query_payload.appendSlice(self.allocator, ",\"rank\":");
+                        try query_payload.writer(self.allocator).print("{f}", .{std.json.fmt(hit.rank, .{})});
+                        try query_payload.appendSlice(self.allocator, "}");
+                    }
+                    try query_payload.writer(self.allocator).print(
+                        "],\"has_more\":{s}}}",
+                        .{if (page.total > page.hits.len + offset) "true" else "false"},
+                    );
+                    const owned_query_payload = try query_payload.toOwnedSlice(self.allocator);
+                    defer self.allocator.free(owned_query_payload);
+                    return self.successResponse(request_id, owned_query_payload);
+                }
+            }
+        }
 
         const page = try self.db.searchGraph(.{
             .project = project,
@@ -437,8 +476,8 @@ pub const McpServer = struct {
             .min_degree = signedIntArg(args, "min_degree"),
             .max_degree = signedIntArg(args, "max_degree"),
             .exclude_entry_points = boolArg(args, "exclude_entry_points") orelse false,
-            .limit = intArg(args, "limit") orelse 100,
-            .offset = intArg(args, "offset") orelse 0,
+            .limit = limit,
+            .offset = offset,
             .sort_field = parseGraphSortField(sort_by),
             .descending = sort_direction != null and std.ascii.eqlIgnoreCase(sort_direction.?, "desc"),
         });
@@ -465,7 +504,7 @@ pub const McpServer = struct {
         }
         try payload.writer(self.allocator).print(
             "],\"has_more\":{s}}}",
-            .{if (page.total > page.hits.len + (intArg(args, "offset") orelse 0)) "true" else "false"},
+            .{if (page.total > page.hits.len + offset) "true" else "false"},
         );
         const owned_payload = try payload.toOwnedSlice(self.allocator);
         defer self.allocator.free(owned_payload);
@@ -1432,7 +1471,7 @@ test "tools/list advertises manage_adr" {
     try std.testing.expect(std.mem.indexOf(u8, response, "\"manage_adr\"") != null);
 }
 
-test "tools/list advertises ingest_traces, repo_path, and detect_changes since" {
+test "tools/list advertises ingest_traces, repo_path, detect_changes since, and search_graph query" {
     var s = try store.Store.openMemory(std.testing.allocator);
     defer s.deinit();
     var srv = McpServer.init(std.testing.allocator, &s);
@@ -1445,6 +1484,7 @@ test "tools/list advertises ingest_traces, repo_path, and detect_changes since" 
     try std.testing.expect(std.mem.indexOf(u8, response, "\"ingest_traces\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, response, "\"repo_path\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, response, "\"since\":{\"type\":\"string\",\"description\":\"Git ref or date to compare from (e.g. HEAD~5, v0.5.0, 2026-01-01)\"}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, response, "\"query\":{\"type\":\"string\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, response, "\"project_path\"") == null);
 }
 
@@ -2435,6 +2475,84 @@ test "search_graph returns totals pagination and connected summaries" {
     try std.testing.expectEqual(@as(usize, 1), results.items.len);
     try std.testing.expectEqualStrings("alpha", results.items[0].object.get("name").?.string);
     try std.testing.expect(results.items[0].object.get("connected") != null);
+}
+
+test "search_graph query returns bm25-ranked results and falls back when terms are unusable" {
+    var s = try store.Store.openMemory(std.testing.allocator);
+    defer s.deinit();
+    try s.upsertProject("demo", "/tmp/demo");
+
+    _ = try s.upsertNode(.{
+        .project = "demo",
+        .label = "Function",
+        .name = "update_settings",
+        .qualified_name = "demo.update_settings",
+        .file_path = "src/main.py",
+        .start_line = 1,
+        .end_line = 3,
+    });
+    _ = try s.upsertNode(.{
+        .project = "demo",
+        .label = "Class",
+        .name = "SettingsWorker",
+        .qualified_name = "demo.SettingsWorker",
+        .file_path = "src/worker.py",
+        .start_line = 1,
+        .end_line = 5,
+    });
+    _ = try s.upsertNode(.{
+        .project = "demo",
+        .label = "Function",
+        .name = "beta",
+        .qualified_name = "demo.beta",
+        .file_path = "src/fallback.py",
+        .start_line = 1,
+        .end_line = 2,
+    });
+    _ = try s.upsertNode(.{
+        .project = "demo",
+        .label = "Variable",
+        .name = "settings_value",
+        .qualified_name = "demo.settings_value",
+        .file_path = "src/main.py",
+        .start_line = 4,
+        .end_line = 4,
+    });
+    try s.insertSearchDocument("demo", "src/main.py", "def update_settings():\n    return cloud settings\n");
+    try s.insertSearchDocument("demo", "src/worker.py", "class SettingsWorker:\n    def update_cloud_client(self):\n        return settings\n");
+    try s.insertSearchDocument("demo", "src/fallback.py", "def beta():\n    return 1\n");
+
+    var srv = McpServer.init(std.testing.allocator, &s);
+    defer srv.deinit();
+
+    const query_response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":23,"method":"tools/call","params":{"name":"search_graph","arguments":{"project":"demo","query":"update settings","name_pattern":"beta","limit":1,"offset":0}}}
+    )).?;
+    defer std.testing.allocator.free(query_response);
+
+    const query_parsed = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, query_response, .{});
+    defer query_parsed.deinit();
+    const query_result = query_parsed.value.object.get("result").?.object;
+    try std.testing.expectEqualStrings("bm25", query_result.get("search_mode").?.string);
+    try std.testing.expectEqual(@as(i64, 2), query_result.get("total").?.integer);
+    try std.testing.expectEqual(true, query_result.get("has_more").?.bool);
+    const query_hits = query_result.get("results").?.array;
+    try std.testing.expectEqual(@as(usize, 1), query_hits.items.len);
+    try std.testing.expectEqualStrings("update_settings", query_hits.items[0].object.get("name").?.string);
+    try std.testing.expect(query_hits.items[0].object.get("rank") != null);
+
+    const fallback_response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":24,"method":"tools/call","params":{"name":"search_graph","arguments":{"project":"demo","query":"x","name_pattern":"beta","limit":5}}}
+    )).?;
+    defer std.testing.allocator.free(fallback_response);
+
+    const fallback_parsed = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, fallback_response, .{});
+    defer fallback_parsed.deinit();
+    const fallback_result = fallback_parsed.value.object.get("result").?.object;
+    try std.testing.expect(fallback_result.get("search_mode") == null);
+    const fallback_hits = fallback_result.get("results").?.array;
+    try std.testing.expectEqual(@as(usize, 1), fallback_hits.items.len);
+    try std.testing.expectEqualStrings("beta", fallback_hits.items[0].object.get("name").?.string);
 }
 
 test "get_architecture and search_code expose phase 5 summaries" {

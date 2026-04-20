@@ -28,7 +28,7 @@ Verification posture today:
 - Treat [port-comparison.md](/Users/skooch/projects/codebase-memory-zig/docs/port-comparison.md) as the authoritative statement of what the repo can truthfully claim today.
 
 Newest latest-upstream deltas reopened by `v0.6.0`:
-- `search_graph` in the original now has BM25 `query` search and vector-backed `semantic_query`; Zig still only exposes the structured graph-search path.
+- `search_graph` in the original now has vector-backed `semantic_query`; Zig now exposes the released BM25 `query` path but still lacks the semantic-search mode and payload.
 - `index_repository` in the original now supports `full`, `moderate`, and `fast`; Zig still exposes only `full` and `fast`.
 - The original now emits `SEMANTICALLY_RELATED` and channel `LISTENS_ON` edges; Zig still lacks those exact graph contracts, even where bounded route/topic behavior overlaps.
 - Protocol/tool-surface exactness also now requires the visible `ingest_traces`
@@ -37,6 +37,7 @@ Newest latest-upstream deltas reopened by `v0.6.0`:
 
 Known coverage gaps in the current automated suite:
 - Current local audit on `2026-04-21`: `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh --zig-only`, `bash scripts/run_cli_parity.sh --zig-only`, and the current ops suite entrypoints all pass. The current `bash scripts/run_interop_alignment.sh` baseline now reports `39` fixtures, `301` comparisons, `164` strict matches, `45` diagnostic-only comparisons, and `0` mismatches, with `protocol-contract`, the query-analysis exact fixtures, and the new graph-exactness fixture set scoring as strict shared matches while `tool-surface-parity` remains diagnostic-only because Zig still lacks a real `moderate` indexing mode.
+- `search_graph.query` is no longer part of the latest-upstream gap list: Zig now exposes the released BM25 query surface with direct unit coverage for ranked results, schema advertisement, and fallback to the structured path when tokenization produces no usable terms.
 - `detect_changes.since` is no longer part of the latest-upstream gap list: Zig now exposes the released selector surface with direct unit coverage for commit-ish refs, ISO-date selectors, and invalid-selector errors, even though the stale local C comparator still only exercises `base_branch`.
 - Merge-blocking CI now includes the full Zig-vs-C compare for interop-touching pull requests and pushes to `main`, while non-interop changes still rely on zig-only goldens plus unit and integration tests.
 - Packaging and setup entrypoints are exercised by verification runs and workflows, and the release workflow now merges and validates a repo-owned `release-manifest.json`, but the repo still does not have exhaustive cross-platform regression automation for every shell, host, or archive flow.

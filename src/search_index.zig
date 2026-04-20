@@ -42,7 +42,7 @@ pub fn findCandidatePaths(
     return paths;
 }
 
-fn buildFtsQuery(allocator: std.mem.Allocator, pattern: []const u8, regex: bool) !?[]u8 {
+pub fn buildFtsQuery(allocator: std.mem.Allocator, pattern: []const u8, regex: bool) !?[]u8 {
     if (regex) return null;
 
     var out = std.ArrayList(u8).empty;

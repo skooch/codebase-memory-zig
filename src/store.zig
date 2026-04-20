@@ -121,6 +121,16 @@ pub const GraphSearchPage = struct {
     hits: []GraphSearchHit,
 };
 
+pub const GraphQueryHit = struct {
+    node: Node,
+    rank: f64,
+};
+
+pub const GraphQueryPage = struct {
+    total: usize,
+    hits: []GraphQueryHit,
+};
+
 pub const TraversalDirection = enum {
     outbound,
     inbound,
@@ -1061,7 +1071,65 @@ pub const Store = struct {
         };
     }
 
+    pub fn searchGraphQuery(self: *Store, project: []const u8, fts_query: []const u8, limit: usize, offset: usize) !GraphQueryPage {
+        const total_stmt = try self.prepare(
+            "SELECT COUNT(*) " ++
+                "FROM search_documents " ++
+                "JOIN nodes n ON n.project = search_documents.project AND n.file_path = search_documents.rel_path " ++
+                "WHERE search_documents MATCH ?1 AND n.project = ?2 " ++
+                "AND n.label NOT IN ('File','Folder','Module','Section','Variable','Project')",
+        );
+        defer self.finalize(total_stmt);
+        try self.bindText(total_stmt, 1, fts_query);
+        try self.bindText(total_stmt, 2, project);
+        const total = try self.readCountRow(total_stmt);
+
+        const stmt = try self.prepare(
+            "SELECT n.id, n.project, n.label, n.name, n.qualified_name, n.file_path, n.start_line, n.end_line, n.properties, " ++
+                "(bm25(search_documents) - CASE " ++
+                "WHEN n.label IN ('Function','Method') THEN 10.0 " ++
+                "WHEN n.label = 'Route' THEN 8.0 " ++
+                "WHEN n.label IN ('Class','Interface') THEN 5.0 " ++
+                "ELSE 0.0 END) AS rank " ++
+                "FROM search_documents " ++
+                "JOIN nodes n ON n.project = search_documents.project AND n.file_path = search_documents.rel_path " ++
+                "WHERE search_documents MATCH ?1 AND n.project = ?2 " ++
+                "AND n.label NOT IN ('File','Folder','Module','Section','Variable','Project') " ++
+                "ORDER BY rank ASC, n.name ASC LIMIT ?3 OFFSET ?4",
+        );
+        defer self.finalize(stmt);
+        try self.bindText(stmt, 1, fts_query);
+        try self.bindText(stmt, 2, project);
+        try self.bindInt(stmt, 3, @intCast(if (limit == 0) 100 else limit));
+        try self.bindInt(stmt, 4, @intCast(offset));
+
+        var out = std.ArrayList(GraphQueryHit).empty;
+        errdefer {
+            for (out.items) |hit| self.freeNode(hit.node);
+            out.deinit(self.allocator);
+        }
+        while (true) {
+            const rc = c.sqlite3_step(stmt);
+            if (rc == c.SQLITE_DONE) break;
+            if (rc != c.SQLITE_ROW) return StoreError.SqlError;
+            try out.append(self.allocator, .{
+                .node = try self.rowToNode(stmt),
+                .rank = c.sqlite3_column_double(stmt, 9),
+            });
+        }
+
+        return .{
+            .total = total,
+            .hits = try out.toOwnedSlice(self.allocator),
+        };
+    }
+
     pub fn freeGraphSearchPage(self: *Store, page: GraphSearchPage) void {
+        for (page.hits) |hit| self.freeNode(hit.node);
+        self.allocator.free(page.hits);
+    }
+
+    pub fn freeGraphQueryPage(self: *Store, page: GraphQueryPage) void {
         for (page.hits) |hit| self.freeNode(hit.node);
         self.allocator.free(page.hits);
     }
@@ -1539,6 +1607,13 @@ pub const Store = struct {
         const stmt = try self.prepare(sql);
         defer self.finalize(stmt);
         try self.bindGraphSearchArgs(stmt, cte_project, binds, relationship, null, null);
+        const rc = c.sqlite3_step(stmt);
+        if (rc != c.SQLITE_ROW) return StoreError.SqlError;
+        return @intCast(c.sqlite3_column_int64(stmt, 0));
+    }
+
+    fn readCountRow(self: *Store, stmt: *c.sqlite3_stmt) !usize {
+        _ = self;
         const rc = c.sqlite3_step(stmt);
         if (rc != c.SQLITE_ROW) return StoreError.SqlError;
         return @intCast(c.sqlite3_column_int64(stmt, 0));
