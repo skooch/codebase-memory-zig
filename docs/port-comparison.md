@@ -72,7 +72,7 @@ Baseline note:
 | Daily-use MCP surface | Full 14-tool surface, with `v0.6.0` widening `search_graph` via BM25 `query` search and vector-backed `semantic_query`; `ingest_traces` remains stubbed | All 13 previously meaningful shared tools are implemented, but Zig does not ship the new `search_graph` discovery modes | `Partial` | No |
 | Core indexing pipeline | Broad multi-pass pipeline including `full` / `moderate` / `fast` modes, `SIMILAR_TO`, `SEMANTICALLY_RELATED`, persisted `IMPORTS`, route/data-flow, channel edges, tests, config links, infra scans, and git history | Strong core pipeline for structure, definitions, calls, usages, incremental, parallel, similarity, route/event slices, plus embedded FTS5 refresh and optional SCIP sidecar import | `Partial` | No |
 | Runtime lifecycle | Watcher, auto-index, update notifications, UI-capable runtime | Watcher, auto-index, incremental, transactional indexing, persistent runtime DB | `Near parity` | Yes |
-| CLI/productization | Rich install/update/config for 10 agents plus hooks/instructions | Source-build-friendly install/update/config for the broader 10-agent matrix, with parity-tested shared flows and fixture-backed extras coverage | `Partial` | No |
+| CLI/productization | Rich install/update/config for 10 agents plus hooks/instructions | Source-build-friendly install/update/config for the broader 10-agent matrix, with `112` exact zig-only CLI checks and a clean shared C compare on the overlapping Codex/Claude contract | `Partial` | No |
 | Optional/long-tail systems | UI, semantic/vector search, route and channel graph expansion, infra/resource indexing, git history, config linking | Git history coupling implemented; graph-model parity fixture contract completed for route nodes and config linking; UI and infra scanning remain deferred or cut | `Partial` / `Cut` | No |
 
 As of `2026-04-21`, the pre-`v0.6.0` shared contract is still largely closed. The newest latest-upstream gaps are concentrated in `search_graph` discovery modes (`query` / `semantic_query`), `moderate` indexing, `SEMANTICALLY_RELATED`, and the newer channel graph vocabulary (`Channel`, `EMITS`, `LISTENS_ON`). Older intentional scope choices such as the UI binary, infra/resource indexing, and deeper Cypher/LSP breadth still remain.
@@ -101,7 +101,10 @@ Current audit note on `2026-04-21`:
 
 - `zig build`: pass
 - `zig build test`: pass
-- `bash scripts/run_cli_parity.sh --zig-only`: pass
+- `bash scripts/test_runtime_lifecycle.sh`: pass
+- `bash scripts/test_runtime_lifecycle_extras.sh`: pass
+- `bash scripts/run_cli_parity.sh --zig-only`: pass (`112` exact checks)
+- `bash scripts/run_cli_parity.sh`: pass with `18` shared checks and `0` mismatches against the local C reference
 - `bash scripts/run_interop_alignment.sh --zig-only`: pass (`39/39`)
 - `bash scripts/run_benchmark_suite.sh --zig-only --manifest testdata/bench/stress-manifest.json --report-dir .benchmark_reports/ops`: pass
 - `bash scripts/run_soak_suite.sh --iterations 3 --report-dir .soak_reports/ci`: pass
@@ -117,7 +120,7 @@ Current audit note on `2026-04-21`:
 | Readiness gate | Reference side of the interop harness | Completed and passing: `Strict matches: 58`, `Diagnostic-only comparisons: 9`, `Mismatches: 0` | `Near parity` | Yes | The first-gate harness is green; the expanded full harness now reports 39 fixtures, 301 comparisons, 164 strict matches, 45 diagnostic-only comparisons, 0 mismatches, and `cli_progress: match`. |
 | Broader post-readiness target | Everything in the original project | Current target contract only; long-tail parity moved to deferred backlog | `Partial` | No | See `docs/plans/implemented/post-readiness-zig-port-execution-plan.md`. |
 | Built-in graph UI | Yes, optional UI binary / HTTP server | No | `Cut` | No | Original has `src/ui/*` and `--ui` flags. Zig intentionally does not port the UI. |
-| Release/install packaging | Prebuilt release artifacts plus setup scripts and install scripts | Standard `cbm` release archives, checksums, a repo-owned release manifest, install scripts, setup scripts, install docs, and a validating release workflow | `Near parity` | Yes | The Zig repo now proves standard-binary packaging for macOS, Linux, and Windows artifacts, with merged-manifest validation in the release workflow. UI variants plus signing/attestation remain intentionally narrower than the original pipeline. |
+| Release/install packaging | Prebuilt release artifacts plus setup scripts and install scripts | Standard `cbm` release archives, checksums, a repo-owned release manifest, install scripts, setup scripts, install docs, and a validating release workflow | `Partial` | No | The Zig repo proves the standard-binary packaging path for macOS, Linux, and Windows artifacts, with merged-manifest validation in the release workflow. The latest-upstream release surface is still broader because Zig intentionally omits UI variants and does not ship the same signing, attestation, or provenance layers. |
 
 ## 2. MCP Protocol and Tool Surface
 
@@ -235,11 +238,11 @@ This section compares what kinds of graph entities the two systems are built to 
 | Default stdio MCP server | Yes | Yes | `Near parity` | Yes | This is the default mode in both entrypoints, and Zig now has explicit `1 MiB` request-line and `4 MiB` response-envelope guardrails validated by unit tests plus the runtime harness. |
 | Persistent runtime cache / DB | Yes | Yes | `Near parity` | Yes | Zig now proves cache-root selection through `CBM_CACHE_DIR`, Windows `LOCALAPPDATA`, Windows no-`HOME` fallback via `USERPROFILE` / `HOMEDRIVE` + `HOMEPATH`, Unix `XDG_CACHE_HOME`, and `HOME` fallback behavior via fixture-backed installer and runtime checks. |
 | Watcher-driven auto-reindex | Yes | Yes | `Near parity` | Yes | Both use git-based watcher logic. |
-| Startup auto-index | Yes | Yes | `Near parity` | Yes | Zig supports config-driven or env-driven startup auto-index. |
-| Previously indexed project watcher registration | Yes | Yes | `Near parity` | Yes | Explicitly wired in Zig Phase 6. |
+| Startup auto-index | Yes | Yes | `Near parity` | Yes | Zig now has a direct startup test for indexing the current temp repo and registering it with the watcher, in addition to the long-running runtime harness coverage around the surrounding stdio lifecycle. |
+| Previously indexed project watcher registration | Yes | Yes | `Near parity` | Yes | Zig now has a focused startup test for `registerIndexedProjects`, which watches only persisted projects with real roots before the long-running watcher thread starts. |
 | UI runtime flags (`--ui`, `--port`) | Yes | No | `Cut` | No | Zig does not ship the UI server. |
 | Startup update notification | Yes | Yes, one-shot notice on the first post-initialize response | `Near parity` | Yes | Zig now starts an update check on `initialize`, preserves the pending notice until it can be injected safely, and covers the env-override plus one-shot behavior in the runtime harness, including the `notifications/initialized` path staying silent before the first real tool response. |
-| Benchmarking / soak / security scripts | Present | Repo-owned benchmark, soak, and static audit scripts plus CI wiring | `Near parity` | No | Zig now ships `scripts/run_benchmark_suite.sh`, `scripts/run_soak_suite.sh`, `scripts/run_security_audit.sh`, maintainer docs, and `.github/workflows/ops-checks.yml`. Verified on `2026-04-19`: Zig-only benchmark medians were `1340.308 ms` on `self-repo` and `72.769 ms` on `sqlite-amalgamation`, the soak suite reported `303.966 ms` p95 indexing over four iterations, and the static audit passed `17` checks with `0` failures. Remaining original-only layers are binary-string auditing, runtime network-trace auditing, fuzzing, and longer-duration soak coverage. |
+| Benchmarking / soak / security scripts | Present | Repo-owned benchmark, soak, and static audit scripts plus CI wiring | `Partial` | No | Zig ships `scripts/run_benchmark_suite.sh`, `scripts/run_soak_suite.sh`, `scripts/run_security_audit.sh`, maintainer docs, and `.github/workflows/ops-checks.yml`. Verified on `2026-04-19`: Zig-only benchmark medians were `1340.308 ms` on `self-repo` and `72.769 ms` on `sqlite-amalgamation`, the soak suite reported `303.966 ms` p95 indexing over four iterations, and the static audit passed `17` checks with `0` failures. The latest-upstream operational surface is still broader because binary-string auditing, runtime network-trace auditing, fuzzing, and longer-duration soak coverage remain outside this repo's bounded suite. |
 
 ## 7. CLI and Productization
 
@@ -261,7 +264,7 @@ This section compares what kinds of graph entities the two systems are built to 
 | Primary build system | Make + shell scripts | `zig build` plus repo-owned packaging, manifest emission, and release-validation scripts | `Partial` | No | Both repos now ship build and release scaffolding. The remaining difference is that Zig intentionally packages only the standard binary surface, not the original UI-oriented release variants or external trust layers. |
 | Setup scripts | Yes (`scripts/setup.sh`, `setup-windows.ps1`) | Yes (`install.sh`, `install.ps1`, `scripts/setup.sh`, `scripts/setup-windows.ps1`) | `Near parity` | Yes | Zig now verifies both shell and PowerShell entrypoints against local packaged archives, with manifest-backed archive verification when `release-manifest.json` is present, while keeping the scope on the standard binary rather than the original's broader UI release set. |
 | UI asset embedding | Yes | No | `Cut` | No | Tied to the UI subsystem. |
-| Security / audit / benchmark script set | Broad script suite | Bounded repo-owned benchmark, soak, and static audit suite | `Near parity` | No | Zig now provides reproducible local and CI entrypoints for benchmark, soak, and static audit coverage. It still intentionally stops short of the original's binary-string, network-trace, fuzz, and multi-hour soak layers. |
+| Security / audit / benchmark script set | Broad script suite | Bounded repo-owned benchmark, soak, and static audit suite | `Partial` | No | Zig provides reproducible local and CI entrypoints for benchmark, soak, and static audit coverage. It intentionally stops short of the original's binary-string, network-trace, fuzz, and multi-hour soak layers, so this row should not keep a parity-positive label. |
 | Interop harness against the original | Not applicable | Yes | `Near parity` | No | This is a Zig-side advantage for tracking compatibility over time. |
 
 ## 9. What the Zig Port Can Truthfully Claim Today

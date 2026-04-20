@@ -95,12 +95,15 @@ Completed now:
 Completed after the readiness gate:
 - Runtime lifecycle and scale baseline:
   - watcher-driven auto-index and auto-reindex
+  - startup watcher registration for previously indexed projects
   - incremental indexing
   - parallel extraction and graph-buffer merge
   - MinHash/LSH similarity edges
   - signal-driven graceful shutdown for stdio MCP sessions
   - one-shot startup update notification on the first post-initialize response
   - timed idle runtime-store eviction plus reopen on the next stdio tool call
+  - direct startup tests for persisted watcher registration and startup
+    auto-index of the current repo
 - CLI and productization baseline:
   - persisted runtime config
   - `install`, `uninstall`, `update`, and `config`
@@ -529,6 +532,14 @@ Intentional residual delta after completion:
 - no fuzz harnesses in the Zig repo today
 - no nightly or multi-hour soak tier beyond the reproducible local suite
 
+Current classification note after the runtime/CLI/packaging parity review:
+- keep the local benchmark, soak, and static audit suite as implemented
+  operational coverage, but do not describe it as full parity with the latest
+  upstream audit surface
+- keep the standard-binary release, install, and setup path as implemented and
+  verified, but do not describe it as packaging parity with the latest upstream
+  UI, signing, provenance, or broader release-metadata surface
+
 ## Implemented Plan: Windows, Installer, and Client Integration
 
 Current matrix for the completed slice:
@@ -921,7 +932,7 @@ The Zig stub has the 14 tool names as an enum but zero handler implementations.
 | MCP tools/list response | Full (14 tool schemas with descriptions, parameter types) | MISSING |
 | Tool argument extraction (string, int, bool) | Full (`cbm_mcp_get_*_arg`) | MISSING |
 | MCP text result formatting | Full (`cbm_mcp_text_result`) | MISSING |
-| Session/startup auto-index wiring | Full (checks watcher, triggers if not indexed) | PARTIAL — startup auto-index is implemented via `CBM_AUTO_INDEX`, first-tool-call parity is still deferred |
+| Session/startup auto-index wiring | Full (checks watcher, triggers if not indexed) | DONE LATER — startup auto-index now supports config or env enablement and has direct startup tests for indexing the current repo plus watcher registration |
 | Idle store eviction (300s timeout) | Full (`cbm_mcp_server_evict_idle`) | MISSING |
 | File URI parsing (`file://` → path) | Full (`cbm_parse_file_uri`) | MISSING |
 | Progress notifications | Full (JSON-RPC notification during indexing) | MISSING |

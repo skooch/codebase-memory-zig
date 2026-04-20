@@ -12,15 +12,16 @@ job is to:
 3. queue those plans in execution order
 
 ## Current Phase
-In progress
+Completed
 
 ## File Map
-- Modify: `docs/plans/new/13-near-parity-promotion-program-plan.md`
+- Modify: `docs/plans/implemented/13-near-parity-promotion-program-plan.md`
 - Modify: `docs/plans/new/README.md`
-- Create: `docs/plans/implemented/14-protocol-tool-surface-full-parity-plan.md`
-- Create: `docs/plans/implemented/15-query-analysis-full-parity-plan.md`
-- Create: `docs/plans/new/16-graph-exactness-full-parity-plan.md`
-- Create: `docs/plans/new/17-runtime-cli-packaging-full-parity-plan.md`
+- Create: `docs/plans/implemented/13-near-parity-promotion-program-progress.md`
+- Reference: `docs/plans/implemented/14-protocol-tool-surface-full-parity-plan.md`
+- Reference: `docs/plans/implemented/15-query-analysis-full-parity-plan.md`
+- Reference: `docs/plans/implemented/16-graph-exactness-full-parity-plan.md`
+- Reference: `docs/plans/implemented/17-runtime-cli-packaging-full-parity-plan.md`
 
 ## Systemic-Fix Review
 
@@ -120,11 +121,11 @@ A row must be downgraded to `Partial` if either is true:
 - **Status:** completed
 
 ### Phase 3: Exit criteria for the program
-- [ ] Mark this program plan complete only when each subsystem plan has been
+- [x] Mark this program plan complete only when each subsystem plan has been
       either completed or explicitly abandoned with a downgrade decision.
-- [ ] Require `docs/port-comparison.md`, `docs/gap-analysis.md`, and
+- [x] Require `docs/port-comparison.md`, `docs/gap-analysis.md`, and
       `docs/interop-testing-review.md` to reflect the measured final state.
-- **Status:** pending
+- **Status:** completed
 
 ## Decisions
 | Decision | Rationale |

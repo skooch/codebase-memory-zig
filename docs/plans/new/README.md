@@ -3,13 +3,17 @@
 Refresh date: 2026-04-21
 
 The previously queued parity follow-on work is complete. This file now records
-the current queue state after those execution slices landed.
+the current queue state after the final runtime/CLI/packaging slice landed and
+the ordering program was closed.
 
 ## Current State
 
-- There are two queued execution plans under `docs/plans/new/`:
-  [13-near-parity-promotion-program-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/13-near-parity-promotion-program-plan.md),
-  [17-runtime-cli-packaging-full-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/17-runtime-cli-packaging-full-parity-plan.md)
+- There are no remaining queued execution plans under `docs/plans/new/` for
+  this parity-promotion program.
+- The ordering program is complete:
+  [13-near-parity-promotion-program-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/13-near-parity-promotion-program-plan.md)
+  and
+  [13-near-parity-promotion-program-progress.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/13-near-parity-promotion-program-progress.md).
 - The protocol/tool-surface parity slice is complete:
   [14-protocol-tool-surface-full-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/14-protocol-tool-surface-full-parity-plan.md)
   and
@@ -22,6 +26,10 @@ the current queue state after those execution slices landed.
   [16-graph-exactness-full-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/16-graph-exactness-full-parity-plan.md)
   and
   [16-graph-exactness-full-parity-progress.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/16-graph-exactness-full-parity-progress.md).
+- The runtime/CLI/packaging parity slice is complete:
+  [17-runtime-cli-packaging-full-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/17-runtime-cli-packaging-full-parity-plan.md)
+  and
+  [17-runtime-cli-packaging-full-parity-progress.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/17-runtime-cli-packaging-full-parity-progress.md).
 - The most recent completed maintenance slices are
   [verification-remediation-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/verification-remediation-plan.md)
   and
@@ -45,9 +53,9 @@ the current queue state after those execution slices landed.
   [04-route-and-cross-service-framework-expansion-plan.md](/Users/skooch/projects/worktrees/route-cross-service-expansion/docs/plans/implemented/04-route-and-cross-service-framework-expansion-plan.md),
   and
   [05-config-normalization-and-reads-writes-contract-plan.md](/Users/skooch/projects/worktrees/config-normalization-reads-writes/docs/plans/implemented/05-config-normalization-and-reads-writes-contract-plan.md).
-- The remaining queued execution backlog is the two plans listed below.
+- There is no remaining queued execution backlog for the parity-promotion
+  program.
 
 ## Next Queue
 
-1. [13-near-parity-promotion-program-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/13-near-parity-promotion-program-plan.md)
-2. [17-runtime-cli-packaging-full-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/new/17-runtime-cli-packaging-full-parity-plan.md)
+None.

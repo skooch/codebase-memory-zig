@@ -10,7 +10,10 @@ The interop harness is in materially better shape than the 2026-04-12 review des
 
 Current verified state:
 - `zig build test` passes in the execution worktree.
-- `bash scripts/run_cli_parity.sh --zig-only` passes.
+- `bash scripts/test_runtime_lifecycle.sh` passes.
+- `bash scripts/test_runtime_lifecycle_extras.sh` passes.
+- `bash scripts/run_cli_parity.sh --zig-only` passes at `112` exact checks.
+- `bash scripts/run_cli_parity.sh` passes with `18` shared checks and `0` mismatches.
 - `bash scripts/run_interop_alignment.sh --zig-only` passes at `39/39`.
 - `bash scripts/run_interop_alignment.sh` now reports no hard mismatches instead of the earlier six-item set.
 - The current full compare baseline is `39` fixtures, `301` comparisons, `164` strict matches, `45` diagnostic-only comparisons, and `0` mismatches.
@@ -25,8 +28,9 @@ The review from 2026-04-12 is no longer accurate as a live issue register. Sever
 | Script | Purpose | Current role |
 |--------|---------|--------------|
 | `scripts/run_interop_alignment.sh` | Zig-only golden checks, golden refresh, full Zig-vs-C compare | Primary MCP parity harness |
-| `scripts/run_cli_parity.sh` | Installer/config parity via temp-home fixtures | Primary CLI parity harness |
-| `scripts/test_runtime_lifecycle.sh` | Runtime lifecycle verification | Separate runtime contract coverage |
+| `scripts/run_cli_parity.sh` | Installer/config parity via temp-home fixtures | Primary CLI parity harness (`112` exact zig-only checks; `18` shared compare checks) |
+| `scripts/test_runtime_lifecycle.sh` | Runtime lifecycle verification | Primary runtime contract harness for EOF shutdown, live `SIGTERM`, update-notice timing, initialized-notification silence, and Windows no-`HOME` cache-root fallback |
+| `scripts/test_runtime_lifecycle_extras.sh` | Runtime idle-store lifecycle verification | Separate runtime extras harness for live close/reopen of the shared runtime DB |
 
 ### Fixture Footprint
 
@@ -74,6 +78,7 @@ The following findings from the 2026-04-12 review are no longer current:
 - `scripts/run_cli_parity.sh` is executable.
 - The shared manifest now also covers the expanded bounded Go hybrid-resolution sidecar slice.
 - The shared manifest now also includes exact `protocol-contract` and `tool-surface-parity` fixtures for the public MCP handshake and tool surface.
+- Startup watcher registration and startup auto-index now also have direct unit coverage in `src/main.zig`, so those runtime rows are no longer backed only by implementation reading.
 
 ## Remaining Verification Debt
 
@@ -108,6 +113,7 @@ The interop and parity verification surface is now strong enough to support the 
 - the MCP handshake and tool-surface layer now have dedicated exact fixtures via `protocol-contract` and `tool-surface-parity`
 - the query/analysis surface now also has dedicated exact fixtures for snippet or trace behavior, architecture-aspect coverage, and search-code ranking or mode behavior
 - the graph-exactness surface now also has dedicated exact fixtures for `TESTS`, `IMPORTS`, `CONFIGURES`, `USES_TYPE`, route-linked `DATA_FLOWS`, `THROWS`/`RAISES`, `SIMILAR_TO`, and `FILE_CHANGES_WITH`
+- the runtime lifecycle surface now also has dedicated direct coverage for startup watcher registration and startup auto-index, in addition to the live stdio lifecycle scripts
 - the shared `query_graph` contract is now behavior-tested past simple counts, including bounded `DISTINCT`, boolean-precedence filters, numeric property predicates, and edge-type filtering
 - the bounded Go hybrid-resolution sidecar contract is now exercised on both the original single-call fixture and the expanded multi-document fixture
 - the broader route surface now explicitly includes one additional strict shared framework slice via `route-expansion-httpx`, while `keyword_request_styles` and `semantic-expansion-send-task` stay diagnostic-only by design

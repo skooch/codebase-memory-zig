@@ -188,11 +188,30 @@ fn maybeAutoIndexOnStartup(
 ) !void {
     var config = cli.loadConfig(allocator) catch cli.AppConfig{};
     defer config.deinit(allocator);
-    const auto_index_enabled = config.auto_index or envFlagEnabled("CBM_AUTO_INDEX");
-    if (!auto_index_enabled) return;
-
     const cwd = try std.fs.cwd().realpathAlloc(allocator, ".");
     defer allocator.free(cwd);
+
+    try maybeAutoIndexOnStartupResolved(
+        allocator,
+        runtime,
+        db,
+        watcher,
+        cwd,
+        config.auto_index or envFlagEnabled("CBM_AUTO_INDEX"),
+        envUnsigned("CBM_AUTO_INDEX_LIMIT", config.auto_index_limit),
+    );
+}
+
+fn maybeAutoIndexOnStartupResolved(
+    allocator: std.mem.Allocator,
+    runtime: *RuntimeState,
+    db: *cbm.Store,
+    watcher: *cbm.watcher.Watcher,
+    cwd: []const u8,
+    auto_index_enabled: bool,
+    auto_index_limit: usize,
+) !void {
+    if (!auto_index_enabled) return;
 
     const project_name = std.fs.path.basename(cwd);
     if (project_name.len == 0) return;
@@ -203,12 +222,11 @@ fn maybeAutoIndexOnStartup(
         return;
     }
 
-    const limit = envUnsigned("CBM_AUTO_INDEX_LIMIT", config.auto_index_limit);
     const discovered = discoverIndexableFileCount(allocator, cwd) catch |err| {
         std.log.warn("auto-index discovery failed for {s}: {}", .{ cwd, err });
         return;
     };
-    if (discovered == 0 or discovered > limit) {
+    if (discovered == 0 or discovered > auto_index_limit) {
         return;
     }
 
@@ -992,4 +1010,77 @@ test "cli progress accepts project_path compatibility alias" {
     defer std.fs.cwd().deleteFile(progress_path) catch {};
 
     try std.testing.expect(std.mem.indexOf(u8, output, "Discovering files") != null);
+}
+
+test "registerIndexedProjects watches persisted project roots" {
+    var db = try cbm.Store.openMemory(std.testing.allocator);
+    defer db.deinit();
+    try db.upsertProject("demo", "/tmp/cbm-persisted-demo");
+    try db.upsertProject("empty", "");
+
+    var watcher = cbm.watcher.Watcher.init(std.testing.allocator, null, null);
+    defer watcher.deinit();
+
+    try registerIndexedProjects(&db, &watcher);
+    try std.testing.expectEqual(@as(usize, 1), watcher.watchCount());
+}
+
+test "startup auto-index indexes cwd and registers watcher" {
+    const allocator = std.testing.allocator;
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(allocator, "/tmp/cbm-startup-auto-index-{x}", .{project_id});
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    const main_path = try std.fs.path.join(allocator, &.{ project_dir, "main.py" });
+    defer allocator.free(main_path);
+    var main_file = try std.fs.cwd().createFile(main_path, .{});
+    defer main_file.close();
+    try main_file.writeAll(
+        \\def run():
+        \\    return 1
+        \\
+    );
+
+    const db_path = try std.fmt.allocPrint(allocator, "/tmp/cbm-startup-auto-index-{x}.db", .{project_id});
+    errdefer std.fs.cwd().deleteFile(db_path) catch {};
+    var runtime = RuntimeState{
+        .allocator = allocator,
+        .db_path = db_path,
+    };
+    defer {
+        std.fs.cwd().deleteFile(runtime.db_path) catch {};
+        runtime.deinit();
+    }
+
+    {
+        var db = try openStoreAtPath(allocator, runtime.db_path);
+        defer db.deinit();
+
+        var watcher = cbm.watcher.Watcher.init(allocator, &runtime, watcherIndexFn);
+        defer watcher.deinit();
+
+        try maybeAutoIndexOnStartupResolved(
+            allocator,
+            &runtime,
+            &db,
+            &watcher,
+            project_dir,
+            true,
+            10,
+        );
+
+        try std.testing.expectEqual(@as(usize, 1), watcher.watchCount());
+    }
+
+    var verify_db = try openStoreAtPath(allocator, runtime.db_path);
+    defer verify_db.deinit();
+    const project_name = std.fs.path.basename(project_dir);
+    const project = try verify_db.getProject(project_name);
+    try std.testing.expect(project != null);
+    if (project) |entry| {
+        defer verify_db.freeProject(entry);
+        try std.testing.expectEqualStrings(project_dir, entry.root_path);
+    }
 }
