@@ -66,6 +66,7 @@ PREFIX_DIR="${BUILD_ROOT}/prefix"
 
 (
     cd "$ROOT_DIR"
+    bash scripts/fetch_grammars.sh
     zig build release --prefix "$PREFIX_DIR"
 )
 

@@ -1,5 +1,43 @@
 const std = @import("std");
 
+const required_vendored_inputs = [_][]const u8{
+    "vendored/tree_sitter/tree_sitter/parser.h",
+    "vendored/grammars/rust/parser.c",
+    "vendored/grammars/rust/scanner.c",
+    "vendored/grammars/python/parser.c",
+    "vendored/grammars/python/scanner.c",
+    "vendored/grammars/javascript/parser.c",
+    "vendored/grammars/javascript/scanner.c",
+    "vendored/grammars/typescript/parser.c",
+    "vendored/grammars/typescript/scanner.c",
+    "vendored/grammars/typescript/_common_scanner.h",
+    "vendored/grammars/tsx/parser.c",
+    "vendored/grammars/tsx/scanner.c",
+    "vendored/grammars/tsx/_common_scanner.h",
+    "vendored/grammars/zig/parser.c",
+    "vendored/grammars/go/parser.c",
+    "vendored/grammars/java/parser.c",
+    "vendored/grammars/csharp/parser.c",
+    "vendored/grammars/csharp/scanner.c",
+    "vendored/grammars/powershell/parser.c",
+    "vendored/grammars/powershell/scanner.c",
+    "vendored/grammars/gdscript/parser.c",
+    "vendored/grammars/gdscript/scanner.c",
+};
+
+fn ensureVendoredInputsPresent() void {
+    for (required_vendored_inputs) |rel_path| {
+        std.fs.cwd().access(rel_path, .{}) catch {
+            std.debug.panic(
+                "missing required vendored build input: {s}\n" ++
+                    "run `mise install`, then `mise run bootstrap`, and retry\n" ++
+                    "direct fallback: `bash scripts/fetch_grammars.sh`\n",
+                .{rel_path},
+            );
+        };
+    }
+}
+
 fn configureCbmModule(
     b: *std.Build,
     mod: *std.Build.Module,
@@ -161,6 +199,8 @@ fn addCbmExecutable(
 }
 
 pub fn build(b: *std.Build) void {
+    ensureVendoredInputsPresent();
+
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 

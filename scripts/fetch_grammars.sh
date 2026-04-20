@@ -16,17 +16,54 @@ if [[ "${1:-}" == "--force" ]]; then
     FORCE=true
 fi
 
-all_grammars_present() {
+grammar_requires_scanner() {
+    case "$1" in
+        rust|python|javascript|typescript|tsx|csharp|powershell|gdscript) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+grammar_requires_common_scanner() {
+    case "$1" in
+        typescript|tsx) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+grammar_complete() {
+    local lang="$1"
+    if [[ ! -f "$GRAMMAR_DIR/$lang/parser.c" ]]; then
+        return 1
+    fi
+    if grammar_requires_scanner "$lang" && [[ ! -f "$GRAMMAR_DIR/$lang/scanner.c" ]]; then
+        return 1
+    fi
+    if grammar_requires_common_scanner "$lang" && [[ ! -f "$GRAMMAR_DIR/$lang/_common_scanner.h" ]]; then
+        return 1
+    fi
+    if [[ ! -f "$GRAMMAR_DIR/$lang/tree_sitter/parser.h" ]]; then
+        return 1
+    fi
+    return 0
+}
+
+all_grammar_inputs_present() {
     local lang=""
     for lang in go java rust python javascript typescript tsx zig csharp powershell gdscript; do
-        if [[ ! -f "$GRAMMAR_DIR/$lang/parser.c" ]]; then
+        if ! grammar_complete "$lang"; then
             return 1
         fi
     done
     return 0
 }
 
-if [[ "$FORCE" == false ]] && all_grammars_present; then
+shared_headers_present() {
+    [[ -f "$TS_HEADER_DIR/tree_sitter/alloc.h" ]] &&
+        [[ -f "$TS_HEADER_DIR/tree_sitter/array.h" ]] &&
+        [[ -f "$TS_HEADER_DIR/tree_sitter/parser.h" ]]
+}
+
+if [[ "$FORCE" == false ]] && all_grammar_inputs_present && shared_headers_present; then
     echo "Grammars already present. Use --force to re-fetch."
     exit 0
 fi
@@ -106,6 +143,7 @@ fetch_grammar() {
         return 1
     fi
 
+    rm -rf "$dest"
     mkdir -p "$dest"
     cp "$src_dir/parser.c" "$dest/"
 
@@ -131,14 +169,17 @@ if [[ "$FORCE" == true ]]; then
     rm -rf "$GRAMMAR_DIR" "$TS_HEADER_DIR"
 fi
 
-# typescript and tsx share a repo but are cloned separately for simplicity
 for lang in go java rust python javascript typescript tsx zig csharp powershell gdscript; do
-    fetch_grammar "$lang"
+    if [[ "$FORCE" == true ]] || ! grammar_complete "$lang"; then
+        fetch_grammar "$lang"
+    fi
 done
 
-# Collect tree_sitter headers from the first grammar that has them
-echo "Collecting tree-sitter headers..."
-mkdir -p "$TS_HEADER_DIR/tree_sitter"
-cp "$GRAMMAR_DIR/rust/tree_sitter/"*.h "$TS_HEADER_DIR/tree_sitter/"
+if [[ "$FORCE" == true ]] || ! shared_headers_present; then
+    echo "Collecting tree-sitter headers..."
+    rm -rf "$TS_HEADER_DIR"
+    mkdir -p "$TS_HEADER_DIR/tree_sitter"
+    cp "$GRAMMAR_DIR/rust/tree_sitter/"*.h "$TS_HEADER_DIR/tree_sitter/"
+fi
 
 echo "Done. Grammars in $GRAMMAR_DIR, headers in $TS_HEADER_DIR"

@@ -7,7 +7,7 @@ const service_patterns = @import("service_patterns.zig");
 
 pub const RouteKind = enum {
     http,
-    async,
+    @"async",
 };
 
 pub const ParsedRoute = struct {
@@ -29,7 +29,7 @@ pub fn parseQualifiedName(qualified_name: []const u8) ?ParsedRoute {
     const token = rest[0..sep];
     const name = rest[sep + 2 ..];
     return .{
-        .kind = if (isHttpRouteToken(token)) .http else .async,
+        .kind = if (isHttpRouteToken(token)) .http else .@"async",
         .token = token,
         .name = name,
     };
@@ -38,7 +38,7 @@ pub fn parseQualifiedName(qualified_name: []const u8) ?ParsedRoute {
 pub fn asyncInfo(node: *const graph_buffer.BufferNode) ?AsyncRouteInfo {
     if (!std.mem.eql(u8, node.label, "Route")) return null;
     const parsed = parseQualifiedName(node.qualified_name) orelse return null;
-    if (parsed.kind != .async) return null;
+    if (parsed.kind != .@"async") return null;
     return .{
         .broker = parsed.token,
         .topic = parsed.name,

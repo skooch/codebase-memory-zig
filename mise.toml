@@ -1,2 +1,11 @@
 [tools]
 zig = "0.15.2"
+"github:DonIsaac/zlint" = "v0.7.9"
+
+[tasks.bootstrap]
+description = "Fetch vendored tree-sitter grammars and shared headers"
+run = "bash scripts/fetch_grammars.sh"
+
+[tasks.lint]
+description = "Run the Zig linter"
+run = "find src -name '*.zig' | zlint -S"
