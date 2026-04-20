@@ -1978,7 +1978,7 @@ fn parsePythonVariableName(line: []const u8) ?[]const u8 {
 
 fn supportsTreeSitterDefs(language: discover.Language) bool {
     return switch (language) {
-        .go, .java, .python, .javascript, .typescript, .tsx, .rust, .zig, .powershell, .gdscript => true,
+        .go, .java, .python, .javascript, .typescript, .tsx, .rust, .zig, .csharp, .powershell, .gdscript => true,
         else => false,
     };
 }
@@ -1991,7 +1991,7 @@ fn estimateParsedSymbolEndLine(
 ) i32 {
     if (!isDeclarationLabel(symbol.label)) return start_line;
     return switch (language) {
-        .go, .java, .javascript, .typescript, .tsx, .rust, .zig => estimateBraceDelimitedEndLine(bytes, language, start_line),
+        .go, .java, .javascript, .typescript, .tsx, .rust, .zig, .csharp => estimateBraceDelimitedEndLine(bytes, language, start_line),
         else => start_line,
     };
 }
@@ -2053,6 +2053,7 @@ fn collectDefinitionsWithTreeSitter(
         .tsx => treeSitterLanguageTsx,
         .rust => treeSitterLanguageRust,
         .zig => treeSitterLanguageZig,
+        .csharp => treeSitterLanguageCSharp,
         .powershell => treeSitterLanguagePowershell,
         .gdscript => treeSitterLanguageGdscript,
         else => return,
@@ -2203,6 +2204,18 @@ fn tsNodeLabel(language: discover.Language, node: ts.Node) ?[]const u8 {
             "Struct"
         else if (std.mem.eql(u8, kind, "variable_declaration"))
             "Constant"
+        else
+            null,
+        .csharp => if (std.mem.eql(u8, kind, "class_declaration") or
+            std.mem.eql(u8, kind, "struct_declaration") or
+            std.mem.eql(u8, kind, "record_declaration") or
+            std.mem.eql(u8, kind, "enum_declaration"))
+            "Class"
+        else if (std.mem.eql(u8, kind, "interface_declaration"))
+            "Interface"
+        else if (std.mem.eql(u8, kind, "method_declaration") or
+            std.mem.eql(u8, kind, "constructor_declaration"))
+            "Method"
         else
             null,
         .powershell => if (std.mem.eql(u8, kind, "function_statement"))
@@ -2562,6 +2575,7 @@ extern "c" fn tree_sitter_typescript() *const ts.Language;
 extern "c" fn tree_sitter_tsx() *const ts.Language;
 extern "c" fn tree_sitter_rust() *const ts.Language;
 extern "c" fn tree_sitter_zig() *const ts.Language;
+extern "c" fn tree_sitter_c_sharp() *const ts.Language;
 extern "c" fn tree_sitter_go() *const ts.Language;
 extern "c" fn tree_sitter_java() *const ts.Language;
 extern "c" fn tree_sitter_powershell() *const ts.Language;
@@ -2597,6 +2611,10 @@ fn treeSitterLanguageRust() *const ts.Language {
 
 fn treeSitterLanguageZig() *const ts.Language {
     return tree_sitter_zig();
+}
+
+fn treeSitterLanguageCSharp() *const ts.Language {
+    return tree_sitter_c_sharp();
 }
 
 fn treeSitterLanguagePowershell() *const ts.Language {
@@ -3977,6 +3995,40 @@ test "tree-sitter extracts powershell definitions with method ownership" {
     try std.testing.expect(definitionPresent(defs.items, "Function", "Invoke-Users", 1));
     try std.testing.expect(definitionPresent(defs.items, "Class", "Worker", 5));
     try std.testing.expect(definitionWithContainerPresent(defs.items, "Method", "Run", "Worker", 6));
+}
+
+test "tree-sitter extracts csharp definitions with method ownership" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\interface IRunner
+        \\{
+        \\    void Run();
+        \\}
+        \\
+        \\class Worker : IRunner
+        \\{
+        \\    public Worker() {}
+        \\
+        \\    public void Run()
+        \\    {
+        \\    }
+        \\}
+        \\
+    ;
+
+    var defs = std.ArrayList(TsDefinition).empty;
+    defer freePendingTsDefinitions(allocator, &defs);
+    try collectDefinitionsWithTreeSitter(
+        allocator,
+        source,
+        .csharp,
+        &defs,
+    );
+
+    try std.testing.expect(definitionPresent(defs.items, "Interface", "IRunner", 1));
+    try std.testing.expect(definitionPresent(defs.items, "Class", "Worker", 6));
+    try std.testing.expect(definitionWithContainerPresent(defs.items, "Method", "Worker", "Worker", 8));
+    try std.testing.expect(definitionWithContainerPresent(defs.items, "Method", "Run", "Worker", 10));
 }
 
 test "tree-sitter extracts gdscript definitions with nested class ownership" {

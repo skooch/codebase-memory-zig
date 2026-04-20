@@ -51,6 +51,7 @@ Completed now:
   - Zig
   - Go
   - Java
+  - C#
   - PowerShell
   - GDScript
 - The first-gate fixture harness baseline is:
@@ -261,6 +262,64 @@ Intentional residual delta after completion:
   parser-backed in this branch
 - PowerShell and GDScript are verified parser-backed additions, not yet a
   broader semantic-parity claim against the original C implementation
+
+## Implemented Plan: Language Breadth Expansion
+
+Current parser-backed tranche for this completed slice:
+- C#
+  - interfaces
+  - classes
+  - constructors
+  - class-owned methods
+
+Queue decision for this completed slice:
+- chosen tranche
+  - C#
+- explicit deferred next candidates
+  - QML
+  - any broader two-language tranche after the current single-language proof
+
+Completion evidence:
+- the plan is now archived at
+  [11-language-breadth-expansion-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/11-language-breadth-expansion-plan.md)
+  and
+  [11-language-breadth-expansion-progress.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/11-language-breadth-expansion-progress.md)
+- `build.zig` now compiles the vendored C# parser
+- `scripts/fetch_grammars.sh` now fetches the pinned C# grammar alongside the
+  existing parser-backed tranche
+- `src/extractor.zig` now uses tree-sitter for bounded C# definition
+  extraction, including constructor and method ownership
+- `src/store_test.zig` now locks the C# fixture into the store-backed parser
+  regression coverage
+- [`docs/language-support.md`](/Users/skooch/projects/codebase-memory-zig/docs/language-support.md)
+  and [`docs/port-comparison.md`](/Users/skooch/projects/codebase-memory-zig/docs/port-comparison.md)
+  now classify C# correctly as a Zig-only parser-backed expansion rather than a
+  shared semantic-parity claim
+
+Completion verification on 2026-04-20:
+- `bash scripts/fetch_grammars.sh --force`
+- `zig build`
+- `zig build test`
+- `zig build run -- cli index_repository '{"project_path":"testdata/interop/language-expansion/csharp-basic"}'`
+- `zig build run -- cli search_graph '{"project":"csharp-basic","label":"Class"}'`
+- `zig build run -- cli search_graph '{"project":"csharp-basic","label":"Interface"}'`
+- `zig build run -- cli search_graph '{"project":"csharp-basic","label":"Method"}'`
+- `zig build run -- cli query_graph '{"project":"csharp-basic","query":"MATCH (a)-[:DEFINES_METHOD]->(b:Method) RETURN a.name, b.name ORDER BY a.name ASC, b.name ASC","max_rows":20}'`
+
+Observed results:
+- the C# fixture indexed to `11` nodes and `17` edges
+- `search_graph` returned `Class Entry`, `Class Worker`, and `Interface IRunner`
+- `search_graph` returned the method inventory `Boot`, `Helper`, `Run`,
+  `Run`, and `Worker`
+- `query_graph` returned `DEFINES_METHOD` rows for `Entry -> Boot`,
+  `IRunner -> Run`, `Worker -> Helper`, `Worker -> Run`, and
+  `Worker -> Worker`
+
+Intentional residual delta after completion:
+- C# is a bounded Zig-only parser-backed addition, not yet a shared parity
+  claim against the original C implementation
+- QML remains deferred because its first useful contract is still tied to the
+  richer object and property model rather than a cheap declaration-only slice
 
 ## Implemented Plan: Operational Controls and Configurability
 

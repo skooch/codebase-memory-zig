@@ -24,6 +24,7 @@ Current parser-backed languages in the Zig port:
 - Zig
 - Go
 - Java
+- C#
 - PowerShell
 - GDScript
 
@@ -51,6 +52,12 @@ floor:
 These are still bounded fixture claims, not a blanket promise that every Go or
 Java semantic edge or ownership detail matches the original outside the
 asserted contract.
+
+Current Zig-only parser-backed expansion lanes beyond that shared floor:
+- C# for the exercised `csharp-basic` definition inventory and
+  `DEFINES_METHOD` rows
+- PowerShell for the exercised `powershell-basic` definition inventory
+- GDScript for the exercised `gdscript-basic` definition inventory
 
 ## Deferred Languages
 

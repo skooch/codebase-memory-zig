@@ -18,7 +18,7 @@ fi
 
 all_grammars_present() {
     local lang=""
-    for lang in go java rust python javascript typescript tsx zig powershell gdscript; do
+    for lang in go java rust python javascript typescript tsx zig csharp powershell gdscript; do
         if [[ ! -f "$GRAMMAR_DIR/$lang/parser.c" ]]; then
             return 1
         fi
@@ -41,6 +41,7 @@ grammar_repo() {
         typescript) echo "https://github.com/tree-sitter/tree-sitter-typescript" ;;
         tsx) echo "https://github.com/tree-sitter/tree-sitter-typescript" ;;
         zig) echo "https://github.com/tree-sitter-grammars/tree-sitter-zig" ;;
+        csharp) echo "https://github.com/tree-sitter/tree-sitter-c-sharp" ;;
         powershell) echo "https://github.com/airbus-cert/tree-sitter-powershell" ;;
         gdscript) echo "https://github.com/PrestonKnopp/tree-sitter-gdscript" ;;
         *)
@@ -60,6 +61,7 @@ grammar_tag() {
         typescript) echo "v0.23.2" ;;
         tsx) echo "v0.23.2" ;;
         zig) echo "v1.1.2" ;;
+        csharp) echo "v0.23.5" ;;
         powershell) echo "v0.26.3" ;;
         gdscript) echo "v6.1.0" ;;
         *)
@@ -130,7 +132,7 @@ if [[ "$FORCE" == true ]]; then
 fi
 
 # typescript and tsx share a repo but are cloned separately for simplicity
-for lang in go java rust python javascript typescript tsx zig powershell gdscript; do
+for lang in go java rust python javascript typescript tsx zig csharp powershell gdscript; do
     fetch_grammar "$lang"
 done
 
