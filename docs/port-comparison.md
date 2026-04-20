@@ -73,7 +73,7 @@ Broad automated coverage in the current repo:
 
 - `zig build test` exercises unit and integration coverage across the core modules, including MCP framing and lifecycle, discovery, extraction, pipeline passes, query routing, graph buffer/store behavior, runtime lifecycle, route and event-topic synthesis, hybrid sidecars, git-history coupling, and installer or config logic.
 - `.github/workflows/ci.yml` blocks merges on `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh --zig-only`, `bash scripts/run_cli_parity.sh --zig-only`, formatting, and `zlint`.
-- `.github/workflows/interop-nightly.yml` runs the full Zig-vs-C interop and CLI parity comparison against the reference implementation on a weekly schedule.
+- `.github/workflows/interop-nightly.yml` runs the full Zig-vs-C interop and CLI parity comparison against the reference implementation on pull requests and pushes to `main` when interop-relevant files change, while also retaining a weekly scheduled sweep and manual dispatch.
 - `.github/workflows/ops-checks.yml` runs the Zig-only benchmark, soak, and static security audit suites on push and PR.
 
 What this does **not** justify claiming:

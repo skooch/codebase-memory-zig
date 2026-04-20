@@ -36,14 +36,13 @@ Completed now:
   - `Diagnostic-only comparisons: 9`
   - `Mismatches: 0`
 - The expanded full harness after the completed queued parity follow-on work currently reports:
-  - `Fixtures: 31`
-  - `Comparisons: 237`
-  - `Strict matches: 135`
-  - `Diagnostic-only comparisons: 35`
-  - `Known mismatches: 1`
+  - `Fixtures: 33`
+  - `Comparisons: 251`
+  - `Strict matches: 143`
+  - `Diagnostic-only comparisons: 38`
+  - `Known mismatches: 0`
   - `cli_progress: match`
-  - no remaining route-, config-, graph-model, snippet, search, JavaScript-ordering, Java query-shape, or error-path comparison mismatches
-  - one remaining bounded Go query residual in the broader reference surface
+  - no remaining route-, config-, graph-model, snippet, search, JavaScript-ordering, Java query-shape, error-path, or Go query comparison mismatches
 - Runtime lifecycle and scale are implemented for the current target contract:
   - watcher-driven auto-index and auto-reindex
   - incremental indexing
@@ -128,8 +127,8 @@ The main still-deferred themes are:
 3. broader framework-specific route and broker coverage
 4. optional subsystems intentionally deferred or cut, especially UI and infra
    indexing
-5. the single bounded `go-parity/query_graph` residual if exhaustive shared
-   parity is still the goal
+5. broader release, Windows, and language-breadth follow-on work if exhaustive
+   shared parity is still the goal
 
 ---
 

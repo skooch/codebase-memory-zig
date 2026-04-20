@@ -1,6 +1,30 @@
-name: Interop Nightly
+name: Interop Compare
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/interop-nightly.yml"
+      - "build.zig"
+      - "build.zig.zon"
+      - "scripts/fetch_grammars.sh"
+      - "scripts/run_cli_parity.sh"
+      - "scripts/run_interop_alignment.sh"
+      - "src/**"
+      - "testdata/interop/**"
+      - "vendored/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/interop-nightly.yml"
+      - "build.zig"
+      - "build.zig.zon"
+      - "scripts/fetch_grammars.sh"
+      - "scripts/run_cli_parity.sh"
+      - "scripts/run_interop_alignment.sh"
+      - "src/**"
+      - "testdata/interop/**"
+      - "vendored/**"
   schedule:
     # Weekly on Mondays at ~4:17 AM UTC
     - cron: "17 4 * * 1"
@@ -12,6 +36,7 @@ permissions:
 jobs:
   interop-full:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 

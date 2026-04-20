@@ -14,7 +14,7 @@ Current verified state:
 - `bash scripts/run_interop_alignment.sh --zig-only` passes at `33/33`.
 - `bash scripts/run_interop_alignment.sh` now reports no hard mismatches instead of the earlier six-item set.
 - The current full compare baseline is `33` fixtures, `251` comparisons, `143` strict matches, `38` diagnostic-only comparisons, and `0` mismatches.
-- The nightly workflow no longer hides failures behind `continue-on-error`.
+- The full-compare workflow no longer hides failures behind `continue-on-error` and now runs as a path-scoped PR or `main` gate in addition to the weekly scheduled sweep.
 
 The review from 2026-04-12 is no longer accurate as a live issue register. Several items it flagged have already been resolved in the repo, and the remaining debt is narrower than that review implied.
 
@@ -77,8 +77,8 @@ The following findings from the 2026-04-12 review are no longer current:
 
 The remaining debt is real, but it is narrower:
 
-1. Full Zig-vs-C comparison is still nightly or manual, not a per-PR required gate.
-   The repo relies on zig-only goldens for merge blocking, with full reference comparison as a scheduled deeper check.
+1. Full Zig-vs-C comparison is now a path-scoped PR or `main` gate rather than a weekly-only check.
+   The remaining limitation is scope: non-interop changes still merge on the fast zig-only gate, while interop-touching changes also trigger the heavier reference comparison.
 
 2. Golden maintenance remains an operational requirement.
    When the canonical representation changes intentionally or new fixtures are added, the harness needs corresponding golden refreshes. The verification-remediation plan already had to restore missing and stale goldens for `python-parity`, `discovery-scope`, `python-framework-cases`, and `typescript-import-cases`.
@@ -106,12 +106,12 @@ The interop and parity verification surface is now strong enough to support the 
 - the shared long-tail edge floor now explicitly includes bounded zero-row `WRITES` / `READS` coverage across the exercised Python, JavaScript, TypeScript, and local-state micro-cases
 - zig-only golden verification is green
 - CLI parity verification is green
-- nightly full reference comparison is visible rather than silent
+- full reference comparison is visible as both a routine gate for interop-touching changes and a weekly scheduled sweep
 
 What it still is not:
 
 - exhaustive of every framework permutation
 - exhaustive of every error-path shape across every tool
-- a per-PR hard gate on the full Zig-vs-C reference comparison
+- an unconditional per-PR hard gate on the full Zig-vs-C reference comparison for every repo change
 
 That is acceptable as long as the repo continues to describe the verification posture honestly in `docs/port-comparison.md` and `docs/gap-analysis.md`.
