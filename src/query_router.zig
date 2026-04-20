@@ -41,6 +41,7 @@ pub const ArchitectureRequest = struct {
 pub const DetectChangesRequest = struct {
     project: []const u8,
     base_branch: []const u8 = "main",
+    since: ?[]const u8 = null,
     scope: ?[]const u8 = null,
     depth: usize = 3,
 };
@@ -315,7 +316,12 @@ pub const QueryRouter = struct {
             std.mem.eql(u8, request.scope.?, "full");
         const include_blast_radius = request.scope != null and std.mem.eql(u8, request.scope.?, "full");
 
-        const changed_files = try collectChangedFiles(self.allocator, status.root_path, request.base_branch);
+        const changed_files = try collectChangedFiles(
+            self.allocator,
+            status.root_path,
+            request.base_branch,
+            request.since,
+        );
         defer freeOwnedStrings(self.allocator, changed_files);
         const impacted = if (want_symbols)
             try collectImpactedSymbols(self.allocator, self.db, request.project, changed_files)
@@ -331,7 +337,11 @@ pub const QueryRouter = struct {
         var payload = std.ArrayList(u8).empty;
         try payload.appendSlice(self.allocator, "{");
         try appendJsonStringField(&payload, self.allocator, "project", request.project, true);
-        try appendJsonStringField(&payload, self.allocator, "base_branch", request.base_branch, false);
+        if (request.since) |since_value| {
+            try appendJsonStringField(&payload, self.allocator, "since", since_value, false);
+        } else {
+            try appendJsonStringField(&payload, self.allocator, "base_branch", request.base_branch, false);
+        }
         if (request.scope) |scope_value| try appendJsonStringField(&payload, self.allocator, "scope", scope_value, false);
         try appendJsonIntField(&payload, self.allocator, "depth", @as(i64, @intCast(request.depth)), false);
         try appendJsonStringArrayField(&payload, self.allocator, "changed_files", changed_files, false);
@@ -1038,12 +1048,13 @@ fn collectChangedFiles(
     allocator: std.mem.Allocator,
     root_path: []const u8,
     base_branch: []const u8,
+    since: ?[]const u8,
 ) ![][]u8 {
-    const branch_spec = try std.fmt.allocPrint(allocator, "{s}...HEAD", .{base_branch});
-    defer allocator.free(branch_spec);
+    const baseline_spec = try resolveDetectChangesBaseline(allocator, root_path, base_branch, since);
+    defer allocator.free(baseline_spec);
     const diff_base = runCommandCapture(
         allocator,
-        &.{ "git", "-C", root_path, "diff", "--name-only", branch_spec },
+        &.{ "git", "-C", root_path, "diff", "--name-only", baseline_spec },
     ) catch |err| switch (err) {
         error.CommandFailed => return try allocator.alloc([]u8, 0),
         else => return err,
@@ -1073,6 +1084,97 @@ fn collectChangedFiles(
     try appendChangedLines(allocator, &out, &seen, diff_base.stdout);
     try appendChangedLines(allocator, &out, &seen, diff_worktree.stdout);
     return out.toOwnedSlice(allocator);
+}
+
+fn resolveDetectChangesBaseline(
+    allocator: std.mem.Allocator,
+    root_path: []const u8,
+    base_branch: []const u8,
+    since: ?[]const u8,
+) ![]u8 {
+    if (since) |since_value| {
+        const resolved = try resolveSinceSelector(allocator, root_path, since_value);
+        defer allocator.free(resolved);
+        return std.fmt.allocPrint(allocator, "{s}...HEAD", .{resolved});
+    }
+    return std.fmt.allocPrint(allocator, "{s}...HEAD", .{base_branch});
+}
+
+fn resolveSinceSelector(
+    allocator: std.mem.Allocator,
+    root_path: []const u8,
+    since: []const u8,
+) ![]u8 {
+    const commit_selector = try std.fmt.allocPrint(allocator, "{s}^{{commit}}", .{since});
+    defer allocator.free(commit_selector);
+
+    const rev_parse_opt: ?CommandResult = runCommandCapture(
+        allocator,
+        &.{ "git", "-C", root_path, "rev-parse", "--verify", "--quiet", commit_selector },
+    ) catch |err| switch (err) {
+        error.CommandFailed => null,
+        else => return err,
+    };
+    if (rev_parse_opt) |result| {
+        defer freeCommandResult(allocator, result);
+        const trimmed = std.mem.trim(u8, result.stdout, " \t\r\n");
+        if (trimmed.len > 0) return allocator.dupe(u8, trimmed);
+    }
+
+    if (!isIsoCalendarDate(since)) return error.InvalidSinceSelector;
+
+    const before_arg = try std.fmt.allocPrint(allocator, "--before={s}", .{since});
+    defer allocator.free(before_arg);
+    const rev_list_opt: ?CommandResult = runCommandCapture(
+        allocator,
+        &.{ "git", "-C", root_path, "rev-list", "-n", "1", before_arg, "HEAD" },
+    ) catch |err| switch (err) {
+        error.CommandFailed => null,
+        else => return err,
+    };
+    if (rev_list_opt) |result| {
+        defer freeCommandResult(allocator, result);
+        const trimmed = std.mem.trim(u8, result.stdout, " \t\r\n");
+        if (trimmed.len > 0) return allocator.dupe(u8, trimmed);
+
+        const first_commit_opt: ?CommandResult = runCommandCapture(
+            allocator,
+            &.{ "git", "-C", root_path, "rev-list", "--max-parents=0", "HEAD" },
+        ) catch |err| switch (err) {
+            error.CommandFailed => null,
+            else => return err,
+        };
+        if (first_commit_opt) |root_result| {
+            defer freeCommandResult(allocator, root_result);
+            var lines = std.mem.splitAny(u8, root_result.stdout, "\n\r");
+            while (lines.next()) |line| {
+                const candidate = std.mem.trim(u8, line, " \t");
+                if (candidate.len == 0) continue;
+                return allocator.dupe(u8, candidate);
+            }
+        }
+    }
+
+    return error.InvalidSinceSelector;
+}
+
+fn isIsoCalendarDate(value: []const u8) bool {
+    if (value.len != 10) return false;
+    if (value[4] != '-' or value[7] != '-') return false;
+    if (!isAsciiDigits(value[0..4])) return false;
+    if (!isAsciiDigits(value[5..7])) return false;
+    if (!isAsciiDigits(value[8..10])) return false;
+
+    const month = std.fmt.parseInt(u8, value[5..7], 10) catch return false;
+    const day = std.fmt.parseInt(u8, value[8..10], 10) catch return false;
+    return month >= 1 and month <= 12 and day >= 1 and day <= 31;
+}
+
+fn isAsciiDigits(value: []const u8) bool {
+    for (value) |char| {
+        if (char < '0' or char > '9') return false;
+    }
+    return true;
 }
 
 fn appendChangedLines(

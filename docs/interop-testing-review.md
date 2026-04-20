@@ -69,6 +69,9 @@ The following findings from the 2026-04-12 review are no longer current:
 - `get_code_snippet`, `get_graph_schema`, `index_status`, and `delete_project` are now exercised by manifest assertions.
 - The SCIP fixture is wired into the manifest and golden surface.
 - `detect_changes` assertions are no longer vacuous.
+- `detect_changes.since` now also has direct Zig unit coverage for commit-ish
+  refs, ISO-date selectors, and invalid-selector errors because the released
+  upstream surface moved ahead of the stale local C compare checkout.
 - The nightly full-comparison workflow no longer uses `continue-on-error`.
 - Progress phase normalization includes `[5/9]`, `[7/9]`, and `[8/9]`, with `[6/9]` explicitly absent.
 - Go fixtures exist.

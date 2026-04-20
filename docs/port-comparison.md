@@ -151,7 +151,7 @@ Current audit note on `2026-04-21`:
 | `list_projects` | Full | Implemented | `Near parity` | Yes | Exact fixture coverage now locks the shared listing contract while leaving first-gate node and edge counts diagnostic-only. |
 | `delete_project` | Full | Implemented | `Near parity` | Yes | Exact fixture coverage now locks the shared delete contract, including the Zig watcher-unregistration path. |
 | `index_status` | Full | Implemented | `Near parity` | Yes | Exact fixture coverage now locks the shared indexed/not-found contract instead of relying only on bounded assertions. |
-| `detect_changes` | Git diff + impact + blast radius + risk classification, with `since` in `v0.6.0` | Shared git-diff, impacted-symbol, blast-radius, and reporting contract aligned for the parity fixtures | `Partial` | No | Zig matches the established `base_branch` and `scope` behavior on the verified fixtures, but it does not expose the newer upstream `since` selector yet. |
+| `detect_changes` | Git diff + impact + blast radius + risk classification, with `since` in `v0.6.0` | Shared git-diff, impacted-symbol, blast-radius, and reporting contract aligned for the parity fixtures, plus direct unit coverage for `since` refs, ISO-date selectors, and invalid-selector errors | `Near parity` | Yes | Zig now exposes the released upstream `since` selector with commit-ish and ISO-date support, while the stale local C comparator still only exercises the older `base_branch` floor. |
 | `manage_adr` | Implemented | Implemented with shared `get`, `update`, and `sections` parity | `Near parity` | Yes | The ADR parity fixture remains the exact shared contract lock for this row. |
 | `ingest_traces` | Stubbed in original | Stubbed public tool surface is the honest parity target | `N/A` | No | The upstream feature is still not real, but the public tool inventory now matters for exact `tools/list` parity. |
 
@@ -164,7 +164,7 @@ Current audit note on `2026-04-21`:
 | Trace tool naming | `trace_path` plus `trace_call_path` alias | `trace_call_path` only | The Zig port follows the clearer explicit name. |
 | Trace entry argument | `function_name` | `start_node_qn` (with `function_name` alias) | Zig accepts both; prefers qualified name but falls back to name-based search. |
 | Trace modes | `calls`, `data_flow`, `cross_service` | `calls`, `data_flow`, `cross_service` | Zig now implements all three trace modes with matching edge type presets. |
-| Change baseline selector | `base_branch` or `since` | `base_branch` only | Latest-upstream change-detection workflows can scope by tag/ref/date in C but not yet in Zig. |
+| Change baseline selector | `base_branch` or `since` | `base_branch` or `since` | Zig now matches the released latest-upstream baseline-selection contract, but the local full-compare checkout still only exercises the older `base_branch` path. |
 | Tools advertised via `tools/list` | 14 total, including stub `ingest_traces` | Tool inventory is converging, but exact schema parity still depends on unresolved latest-upstream contract deltas | Exact tool-surface parity is no longer just a count question; `index_repository.mode` and `search_graph` discovery modes are user-visible parts of the surface. |
 
 ## 3. Indexing Pipeline and Graph Construction

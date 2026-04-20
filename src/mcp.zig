@@ -267,7 +267,7 @@ pub const McpServer = struct {
                 \\{"name":"list_projects","description":"List indexed projects","inputSchema":{"type":"object","properties":{}}},
                 \\{"name":"delete_project","description":"Delete a project from the index","inputSchema":{"type":"object","properties":{"project":{"type":"string"}},"required":["project"]}},
                 \\{"name":"index_status","description":"Get the indexing status of a project","inputSchema":{"type":"object","properties":{"project":{"type":"string"}}}},
-                \\{"name":"detect_changes","description":"Map local git changes to affected symbols and nearby blast radius","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"base_branch":{"type":"string"},"scope":{"type":"string"},"depth":{"type":"number"}},"required":["project"]}},
+                \\{"name":"detect_changes","description":"Map local git changes to affected symbols and nearby blast radius","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"base_branch":{"type":"string"},"since":{"type":"string","description":"Git ref or date to compare from (e.g. HEAD~5, v0.5.0, 2026-01-01)"},"scope":{"type":"string"},"depth":{"type":"number"}},"required":["project"]}},
                 \\{"name":"manage_adr","description":"Create or update Architecture Decision Records","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"mode":{"type":"string","enum":["get","update","sections"]},"content":{"type":"string"},"sections":{"type":"array","items":{"type":"string"}}},"required":["project"]}},
                 \\{"name":"ingest_traces","description":"Ingest runtime traces to enhance the knowledge graph","inputSchema":{"type":"object","properties":{"traces":{"type":"array","items":{"type":"object"}},"project":{"type":"string"}},"required":["traces","project"]}}
                 \\]}
@@ -872,10 +872,12 @@ pub const McpServer = struct {
         const payload = router.detectChangesPayload(.{
             .project = project,
             .base_branch = stringArg(args, "base_branch") orelse "main",
+            .since = stringArg(args, "since"),
             .scope = stringArg(args, "scope"),
             .depth = intArg(args, "depth") orelse 3,
         }) catch |err| switch (err) {
             error.UnknownProject => return self.errorResponse(request_id, -32602, "Unknown project"),
+            error.InvalidSinceSelector => return self.errorResponse(request_id, -32602, "Invalid since selector"),
             else => return err,
         };
         defer self.allocator.free(payload);
@@ -1430,7 +1432,7 @@ test "tools/list advertises manage_adr" {
     try std.testing.expect(std.mem.indexOf(u8, response, "\"manage_adr\"") != null);
 }
 
-test "tools/list advertises ingest_traces and repo_path" {
+test "tools/list advertises ingest_traces, repo_path, and detect_changes since" {
     var s = try store.Store.openMemory(std.testing.allocator);
     defer s.deinit();
     var srv = McpServer.init(std.testing.allocator, &s);
@@ -1442,6 +1444,7 @@ test "tools/list advertises ingest_traces and repo_path" {
     defer std.testing.allocator.free(response);
     try std.testing.expect(std.mem.indexOf(u8, response, "\"ingest_traces\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, response, "\"repo_path\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, response, "\"since\":{\"type\":\"string\",\"description\":\"Git ref or date to compare from (e.g. HEAD~5, v0.5.0, 2026-01-01)\"}") != null);
     try std.testing.expect(std.mem.indexOf(u8, response, "\"project_path\"") == null);
 }
 
@@ -2620,6 +2623,141 @@ test "detect_changes aligns shared impact mode and keeps Zig full mode" {
     try std.testing.expectEqual(@as(i64, 1), files_only_result.get("changed_count").?.integer);
     try std.testing.expectEqual(@as(usize, 0), files_only_result.get("impacted_symbols").?.array.items.len);
     try std.testing.expect(files_only_result.get("blast_radius") == null);
+}
+
+test "detect_changes supports since refs, dates, and invalid selectors" {
+    const allocator = std.testing.allocator;
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(allocator, "/tmp/cbm-phase5-since-{x}", .{project_id});
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+    const src_dir = try std.fs.path.join(allocator, &.{ project_dir, "src" });
+    defer allocator.free(src_dir);
+    try std.fs.cwd().makePath(src_dir);
+
+    const main_path = try std.fs.path.join(allocator, &.{ project_dir, "src", "main.py" });
+    defer allocator.free(main_path);
+
+    try runTestCommand(allocator, &.{ "git", "-C", project_dir, "init", "-b", "main" });
+    try runTestCommand(allocator, &.{ "git", "-C", project_dir, "config", "user.email", "tests@example.com" });
+    try runTestCommand(allocator, &.{ "git", "-C", project_dir, "config", "user.name", "Phase Five Tests" });
+
+    {
+        var main_file = try std.fs.cwd().createFile(main_path, .{});
+        defer main_file.close();
+        try main_file.writeAll(
+            \\def run():
+            \\    return helper()
+            \\
+            \\def helper():
+            \\    return 1
+            \\
+        );
+    }
+    try runTestCommand(allocator, &.{ "git", "-C", project_dir, "add", "." });
+    try runTestCommand(allocator, &.{
+        "env",
+        "GIT_AUTHOR_DATE=2026-04-18T12:00:00Z",
+        "GIT_COMMITTER_DATE=2026-04-18T12:00:00Z",
+        "git",
+        "-C",
+        project_dir,
+        "commit",
+        "-m",
+        "initial",
+    });
+
+    {
+        var updated_file = try std.fs.cwd().createFile(main_path, .{ .truncate = true });
+        defer updated_file.close();
+        try updated_file.writeAll(
+            \\def run():
+            \\    return helper() + 1
+            \\
+            \\def helper():
+            \\    return 2
+            \\
+        );
+    }
+    try runTestCommand(allocator, &.{ "git", "-C", project_dir, "add", "." });
+    try runTestCommand(allocator, &.{
+        "env",
+        "GIT_AUTHOR_DATE=2026-04-20T12:00:00Z",
+        "GIT_COMMITTER_DATE=2026-04-20T12:00:00Z",
+        "git",
+        "-C",
+        project_dir,
+        "commit",
+        "-m",
+        "update",
+    });
+
+    var s = try store.Store.openMemory(allocator);
+    defer s.deinit();
+    try s.upsertProject("demo", project_dir);
+    const run_id = try s.upsertNode(.{
+        .project = "demo",
+        .label = "Function",
+        .name = "run",
+        .qualified_name = "demo.src.main.run",
+        .file_path = "src/main.py",
+        .start_line = 1,
+        .end_line = 2,
+    });
+    const helper_id = try s.upsertNode(.{
+        .project = "demo",
+        .label = "Function",
+        .name = "helper",
+        .qualified_name = "demo.src.main.helper",
+        .file_path = "src/main.py",
+        .start_line = 4,
+        .end_line = 5,
+    });
+    _ = try s.upsertEdge(.{
+        .project = "demo",
+        .source_id = run_id,
+        .target_id = helper_id,
+        .edge_type = "CALLS",
+    });
+
+    var srv = McpServer.init(allocator, &s);
+    defer srv.deinit();
+
+    const ref_response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"detect_changes","arguments":{"project":"demo","since":"HEAD~1","depth":2}}}
+    )).?;
+    defer allocator.free(ref_response);
+
+    const ref_parsed = try std.json.parseFromSlice(std.json.Value, allocator, ref_response, .{});
+    defer ref_parsed.deinit();
+    const ref_result = ref_parsed.value.object.get("result").?.object;
+    try std.testing.expectEqual(@as(i64, 1), ref_result.get("changed_count").?.integer);
+    try std.testing.expectEqualStrings("HEAD~1", ref_result.get("since").?.string);
+    try std.testing.expect(ref_result.get("impacted_symbols").?.array.items.len >= 2);
+
+    const date_response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"detect_changes","arguments":{"project":"demo","since":"2026-04-19","depth":2}}}
+    )).?;
+    defer allocator.free(date_response);
+
+    const date_parsed = try std.json.parseFromSlice(std.json.Value, allocator, date_response, .{});
+    defer date_parsed.deinit();
+    const date_result = date_parsed.value.object.get("result").?.object;
+    try std.testing.expectEqual(@as(i64, 1), date_result.get("changed_count").?.integer);
+    try std.testing.expectEqualStrings("2026-04-19", date_result.get("since").?.string);
+    try std.testing.expect(date_result.get("impacted_symbols").?.array.items.len >= 2);
+
+    const invalid_response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"detect_changes","arguments":{"project":"demo","since":"not-a-ref-or-date","depth":2}}}
+    )).?;
+    defer allocator.free(invalid_response);
+
+    const invalid_parsed = try std.json.parseFromSlice(std.json.Value, allocator, invalid_response, .{});
+    defer invalid_parsed.deinit();
+    const invalid_error = invalid_parsed.value.object.get("error").?.object;
+    try std.testing.expectEqual(@as(i64, -32602), invalid_error.get("code").?.integer);
+    try std.testing.expectEqualStrings("Invalid since selector", invalid_error.get("message").?.string);
 }
 
 fn runTestCommand(allocator: std.mem.Allocator, argv: []const []const u8) !void {
