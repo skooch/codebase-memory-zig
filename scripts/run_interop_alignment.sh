@@ -478,6 +478,22 @@ def canonical_tool_schema_contract(payload: Any) -> dict[str, dict[str, Any]]:
     return normalized
 
 
+def select_tool_schema_fields(
+    available: dict[str, Any],
+    requested: Any,
+) -> dict[str, Any]:
+    if not isinstance(available, dict):
+        return {"missing": True}
+    if not isinstance(requested, dict) or not requested:
+        return dict(available)
+
+    selected: dict[str, Any] = {}
+    for key in requested.keys():
+        if key in available:
+            selected[str(key)] = available[key]
+    return selected
+
+
 def canonical_architecture(payload: Any) -> dict[str, Any]:
     if not isinstance(payload, dict):
         return {
@@ -1737,8 +1753,11 @@ def build_contract_snapshot(
         if requested_schemas:
             available_schemas = canonical_tool_schema_contract(tl_payload)
             selected: Dict[str, Any] = {}
-            for tool_name in requested_schemas.keys():
-                selected[tool_name] = available_schemas.get(tool_name, {"missing": True})
+            for tool_name, requested_schema in requested_schemas.items():
+                selected[tool_name] = select_tool_schema_fields(
+                    available_schemas.get(str(tool_name), {}),
+                    requested_schema,
+                )
             tool_snapshot["tool_schemas"] = selected
         snapshot["tools_list"] = tool_snapshot
 

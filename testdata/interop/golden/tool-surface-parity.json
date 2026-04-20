@@ -5,10 +5,9 @@
         "label": "moderate_mode_contract",
         "name": "index_repository",
         "result": {
-          "error": {
-            "code": -32602,
-            "message": "Unsupported index_repository mode"
-          }
+          "has_edges": true,
+          "has_nodes": true,
+          "status": "indexed"
         }
       }
     ],
@@ -17,6 +16,7 @@
         "index_repository": {
           "mode_enum": [
             "full",
+            "moderate",
             "fast"
           ],
           "property_keys": [
@@ -35,6 +35,26 @@
           "required": [
             "project",
             "traces"
+          ]
+        },
+        "search_graph": {
+          "property_keys": [
+            "exclude_entry_points",
+            "file_pattern",
+            "include_connected",
+            "label",
+            "label_pattern",
+            "limit",
+            "max_degree",
+            "min_degree",
+            "name_pattern",
+            "offset",
+            "project",
+            "qn_pattern",
+            "query",
+            "relationship",
+            "sort_by",
+            "sort_direction"
           ]
         }
       }

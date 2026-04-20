@@ -271,7 +271,7 @@ fn isFastSkipFile(name: []const u8, opts: DiscoverOptions) bool {
         }
     }
 
-    if (opts.mode != .fast) {
+    if (opts.mode == .full) {
         return false;
     }
 

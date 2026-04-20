@@ -3201,19 +3201,19 @@
             "search_graph",
             "trace_call_path"
           ],
-          "tool_schemas": {
-            "index_repository": {
-              "required": [
-                "repo_path"
-              ],
-              "property_keys": [
-                "mode",
-                "repo_path"
-              ]
-            },
-            "ingest_traces": {
-              "required": [
-                "project",
+        "tool_schemas": {
+          "index_repository": {
+            "required": [
+              "repo_path"
+            ],
+            "property_keys": [
+              "mode",
+              "repo_path"
+            ]
+          },
+          "ingest_traces": {
+            "required": [
+              "project",
                 "traces"
               ],
               "property_keys": [
@@ -3270,7 +3270,7 @@
       },
       "contract_checks": {
         "compare_mode": "diagnostic",
-        "compare_note": "latest-upstream tool schema still differs because Zig does not expose a real moderate indexing mode",
+        "compare_note": "latest-upstream tool schema still differs because Zig still lacks the vector-backed search_graph semantic_query surface",
         "tools_list": {
           "tool_schemas": {
             "index_repository": {
@@ -3283,7 +3283,26 @@
               ],
               "mode_enum": [
                 "full",
+                "moderate",
                 "fast"
+              ]
+            },
+            "search_graph": {
+              "property_keys": [
+                "exclude_entry_points",
+                "file_pattern",
+                "include_connected",
+                "label",
+                "limit",
+                "max_degree",
+                "min_degree",
+                "name_pattern",
+                "offset",
+                "project",
+                "qn_pattern",
+                "query",
+                "relationship",
+                "semantic_query"
               ]
             },
             "ingest_traces": {

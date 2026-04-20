@@ -24,7 +24,14 @@ const service_patterns = @import("service_patterns.zig");
 
 pub const IndexMode = enum {
     full, // read everything, build from scratch
+    moderate, // fast discovery plus the current non-semantic enrichment passes
     fast, // skip non-essential files
+};
+
+const ModeProfile = struct {
+    discovery_mode: IndexMode,
+    run_optional_passes: bool,
+    import_scip_overlay: bool,
 };
 
 pub const PipelineError = error{
@@ -71,11 +78,12 @@ pub const Pipeline = struct {
 
     pub fn run(self: *Pipeline, db: *store.Store) PipelineError!void {
         if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
+        const profile = modeProfile(self.mode);
 
         const discovered_files = discover.discoverFiles(
             self.allocator,
             self.repo_path,
-            .{ .mode = self.mode },
+            .{ .mode = profile.discovery_mode },
         ) catch |err| {
             std.log.warn("pipeline discovery failed for {s}: {}", .{ self.repo_path, err });
             return PipelineError.DiscoveryFailed;
@@ -126,35 +134,7 @@ pub const Pipeline = struct {
         try resolveExtractions(&gb, &reg, &hybrid, extractions.items, &self.cancelled);
         freeOwnedExtractions(self.allocator, &extractions);
 
-        if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
-        _ = test_tagging.runPass(self.allocator, &gb) catch |err| {
-            std.log.warn("pipeline test-tagging pass failed: {}", .{err});
-        };
-
-        if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
-        runConfigLinkPass(self.allocator, &gb) catch |err| {
-            std.log.warn("pipeline config-link pass failed: {}", .{err});
-        };
-
-        if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
-        _ = git_history.runPass(self.allocator, self.repo_path, &gb) catch |err| {
-            std.log.warn("pipeline git-history pass failed: {}", .{err});
-        };
-
-        if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
-        _ = routes.runPass(self.allocator, &gb) catch |err| {
-            std.log.warn("pipeline routes pass failed: {}", .{err});
-        };
-
-        if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
-        _ = semantic_links.runPass(self.allocator, &gb) catch |err| {
-            std.log.warn("pipeline semantic-links pass failed: {}", .{err});
-        };
-
-        if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
-        runSimilarityPass(self.allocator, self.repo_path, &gb) catch |err| {
-            std.log.warn("pipeline similarity pass failed: {}", .{err});
-        };
+        try runOptionalPasses(self, profile, &gb);
 
         if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
         try gb.ensureWithinLimits(graph_buffer.default_graph_size_limit);
@@ -171,13 +151,7 @@ pub const Pipeline = struct {
 
         if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
         try search_index.refreshProject(self.allocator, db, self.project_name, discovered_files);
-        const scip_imported = scip.importProjectOverlay(self.allocator, db, self.project_name, self.repo_path) catch |err| imported: {
-            std.log.warn("pipeline skipped SCIP overlay import for {s}: {}", .{ self.project_name, err });
-            break :imported 0;
-        };
-        if (scip_imported > 0) {
-            std.log.info("pipeline imported {} SCIP overlay symbols for {s}", .{ scip_imported, self.project_name });
-        }
+        try maybeImportScipOverlay(self, profile, db);
         std.log.info(
             "pipeline graph buffer: {} nodes, {} edges",
             .{ gb.nodeCount(), gb.edgeCount() },
@@ -196,6 +170,7 @@ pub const Pipeline = struct {
         discovered_files: []discover.FileInfo,
         stored_hashes: []const store.FileHash,
     ) !bool {
+        const profile = modeProfile(self.mode);
         const classification = try classifyDiscoveredFiles(
             self.allocator,
             discovered_files,
@@ -244,35 +219,7 @@ pub const Pipeline = struct {
         try resolveExtractions(&gb, &reg, &hybrid, extractions.items, &self.cancelled);
         freeOwnedExtractions(self.allocator, &extractions);
 
-        if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
-        _ = test_tagging.runPass(self.allocator, &gb) catch |err| {
-            std.log.warn("pipeline test-tagging pass failed: {}", .{err});
-        };
-
-        if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
-        runConfigLinkPass(self.allocator, &gb) catch |err| {
-            std.log.warn("pipeline config-link pass failed: {}", .{err});
-        };
-
-        if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
-        _ = git_history.runPass(self.allocator, self.repo_path, &gb) catch |err| {
-            std.log.warn("pipeline git-history pass failed: {}", .{err});
-        };
-
-        if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
-        _ = routes.runPass(self.allocator, &gb) catch |err| {
-            std.log.warn("pipeline routes pass failed: {}", .{err});
-        };
-
-        if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
-        _ = semantic_links.runPass(self.allocator, &gb) catch |err| {
-            std.log.warn("pipeline semantic-links pass failed: {}", .{err});
-        };
-
-        if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
-        runSimilarityPass(self.allocator, self.repo_path, &gb) catch |err| {
-            std.log.warn("pipeline similarity pass failed: {}", .{err});
-        };
+        try runOptionalPasses(self, profile, &gb);
 
         if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
         try gb.ensureWithinLimits(graph_buffer.default_graph_size_limit);
@@ -289,13 +236,7 @@ pub const Pipeline = struct {
 
         if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
         try search_index.refreshProject(self.allocator, db, self.project_name, discovered_files);
-        const scip_imported = scip.importProjectOverlay(self.allocator, db, self.project_name, self.repo_path) catch |err| imported: {
-            std.log.warn("pipeline skipped SCIP overlay import for {s}: {}", .{ self.project_name, err });
-            break :imported 0;
-        };
-        if (scip_imported > 0) {
-            std.log.info("pipeline imported {} SCIP overlay symbols for {s}", .{ scip_imported, self.project_name });
-        }
+        try maybeImportScipOverlay(self, profile, db);
         std.log.info(
             "pipeline incremental graph buffer: {} nodes, {} edges",
             .{ gb.nodeCount(), gb.edgeCount() },
@@ -313,6 +254,79 @@ pub const Pipeline = struct {
         self.allocator.free(discovered_files);
     }
 };
+
+fn modeProfile(mode: IndexMode) ModeProfile {
+    return switch (mode) {
+        .full => .{
+            .discovery_mode = .full,
+            .run_optional_passes = true,
+            .import_scip_overlay = true,
+        },
+        .moderate => .{
+            .discovery_mode = .fast,
+            .run_optional_passes = true,
+            .import_scip_overlay = true,
+        },
+        .fast => .{
+            .discovery_mode = .fast,
+            .run_optional_passes = false,
+            .import_scip_overlay = false,
+        },
+    };
+}
+
+fn runOptionalPasses(
+    self: *Pipeline,
+    profile: ModeProfile,
+    gb: *GraphBuffer,
+) PipelineError!void {
+    if (!profile.run_optional_passes) return;
+
+    if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
+    _ = test_tagging.runPass(self.allocator, gb) catch |err| {
+        std.log.warn("pipeline test-tagging pass failed: {}", .{err});
+    };
+
+    if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
+    runConfigLinkPass(self.allocator, gb) catch |err| {
+        std.log.warn("pipeline config-link pass failed: {}", .{err});
+    };
+
+    if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
+    _ = git_history.runPass(self.allocator, self.repo_path, gb) catch |err| {
+        std.log.warn("pipeline git-history pass failed: {}", .{err});
+    };
+
+    if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
+    _ = routes.runPass(self.allocator, gb) catch |err| {
+        std.log.warn("pipeline routes pass failed: {}", .{err});
+    };
+
+    if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
+    _ = semantic_links.runPass(self.allocator, gb) catch |err| {
+        std.log.warn("pipeline semantic-links pass failed: {}", .{err});
+    };
+
+    if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
+    runSimilarityPass(self.allocator, self.repo_path, gb) catch |err| {
+        std.log.warn("pipeline similarity pass failed: {}", .{err});
+    };
+}
+
+fn maybeImportScipOverlay(
+    self: *Pipeline,
+    profile: ModeProfile,
+    db: *store.Store,
+) PipelineError!void {
+    if (!profile.import_scip_overlay) return;
+    const scip_imported = scip.importProjectOverlay(self.allocator, db, self.project_name, self.repo_path) catch |err| imported: {
+        std.log.warn("pipeline skipped SCIP overlay import for {s}: {}", .{ self.project_name, err });
+        break :imported 0;
+    };
+    if (scip_imported > 0) {
+        std.log.info("pipeline imported {} SCIP overlay symbols for {s}", .{ scip_imported, self.project_name });
+    }
+}
 
 fn freeOwnedExtractions(
     allocator: std.mem.Allocator,
@@ -3474,6 +3488,68 @@ test "pipeline emits similarity edges and fingerprints for near-duplicate functi
         }
     }
     try std.testing.expect(found_pair);
+}
+
+test "pipeline moderate retains similarity pass while fast skips optional enrichments" {
+    const allocator = std.testing.allocator;
+
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(
+        allocator,
+        "/tmp/cbm-pipeline-mode-similarity-{x}",
+        .{project_id},
+    );
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    {
+        var dir = try std.fs.cwd().openDir(project_dir, .{});
+        defer dir.close();
+
+        var first = try dir.createFile("alpha.py", .{});
+        defer first.close();
+        try first.writeAll(
+            \\def run(value):
+            \\    total = value + 1
+            \\    if total > 10:
+            \\        return total
+            \\    return value
+            \\
+        );
+
+        var second = try dir.createFile("beta.py", .{});
+        defer second.close();
+        try second.writeAll(
+            \\def run(item):
+            \\    total = item + 1
+            \\    if total > 10:
+            \\        return total
+            \\    return item
+            \\
+        );
+    }
+
+    var fast_db = try store.Store.openMemory(allocator);
+    defer fast_db.deinit();
+    var fast_pipeline = Pipeline.init(allocator, project_dir, .fast);
+    defer fast_pipeline.deinit();
+    try fast_pipeline.run(&fast_db);
+
+    const project_name = std.fs.path.basename(project_dir);
+    const fast_similar = try fast_db.listEdges(project_name, "SIMILAR_TO");
+    defer fast_db.freeEdges(fast_similar);
+    try std.testing.expectEqual(@as(usize, 0), fast_similar.len);
+
+    var moderate_db = try store.Store.openMemory(allocator);
+    defer moderate_db.deinit();
+    var moderate_pipeline = Pipeline.init(allocator, project_dir, .moderate);
+    defer moderate_pipeline.deinit();
+    try moderate_pipeline.run(&moderate_db);
+
+    const moderate_similar = try moderate_db.listEdges(project_name, "SIMILAR_TO");
+    defer moderate_db.freeEdges(moderate_similar);
+    try std.testing.expect(moderate_similar.len > 0);
 }
 
 fn findSingleNodeByNameInFile(

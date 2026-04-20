@@ -37,10 +37,6 @@
     "tools_list": {
       "tool_schemas": {
         "index_repository": {
-          "mode_enum": [
-            "full",
-            "fast"
-          ],
           "property_keys": [
             "mode",
             "repo_path"

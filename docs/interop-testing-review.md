@@ -76,6 +76,9 @@ The following findings from the 2026-04-12 review are no longer current:
   BM25 response shape, schema advertisement, and fallback-to-structured-search
   behavior because the local C compare checkout still stops short of the latest
   upstream discovery contract.
+- `index_repository(mode=\"moderate\")` is now a real public Zig contract with a
+  dedicated tool-surface fixture and a concrete fast-vs-moderate pipeline test,
+  instead of an unsupported-mode placeholder.
 - The nightly full-comparison workflow no longer uses `continue-on-error`.
 - Progress phase normalization includes `[5/9]`, `[7/9]`, and `[8/9]`, with `[6/9]` explicitly absent.
 - Go fixtures exist.
@@ -110,7 +113,7 @@ The remaining debt is real, but it is narrower:
    The direct Zig/C repro and the full compare both now show `search_code` agreement on the `discovery-scope` fixture: `scopeVisible` returns `src/index.ts`, while `ghostIgnoredHit`, `generatedBundleHit`, and `ghostNestedHit` all return zero results on both implementations. The earlier docs overstated a divergence that is no longer present in the measured baseline.
 
 7. Latest-upstream tool-surface parity still has one deliberate diagnostic row.
-   The new `tool-surface-parity` fixture proves exact inventory/schema coverage for the shared public surface, but it intentionally stays diagnostic-only because Zig still rejects `index_repository(mode="moderate")` while the upstream release accepts it.
+   The new `tool-surface-parity` fixture proves exact inventory/schema coverage for the shared public surface, and it now also proves accepted `index_repository(mode="moderate")`. It intentionally stays diagnostic-only because Zig still lacks the latest-upstream vector-backed `search_graph.semantic_query` surface and its related schema.
 
 ## Current Judgment
 

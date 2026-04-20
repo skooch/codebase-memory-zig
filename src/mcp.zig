@@ -257,7 +257,7 @@ pub const McpServer = struct {
         if (std.mem.eql(u8, request.value.method, "tools/list")) {
             const payload =
                 \\{"tools":[
-                \\{"name":"index_repository","description":"Index a repository into the knowledge graph","inputSchema":{"type":"object","properties":{"repo_path":{"type":"string","description":"Path to the repository"},"mode":{"type":"string","enum":["full","fast"],"default":"full","description":"full: all passes. fast: structure-first discovery."}},"required":["repo_path"]}},
+                \\{"name":"index_repository","description":"Index a repository into the knowledge graph","inputSchema":{"type":"object","properties":{"repo_path":{"type":"string","description":"Path to the repository"},"mode":{"type":"string","enum":["full","moderate","fast"],"default":"full","description":"full: full discovery plus all current enrichment passes. moderate: fast discovery plus the current enrichment passes. fast: fast discovery without optional enrichment passes."}},"required":["repo_path"]}},
                 \\{"name":"search_graph","description":"Structured graph search with filtering, degree-aware ranking, pagination, and optional connected-node context","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"query":{"type":"string","description":"Natural-language or keyword full-text search using BM25 ranking over indexed project files. When this yields usable terms, name_pattern is ignored and the response includes search_mode:\"bm25\"."},"label":{"type":"string"},"label_pattern":{"type":"string"},"name_pattern":{"type":"string"},"qn_pattern":{"type":"string"},"file_pattern":{"type":"string"},"relationship":{"type":"string"},"exclude_entry_points":{"type":"boolean"},"include_connected":{"type":"boolean"},"limit":{"type":"number"},"offset":{"type":"number"},"min_degree":{"type":"number"},"max_degree":{"type":"number"},"sort_by":{"type":"string"},"sort_direction":{"type":"string"}}}},
                 \\{"name":"query_graph","description":"Run a read-only Cypher-like query","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"query":{"type":"string"},"max_rows":{"type":"number"}}}},
                 \\{"name":"trace_call_path","description":"Trace call paths between nodes with configurable edge types, modes, risk labels, and test filtering","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"start_node_qn":{"type":"string","description":"Qualified name of start node"},"function_name":{"type":"string","description":"Alias for start_node_qn (bare name lookup)"},"direction":{"type":"string","enum":["in","out","both"]},"depth":{"type":"number"},"mode":{"type":"string","enum":["calls","data_flow","cross_service"],"description":"Preset edge type set (default: calls)"},"edge_types":{"type":"array","items":{"type":"string"},"description":"Explicit edge types override (takes priority over mode)"},"risk_labels":{"type":"boolean","description":"Include hop-based risk classification per node"},"include_tests":{"type":"boolean","description":"Include test-file nodes in results (default: false)"}}}},
@@ -385,6 +385,8 @@ pub const McpServer = struct {
         const mode_raw = stringArg(args, "mode") orelse "full";
         const mode = if (std.mem.eql(u8, mode_raw, "fast"))
             pipeline.IndexMode.fast
+        else if (std.mem.eql(u8, mode_raw, "moderate"))
+            pipeline.IndexMode.moderate
         else if (std.mem.eql(u8, mode_raw, "full"))
             pipeline.IndexMode.full
         else
@@ -1136,6 +1138,7 @@ fn indexRepositoryPathArg(args: std.json.Value) ?[]const u8 {
 fn indexModeText(mode: pipeline.IndexMode) []const u8 {
     return switch (mode) {
         .full => "full",
+        .moderate => "moderate",
         .fast => "fast",
     };
 }
@@ -1471,7 +1474,7 @@ test "tools/list advertises manage_adr" {
     try std.testing.expect(std.mem.indexOf(u8, response, "\"manage_adr\"") != null);
 }
 
-test "tools/list advertises ingest_traces, repo_path, detect_changes since, and search_graph query" {
+test "tools/list advertises ingest_traces, repo_path, moderate mode, detect_changes since, and search_graph query" {
     var s = try store.Store.openMemory(std.testing.allocator);
     defer s.deinit();
     var srv = McpServer.init(std.testing.allocator, &s);
@@ -1483,6 +1486,7 @@ test "tools/list advertises ingest_traces, repo_path, detect_changes since, and 
     defer std.testing.allocator.free(response);
     try std.testing.expect(std.mem.indexOf(u8, response, "\"ingest_traces\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, response, "\"repo_path\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, response, "\"enum\":[\"full\",\"moderate\",\"fast\"]") != null);
     try std.testing.expect(std.mem.indexOf(u8, response, "\"since\":{\"type\":\"string\",\"description\":\"Git ref or date to compare from (e.g. HEAD~5, v0.5.0, 2026-01-01)\"}") != null);
     try std.testing.expect(std.mem.indexOf(u8, response, "\"query\":{\"type\":\"string\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, response, "\"project_path\"") == null);
@@ -2006,6 +2010,42 @@ test "index_repository registers watcher state and delete_project unwatches it" 
     const delete_response = (try srv.handleRequest(delete_request)).?;
     defer allocator.free(delete_response);
     try std.testing.expectEqual(@as(usize, 0), watcher_ref.watchCount());
+}
+
+test "index_repository accepts moderate mode" {
+    const allocator = std.testing.allocator;
+    const project_id = std.crypto.random.int(u64);
+    const project_dir = try std.fmt.allocPrint(allocator, "/tmp/cbm-mcp-moderate-{x}", .{project_id});
+    defer allocator.free(project_dir);
+    try std.fs.cwd().makePath(project_dir);
+    defer std.fs.cwd().deleteTree(project_dir) catch {};
+
+    const main_path = try std.fs.path.join(allocator, &.{ project_dir, "main.py" });
+    defer allocator.free(main_path);
+    var main_file = try std.fs.cwd().createFile(main_path, .{});
+    defer main_file.close();
+    try main_file.writeAll(
+        \\def run():
+        \\    return 1
+        \\
+    );
+
+    var s = try store.Store.openMemory(allocator);
+    defer s.deinit();
+    var srv = McpServer.init(allocator, &s);
+    defer srv.deinit();
+
+    const request = try std.fmt.allocPrint(
+        allocator,
+        "{{\"jsonrpc\":\"2.0\",\"id\":80,\"method\":\"tools/call\",\"params\":{{\"name\":\"index_repository\",\"arguments\":{{\"repo_path\":\"{s}\",\"mode\":\"moderate\"}}}}}}",
+        .{project_dir},
+    );
+    defer allocator.free(request);
+
+    const response = (try srv.handleRequest(request)).?;
+    defer allocator.free(response);
+    try std.testing.expect(std.mem.indexOf(u8, response, "\"mode\":\"moderate\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, response, "\"error\"") == null);
 }
 
 test "runFiles processes multiple newline-delimited requests" {
