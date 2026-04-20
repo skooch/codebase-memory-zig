@@ -591,12 +591,16 @@ fn jsonProperty(allocator: std.mem.Allocator, json_text: []const u8, key: []cons
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
     const arena_allocator = arena.allocator();
-    const parsed = std.json.parseFromSlice(std.json.Value, arena_allocator, json_text, .{}) catch return null;
+    const parsed = std.json.parseFromSlice(std.json.Value, arena_allocator, json_text, .{
+        .parse_numbers = false,
+    }) catch return null;
     if (parsed.value != .object) return null;
     const entry = parsed.value.object.get(key) orelse return null;
     return switch (entry) {
         .string => allocator.dupe(u8, entry.string) catch null,
         .integer => std.fmt.allocPrint(allocator, "{d}", .{entry.integer}) catch null,
+        .float => std.fmt.allocPrint(allocator, "{}", .{entry.float}) catch null,
+        .number_string => allocator.dupe(u8, entry.number_string) catch null,
         .bool => allocator.dupe(u8, if (entry.bool) "true" else "false") catch null,
         else => null,
     };
@@ -1130,6 +1134,68 @@ test "cypher supports edge queries" {
     try std.testing.expectEqualStrings("main", result.rows[0][0]);
     try std.testing.expectEqualStrings("helper", result.rows[0][1]);
     try std.testing.expectEqualStrings("helper", result.rows[0][2]);
+}
+
+test "cypher preserves decimal edge properties" {
+    var s = try Store.openMemory(std.testing.allocator);
+    defer s.deinit();
+    try s.upsertProject("p", "/tmp/p");
+    const a = try s.upsertNode(.{
+        .project = "p",
+        .label = "Function",
+        .name = "alpha",
+        .qualified_name = "p:alpha",
+        .file_path = "alpha.py",
+    });
+    const b = try s.upsertNode(.{
+        .project = "p",
+        .label = "Function",
+        .name = "beta",
+        .qualified_name = "p:beta",
+        .file_path = "beta.py",
+    });
+    _ = try s.upsertEdge(.{
+        .project = "p",
+        .source_id = a,
+        .target_id = b,
+        .edge_type = "SIMILAR_TO",
+        .properties_json = "{\"jaccard\":1.000,\"same_file\":false}",
+    });
+    _ = try s.upsertEdge(.{
+        .project = "p",
+        .source_id = a,
+        .target_id = b,
+        .edge_type = "FILE_CHANGES_WITH",
+        .properties_json = "{\"co_changes\":3,\"coupling_score\":1.00}",
+    });
+
+    const similar = try execute(
+        std.testing.allocator,
+        &s,
+        "MATCH (a)-[r:SIMILAR_TO]->(b) RETURN a.name, b.name, r.jaccard, r.same_file",
+        "p",
+        20,
+    );
+    defer freeResult(std.testing.allocator, similar);
+    try std.testing.expectEqual(@as(usize, 1), similar.rows.len);
+    try std.testing.expectEqualStrings("alpha", similar.rows[0][0]);
+    try std.testing.expectEqualStrings("beta", similar.rows[0][1]);
+    try std.testing.expectEqualStrings("1.000", similar.rows[0][2]);
+    try std.testing.expectEqualStrings("false", similar.rows[0][3]);
+
+    const coupling = try execute(
+        std.testing.allocator,
+        &s,
+        "MATCH (a)-[r:FILE_CHANGES_WITH]->(b) RETURN a.name, b.name, r.co_changes, r.coupling_score",
+        "p",
+        20,
+    );
+    defer freeResult(std.testing.allocator, coupling);
+    try std.testing.expectEqual(@as(usize, 1), coupling.rows.len);
+    try std.testing.expectEqualStrings("alpha", coupling.rows[0][0]);
+    try std.testing.expectEqualStrings("beta", coupling.rows[0][1]);
+    try std.testing.expectEqualStrings("3", coupling.rows[0][2]);
+    try std.testing.expectEqualStrings("1.00", coupling.rows[0][3]);
 }
 
 test "cypher preserves defines edge queries" {

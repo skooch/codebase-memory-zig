@@ -32,7 +32,8 @@
                 "a.name",
                 "b.name"
               ],
-              "required_rows_min": 1
+              "required_rows_min": 1,
+              "exact_compare": true
             }
           },
           {
@@ -46,7 +47,8 @@
                 "a.name",
                 "b.name"
               ],
-              "required_rows_min": 1
+              "required_rows_min": 1,
+              "exact_compare": true
             }
           }
         ]
@@ -713,7 +715,8 @@
               "columns": [
                 "a.name",
                 "b.name"
-              ]
+              ],
+              "exact_compare": true
             }
           },
           {
@@ -755,7 +758,8 @@
                 "b.label",
                 "b.name"
               ],
-              "required_rows_min": 1
+              "required_rows_min": 1,
+              "exact_compare": true
             }
           },
           {
@@ -1022,7 +1026,8 @@
               "columns": [
                 "a.name",
                 "b.name"
-              ]
+              ],
+              "exact_compare": true
             }
           },
           {
@@ -1035,7 +1040,8 @@
               "columns": [
                 "a.name",
                 "b.name"
-              ]
+              ],
+              "exact_compare": true
             }
           },
           {
@@ -2002,7 +2008,8 @@
             },
             "expect": {
               "columns": ["n.name"],
-              "required_rows": [["/api/users"]]
+              "required_rows": [["/api/users"]],
+              "exact_compare": true
             }
           },
           {
@@ -2013,7 +2020,8 @@
             },
             "expect": {
               "columns": ["a.name", "b.name"],
-              "required_rows": [["list_users", "/api/users"]]
+              "required_rows": [["list_users", "/api/users"]],
+              "exact_compare": true
             }
           },
           {
@@ -2024,7 +2032,8 @@
             },
             "expect": {
               "columns": ["a.name", "b.name"],
-              "required_rows": [["fetch_users", "list_users"]]
+              "required_rows": [["fetch_users", "list_users"]],
+              "exact_compare": true
             }
           }
         ]
@@ -2085,7 +2094,8 @@
             },
             "expect": {
               "columns": ["n.name"],
-              "required_rows": [["max-connections"]]
+              "required_rows": [["max-connections"]],
+              "exact_compare": true
             }
           },
           {
@@ -2096,7 +2106,8 @@
             },
             "expect": {
               "columns": ["a.name", "b.name"],
-              "required_rows": [["maxConnections", "max-connections"]]
+              "required_rows": [["maxConnections", "max-connections"]],
+              "exact_compare": true
             }
           },
           {
@@ -2106,7 +2117,8 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["a.name", "b.name"]
+              "columns": ["a.name", "b.name"],
+              "exact_compare": true
             }
           }
         ]
@@ -2131,7 +2143,8 @@
             },
             "expect": {
               "columns": ["n.name"],
-              "required_rows": [["/api/users"]]
+              "required_rows": [["/api/users"]],
+              "exact_compare": true
             }
           },
           {
@@ -2142,7 +2155,8 @@
             },
             "expect": {
               "columns": ["a.name", "b.name"],
-              "required_rows": [["users_endpoint", "/api/users"]]
+              "required_rows": [["users_endpoint", "/api/users"]],
+              "exact_compare": true
             }
           },
           {
@@ -2153,7 +2167,8 @@
             },
             "expect": {
               "columns": ["a.name", "b.name"],
-              "required_rows": [["fetch_users", "/api/users"]]
+              "required_rows": [["fetch_users", "/api/users"]],
+              "exact_compare": true
             }
           },
           {
@@ -2164,7 +2179,8 @@
             },
             "expect": {
               "columns": ["a.name", "b.name"],
-              "required_rows": [["fetch_users", "users_endpoint"]]
+              "required_rows": [["fetch_users", "users_endpoint"]],
+              "exact_compare": true
             }
           }
         ]
@@ -2344,7 +2360,8 @@
             },
             "expect": {
               "columns": ["a.label", "a.name", "b.label", "b.name"],
-              "required_rows": [["Function", "load_database_url", "Variable", "DATABASE_URL"]]
+              "required_rows": [["Function", "load_database_url", "Variable", "DATABASE_URL"]],
+              "exact_compare": true
             }
           },
           {
@@ -2355,7 +2372,8 @@
             },
             "expect": {
               "columns": ["n.label", "n.name", "n.file_path"],
-              "required_rows": [["Variable", "DATABASE_URL", "config.toml"]]
+              "required_rows": [["Variable", "DATABASE_URL", "config.toml"]],
+              "exact_compare": true
             }
           }
         ]
@@ -2385,7 +2403,9 @@
                 ["load_api_base_url", "apiBaseUrl"],
                 ["load_api_base_url_v2", "api-base-url"],
                 ["load_api_base_url_v2", "apiBaseUrl"]
-              ]
+              ],
+              "exact_compare": true,
+              "preserve_order": false
             }
           },
           {
@@ -2396,7 +2416,8 @@
             },
             "expect": {
               "columns": ["n.name"],
-              "required_rows": [["api-base-url"], ["apiBaseUrl"]]
+              "required_rows": [["api-base-url"], ["apiBaseUrl"]],
+              "exact_compare": true
             }
           }
         ]
@@ -2421,7 +2442,8 @@
             },
             "expect": {
               "columns": ["a.name", "r.type", "b.name"],
-              "required_rows_min": 1
+              "required_rows_min": 1,
+              "exact_compare": true
             }
           },
           {
@@ -2453,7 +2475,8 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["a.name", "b.name"]
+              "columns": ["a.name", "b.name"],
+              "exact_compare": true
             }
           },
           {
@@ -2463,7 +2486,55 @@
               "max_rows": 20
             },
             "expect": {
-              "columns": ["a.name", "b.name"]
+              "columns": ["a.name", "b.name"],
+              "exact_compare": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "history-similarity-parity",
+      "path": "testdata/interop/graph-exactness-history-similarity",
+      "project": "history-similarity-parity",
+      "language": "python",
+      "scope_tools": ["index_repository", "query_graph", "list_projects"],
+      "runtime_setup": {
+        "kind": "git_snapshots",
+        "snapshots": ["snapshots/01", "snapshots/02", "snapshots/03"],
+        "commit_messages": [
+          "seed service payload builders",
+          "revise payload builders",
+          "finalize payload builders"
+        ]
+      },
+      "assertions": {
+        "index_repository": {
+          "expect": { "nodes_min": 4, "edges_min": 3 }
+        },
+        "query_graph": [
+          {
+            "args": {
+              "query": "MATCH (a)-[r:SIMILAR_TO]->(b) RETURN a.name, b.name, r.jaccard, r.same_file ORDER BY a.name, b.name",
+              "project": "history-similarity-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["a.name", "b.name", "r.jaccard", "r.same_file"],
+              "required_rows_min": 1,
+              "exact_compare": true
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a)-[r:FILE_CHANGES_WITH]->(b) RETURN a.name, b.name, r.co_changes, r.coupling_score ORDER BY a.name, b.name",
+              "project": "history-similarity-parity",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": ["a.name", "b.name", "r.co_changes", "r.coupling_score"],
+              "required_rows_min": 1,
+              "exact_compare": true
             }
           }
         ]

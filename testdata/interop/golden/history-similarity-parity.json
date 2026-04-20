@@ -1,0 +1,72 @@
+{
+  "delete_project": [],
+  "detect_changes_count": 0,
+  "fixture_id": "history-similarity-parity",
+  "get_architecture": [],
+  "get_code_snippet": [],
+  "get_graph_schema": [],
+  "index_repository": {
+    "edges_actual": 10,
+    "edges_min": 3,
+    "nodes_actual": 9,
+    "nodes_min": 4
+  },
+  "index_status": [],
+  "list_projects": [
+    "history-similarity-parity"
+  ],
+  "manage_adr": [],
+  "query_graph": [
+    {
+      "columns": [
+        "a.name",
+        "b.name",
+        "r.jaccard",
+        "r.same_file"
+      ],
+      "rows": [
+        [
+          "build_service_b_payload",
+          "build_service_a_payload",
+          "1.000",
+          "false"
+        ]
+      ]
+    },
+    {
+      "columns": [
+        "a.name",
+        "b.name",
+        "r.co_changes",
+        "r.coupling_score"
+      ],
+      "rows": [
+        [
+          "service_a.py",
+          "service_b.py",
+          "3",
+          "1.00"
+        ]
+      ]
+    }
+  ],
+  "search_code": [],
+  "search_graph": [],
+  "tools_list": [
+    "delete_project",
+    "detect_changes",
+    "get_architecture",
+    "get_code_snippet",
+    "get_graph_schema",
+    "index_repository",
+    "index_status",
+    "ingest_traces",
+    "list_projects",
+    "manage_adr",
+    "query_graph",
+    "search_code",
+    "search_graph",
+    "trace_call_path"
+  ],
+  "trace_call_path": []
+}

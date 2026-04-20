@@ -67,6 +67,7 @@ fi
 python3 - "$MANIFEST_PATH" "$ROOT_DIR" "$C_BIN" "$ZIG_BIN" "$REPORT_DIR" "$MODE" "$GOLDEN_DIR" <<'PY'
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -118,6 +119,82 @@ def normalize_project_name_for_c(project_path: str) -> str:
     unix_path = normalize_path_for_manifest(project_path)
     normalized = unix_path.replace("/", "-")
     return normalized.lstrip("-")
+
+
+def clear_directory(path: Path) -> None:
+    if not path.exists():
+        return
+    for child in path.iterdir():
+        if child.name == ".git":
+            continue
+        if child.is_dir():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+
+
+def copy_directory_contents(source: Path, destination: Path) -> None:
+    destination.mkdir(parents=True, exist_ok=True)
+    for child in source.iterdir():
+        if child.name == ".git":
+            continue
+        target = destination / child.name
+        if child.is_dir():
+            shutil.copytree(child, target)
+        else:
+            shutil.copy2(child, target)
+
+
+def run_checked(args: list[str], cwd: Path) -> None:
+    subprocess.run(args, cwd=str(cwd), check=True, capture_output=True, text=True)
+
+
+def prepare_fixture_project(root: Path, fixture: dict[str, Any]) -> Tuple[Path, Optional[tempfile.TemporaryDirectory[str]]]:
+    source_root = root / fixture.get("path", "")
+    runtime_setup = fixture.get("runtime_setup", {})
+    if not runtime_setup:
+        return source_root, None
+
+    fixture_id = fixture.get("id", fixture.get("project", "fixture"))
+    tempdir: tempfile.TemporaryDirectory[str] = tempfile.TemporaryDirectory(prefix=f"cbm-fixture-{fixture_id}-")
+    project_root = Path(tempdir.name) / str(fixture.get("project", "project"))
+    project_root.mkdir(parents=True, exist_ok=True)
+
+    kind = runtime_setup.get("kind", "")
+    if kind != "git_snapshots":
+        tempdir.cleanup()
+        raise ValueError(f"unsupported runtime_setup.kind for {fixture_id}: {kind}")
+
+    snapshots = runtime_setup.get("snapshots", [])
+    if not isinstance(snapshots, list) or not snapshots:
+        tempdir.cleanup()
+        raise ValueError(f"git_snapshots runtime setup requires non-empty snapshots for {fixture_id}")
+
+    commit_messages = runtime_setup.get("commit_messages", [])
+    if commit_messages and len(commit_messages) != len(snapshots):
+        tempdir.cleanup()
+        raise ValueError(f"commit_messages length mismatch for {fixture_id}")
+
+    run_checked(["git", "init"], project_root)
+    run_checked(["git", "config", "user.name", "CBM Fixture"], project_root)
+    run_checked(["git", "config", "user.email", "fixture@example.invalid"], project_root)
+
+    for index, rel_snapshot in enumerate(snapshots):
+        snapshot_root = source_root / str(rel_snapshot)
+        if not snapshot_root.is_dir():
+            tempdir.cleanup()
+            raise ValueError(f"missing snapshot for {fixture_id}: {snapshot_root}")
+        clear_directory(project_root)
+        copy_directory_contents(snapshot_root, project_root)
+        run_checked(["git", "add", "-A"], project_root)
+        message = (
+            str(commit_messages[index])
+            if index < len(commit_messages)
+            else f"fixture snapshot {index + 1}"
+        )
+        run_checked(["git", "commit", "--no-gpg-sign", "-m", message], project_root)
+
+    return project_root, tempdir
 
 
 def rewrite_qualified_name_project(qualified_name: str, project: str) -> str:
@@ -1061,9 +1138,9 @@ def run_cli_tool(bin_path: str, project_path: str, impl: str, name: str, argumen
     }
 
 
-def build_requests(root: Path, fixture: dict[str, Any], impl: str) -> tuple[list[dict[str, Any]], dict[str, str]]:
+def build_requests(project_root: Path, fixture: dict[str, Any], impl: str) -> tuple[list[dict[str, Any]], dict[str, str]]:
     project_name = fixture.get("project", "")
-    project_path = normalize_path_for_manifest(str(root / fixture.get("path", "")))
+    project_path = normalize_path_for_manifest(str(project_root))
     c_project_name = normalize_project_name_for_c(project_path)
 
     tool_ctx = {
@@ -2185,81 +2262,85 @@ def run_golden_mode(
 
     for fixture in manifest.get("fixtures", []):
         fixture_id = fixture.get("id", fixture.get("project", "unknown"))
-        root_path = root / fixture.get("path", "")
         assertions = fixture.get("assertions", {})
         contract_checks = fixture.get("contract_checks", {})
         contract_checks = fixture.get("contract_checks", {})
         fixture_count += 1
 
-        # Only run Zig
-        requests, tool_ctx = build_requests(root, fixture, "zig")
+        prepared_root, tempdir = prepare_fixture_project(root, fixture)
         try:
-            zig_results = call_mcp_sequence(str(zig_bin), str(root_path), requests, "zig")
-            zig_results["tool_ctx"] = tool_ctx
-            contract_checks = fixture.get("contract_checks", {})
-            cli_calls = contract_checks.get("cli_calls", [])
-            if cli_calls:
-                zig_results["cli_contract"] = [
-                    run_cli_tool(
-                        str(zig_bin),
-                        str(root_path),
-                        "zig",
-                        str(check.get("name", "")),
-                        expand_contract_value(check.get("arguments", {}), "zig", tool_ctx),
-                    )
-                    for check in cli_calls
-                ]
-        except Exception as err:
-            print("ERROR: fixture %s zig failed: %s" % (fixture_id, err))
-            all_mismatches.append({"fixture": fixture_id, "error": str(err)})
-            continue
-
-        # Run assertion checks on Zig output (same as compare mode)
-        impl_payloads = zig_results.get("tool", {})
-        index_payload = (impl_payloads.get("index_repository") or [{"payload": {}}])[0]["payload"]
-        index_assertions = assertions.get("index_repository", {})
-        if index_assertions:
-            failures = check_assertions("index_repository", index_payload, [index_assertions])
-            if failures:
-                print("  WARN: %s index_repository assertion failures: %s" % (fixture_id, failures))
-
-        golden_path = golden_dir / ("%s.json" % fixture_id)
-
-        if mode == "update-golden":
-            snapshot = build_golden_snapshot(fixture, zig_results, assertions)
-            golden_path.write_text(json.dumps(snapshot, indent=2, sort_keys=True) + "\n")
-            updated_count += 1
-            print("  updated: %s" % golden_path)
-
-        elif mode == "zig-only":
-            if not golden_path.exists():
-                print("FAIL: %s golden snapshot missing: %s" % (fixture_id, golden_path))
-                all_mismatches.append({
-                    "fixture": fixture_id,
-                    "error": "golden snapshot missing: %s" % golden_path,
-                })
+            # Only run Zig
+            requests, tool_ctx = build_requests(prepared_root, fixture, "zig")
+            try:
+                zig_results = call_mcp_sequence(str(zig_bin), str(prepared_root), requests, "zig")
+                zig_results["tool_ctx"] = tool_ctx
+                contract_checks = fixture.get("contract_checks", {})
+                cli_calls = contract_checks.get("cli_calls", [])
+                if cli_calls:
+                    zig_results["cli_contract"] = [
+                        run_cli_tool(
+                            str(zig_bin),
+                            str(prepared_root),
+                            "zig",
+                            str(check.get("name", "")),
+                            expand_contract_value(check.get("arguments", {}), "zig", tool_ctx),
+                        )
+                        for check in cli_calls
+                    ]
+            except Exception as err:
+                print("ERROR: fixture %s zig failed: %s" % (fixture_id, err))
+                all_mismatches.append({"fixture": fixture_id, "error": str(err)})
                 continue
 
-            golden = json.loads(golden_path.read_text())
-            diffs, warns = compare_golden_snapshot(fixture, zig_results, golden, assertions)
-            if diffs:
-                print("FAIL: %s" % fixture_id)
-                for diff in diffs:
-                    print("  - %s" % diff)
-                for warn in warns:
-                    print("  ~ %s" % warn)
-                all_mismatches.append({
-                    "fixture": fixture_id,
-                    "mismatches": diffs,
-                    "warnings": warns,
-                })
-            else:
-                if warns:
-                    print("PASS: %s (with warnings)" % fixture_id)
+            # Run assertion checks on Zig output (same as compare mode)
+            impl_payloads = zig_results.get("tool", {})
+            index_payload = (impl_payloads.get("index_repository") or [{"payload": {}}])[0]["payload"]
+            index_assertions = assertions.get("index_repository", {})
+            if index_assertions:
+                failures = check_assertions("index_repository", index_payload, [index_assertions])
+                if failures:
+                    print("  WARN: %s index_repository assertion failures: %s" % (fixture_id, failures))
+
+            golden_path = golden_dir / ("%s.json" % fixture_id)
+
+            if mode == "update-golden":
+                snapshot = build_golden_snapshot(fixture, zig_results, assertions)
+                golden_path.write_text(json.dumps(snapshot, indent=2, sort_keys=True) + "\n")
+                updated_count += 1
+                print("  updated: %s" % golden_path)
+
+            elif mode == "zig-only":
+                if not golden_path.exists():
+                    print("FAIL: %s golden snapshot missing: %s" % (fixture_id, golden_path))
+                    all_mismatches.append({
+                        "fixture": fixture_id,
+                        "error": "golden snapshot missing: %s" % golden_path,
+                    })
+                    continue
+
+                golden = json.loads(golden_path.read_text())
+                diffs, warns = compare_golden_snapshot(fixture, zig_results, golden, assertions)
+                if diffs:
+                    print("FAIL: %s" % fixture_id)
+                    for diff in diffs:
+                        print("  - %s" % diff)
                     for warn in warns:
                         print("  ~ %s" % warn)
+                    all_mismatches.append({
+                        "fixture": fixture_id,
+                        "mismatches": diffs,
+                        "warnings": warns,
+                    })
                 else:
-                    print("PASS: %s" % fixture_id)
+                    if warns:
+                        print("PASS: %s (with warnings)" % fixture_id)
+                        for warn in warns:
+                            print("  ~ %s" % warn)
+                    else:
+                        print("PASS: %s" % fixture_id)
+        finally:
+            if tempdir is not None:
+                tempdir.cleanup()
 
     # Write summary report
     out_json = report_dir / "interop_golden_report.json"
@@ -2300,7 +2381,6 @@ def run_compare_mode(
 
     for fixture in manifest.get("fixtures", []):
         fixture_id = fixture.get("id", fixture.get("project", "unknown"))
-        root_path = root / fixture.get("path", "")
         assertions = fixture.get("assertions", {})
         contract_checks = fixture.get("contract_checks", {})
 
@@ -2312,66 +2392,71 @@ def run_compare_mode(
             "errors": [],
         }  # type: Dict[str, Any]
 
-        for impl in ("zig", "c"):
-            bin_path = str(zig_bin if impl == "zig" else c_bin)
-            requests, tool_ctx = build_requests(root, fixture, impl)
-            results["request_count"] = len(requests)
-            try:
-                tool_results = call_mcp_sequence(bin_path, str(root_path), requests, impl)
-                tool_results["tool_ctx"] = tool_ctx
-                cli_calls = contract_checks.get("cli_calls", [])
-                if cli_calls:
-                    tool_results["cli_contract"] = [
-                        run_cli_tool(
-                            bin_path,
-                            str(root_path),
-                            impl,
-                            str(check.get("name", "")),
-                            expand_contract_value(check.get("arguments", {}), impl, tool_ctx),
-                        )
-                        for check in cli_calls
-                    ]
-                results[impl] = tool_results
-            except Exception as err:
-                results["errors"].append(f"{impl}: {err}")
-                continue
+        prepared_root, tempdir = prepare_fixture_project(root, fixture)
+        try:
+            for impl in ("zig", "c"):
+                bin_path = str(zig_bin if impl == "zig" else c_bin)
+                requests, tool_ctx = build_requests(prepared_root, fixture, impl)
+                results["request_count"] = len(requests)
+                try:
+                    tool_results = call_mcp_sequence(bin_path, str(prepared_root), requests, impl)
+                    tool_results["tool_ctx"] = tool_ctx
+                    cli_calls = contract_checks.get("cli_calls", [])
+                    if cli_calls:
+                        tool_results["cli_contract"] = [
+                            run_cli_tool(
+                                bin_path,
+                                str(prepared_root),
+                                impl,
+                                str(check.get("name", "")),
+                                expand_contract_value(check.get("arguments", {}), impl, tool_ctx),
+                            )
+                            for check in cli_calls
+                        ]
+                    results[impl] = tool_results
+                except Exception as err:
+                    results["errors"].append(f"{impl}: {err}")
+                    continue
 
-            impl_payloads = results[impl]["tool"]
+                impl_payloads = results[impl]["tool"]
 
-            # Normalize and validate index output if requested.
-            index_payload = (impl_payloads.get("index_repository") or [{"payload": {}}])[0]["payload"]
-            index_assertions = assertions.get("index_repository", {})
-            if index_assertions:
-                failures = check_assertions("index_repository", index_payload, [index_assertions])
-                if failures:
-                    results[impl].setdefault("assertion_failures", []).append(
-                        {"tool": "index_repository", "failures": failures}
-                    )
-
-            tools_list_payload = (impl_payloads.get("tools_list") or [{"payload": {}}])[0]["payload"]
-            tools_list_assertions = [
-                {
-                    "expect": {
-                        "required_tools": SHARED_TOOL_NAMES,
-                    }
-                }
-            ]
-            failures = check_assertions("tools_list", tools_list_payload, tools_list_assertions)
-            if failures:
-                results[impl].setdefault("assertion_failures", []).append(
-                    {"tool": "tools_list", "failures": failures}
-                )
-
-            for scope_tool in ("search_graph", "query_graph", "trace_call_path", "get_architecture", "search_code", "detect_changes", "manage_adr", "get_graph_schema", "get_code_snippet", "index_status", "delete_project"):
-                assertion_key = scope_tool
-                for index, assertion in enumerate(assertions.get(assertion_key, [])):
-                    entries = impl_payloads.get(scope_tool) or []
-                    payload = entries[index]["payload"] if index < len(entries) else {"__missing__": True}
-                    failures = check_assertions(scope_tool, payload, [assertion])
+                # Normalize and validate index output if requested.
+                index_payload = (impl_payloads.get("index_repository") or [{"payload": {}}])[0]["payload"]
+                index_assertions = assertions.get("index_repository", {})
+                if index_assertions:
+                    failures = check_assertions("index_repository", index_payload, [index_assertions])
                     if failures:
                         results[impl].setdefault("assertion_failures", []).append(
-                            {"tool": scope_tool, "assert": assertion, "failures": failures}
+                            {"tool": "index_repository", "failures": failures}
                         )
+
+                tools_list_payload = (impl_payloads.get("tools_list") or [{"payload": {}}])[0]["payload"]
+                tools_list_assertions = [
+                    {
+                        "expect": {
+                            "required_tools": SHARED_TOOL_NAMES,
+                        }
+                    }
+                ]
+                failures = check_assertions("tools_list", tools_list_payload, tools_list_assertions)
+                if failures:
+                    results[impl].setdefault("assertion_failures", []).append(
+                        {"tool": "tools_list", "failures": failures}
+                    )
+
+                for scope_tool in ("search_graph", "query_graph", "trace_call_path", "get_architecture", "search_code", "detect_changes", "manage_adr", "get_graph_schema", "get_code_snippet", "index_status", "delete_project"):
+                    assertion_key = scope_tool
+                    for index, assertion in enumerate(assertions.get(assertion_key, [])):
+                        entries = impl_payloads.get(scope_tool) or []
+                        payload = entries[index]["payload"] if index < len(entries) else {"__missing__": True}
+                        failures = check_assertions(scope_tool, payload, [assertion])
+                        if failures:
+                            results[impl].setdefault("assertion_failures", []).append(
+                                {"tool": scope_tool, "assert": assertion, "failures": failures}
+                            )
+        finally:
+            if tempdir is not None:
+                tempdir.cleanup()
 
             # list_projects is global and used as fixture-scoped indexing signal.
             list_payload = (impl_payloads.get("list_projects") or [{"payload": {}}])[0]["payload"]
