@@ -72,11 +72,6 @@
   "trace_call_path": [
     [
       [
-        "makeWorker",
-        "Worker",
-        "USAGE"
-      ],
-      [
         "run",
         "execute",
         "CALLS"

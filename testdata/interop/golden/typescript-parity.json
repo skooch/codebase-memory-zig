@@ -18,7 +18,10 @@
         "Method",
         "Module",
         "Project"
-      ]
+      ],
+      "project": "typescript-parity",
+      "total_edges": 11,
+      "total_nodes": 9
     }
   ],
   "get_code_snippet": [],
@@ -145,14 +148,27 @@
     {
       "results": [
         {
+          "end_line": 11,
           "file_path": "index.ts",
           "label": "Function",
-          "name": "annotate"
+          "match_lines": [
+            9
+          ],
+          "name": "annotate",
+          "snippet": "",
+          "start_line": 9
         },
         {
+          "end_line": 24,
           "file_path": "index.ts",
           "label": "Function",
-          "name": "boot"
+          "match_lines": [
+            21,
+            22
+          ],
+          "name": "boot",
+          "snippet": "",
+          "start_line": 21
         }
       ],
       "total_results": 2

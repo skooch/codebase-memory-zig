@@ -19,7 +19,10 @@
         "Module",
         "Project",
         "Variable"
-      ]
+      ],
+      "project": "javascript-parity",
+      "total_edges": 16,
+      "total_nodes": 10
     }
   ],
   "get_code_snippet": [],
@@ -148,19 +151,37 @@
     {
       "results": [
         {
+          "end_line": 3,
           "file_path": "index.js",
           "label": "Function",
-          "name": "decorate"
+          "match_lines": [
+            1
+          ],
+          "name": "decorate",
+          "snippet": "",
+          "start_line": 1
         },
         {
+          "end_line": 23,
           "file_path": "index.js",
           "label": "Variable",
-          "name": "boot"
+          "match_lines": [
+            19
+          ],
+          "name": "boot",
+          "snippet": "",
+          "start_line": 19
         },
         {
+          "end_line": 26,
           "file_path": "index.js",
           "label": "Module",
-          "name": "index.js"
+          "match_lines": [
+            25
+          ],
+          "name": "index.js",
+          "snippet": "",
+          "start_line": 1
         }
       ],
       "total_results": 3
@@ -228,7 +249,7 @@
         "CALLS"
       ],
       [
-        "log",
+        "boot",
         "write",
         "CALLS"
       ]

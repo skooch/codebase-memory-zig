@@ -23,7 +23,10 @@
         "Module",
         "Project",
         "Variable"
-      ]
+      ],
+      "project": "rust-parity",
+      "total_edges": 24,
+      "total_nodes": 19
     }
   ],
   "get_code_snippet": [],
@@ -233,14 +236,27 @@
     {
       "results": [
         {
+          "end_line": 7,
           "file_path": "src/lib.rs",
           "label": "Function",
-          "name": "decorate"
+          "match_lines": [
+            5
+          ],
+          "name": "decorate",
+          "snippet": "",
+          "start_line": 5
         },
         {
+          "end_line": 30,
           "file_path": "src/lib.rs",
           "label": "Function",
-          "name": "boot"
+          "match_lines": [
+            23,
+            24
+          ],
+          "name": "boot",
+          "snippet": "",
+          "start_line": 23
         }
       ],
       "total_results": 2

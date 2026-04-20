@@ -111,17 +111,40 @@ pub const QueryRouter = struct {
         try payload.appendSlice(self.allocator, "{");
         try appendJsonStringField(&payload, self.allocator, "mode", searchCodeModeText(request.mode), true);
         try appendJsonIntField(&payload, self.allocator, "total", @as(i64, @intCast(hits.len)), false);
-        try payload.appendSlice(self.allocator, ",\"results\":[");
-        for (hits, 0..) |hit, idx| {
-            if (idx > 0) try payload.append(self.allocator, ',');
-            try payload.appendSlice(self.allocator, "{");
-            try appendJsonStringField(&payload, self.allocator, "file", hit.file_path, true);
-            try appendJsonStringField(&payload, self.allocator, "file_path", hit.file_path, false);
-            if (request.mode != .files) {
+        if (request.mode == .files) {
+            try payload.appendSlice(self.allocator, ",\"files\":[");
+            var seen_files = std.StringHashMap(void).init(self.allocator);
+            defer {
+                var it = seen_files.iterator();
+                while (it.next()) |entry| self.allocator.free(entry.key_ptr.*);
+                seen_files.deinit();
+            }
+            var emitted: usize = 0;
+            for (hits) |hit| {
+                const owned = try self.allocator.dupe(u8, hit.file_path);
+                const entry = try seen_files.getOrPut(owned);
+                if (entry.found_existing) {
+                    self.allocator.free(owned);
+                    continue;
+                }
+                if (emitted > 0) try payload.append(self.allocator, ',');
+                try appendJsonString(&payload, self.allocator, hit.file_path);
+                emitted += 1;
+            }
+            try payload.append(self.allocator, ']');
+        } else {
+            try payload.appendSlice(self.allocator, ",\"results\":[");
+            for (hits, 0..) |hit, idx| {
+                if (idx > 0) try payload.append(self.allocator, ',');
+                try payload.appendSlice(self.allocator, "{");
+                try appendJsonStringField(&payload, self.allocator, "file", hit.file_path, true);
+                try appendJsonStringField(&payload, self.allocator, "file_path", hit.file_path, false);
                 try appendJsonIntField(&payload, self.allocator, "line", @as(i64, @intCast(hit.line)), false);
                 if (hit.start_line > 0) try appendJsonIntField(&payload, self.allocator, "start_line", hit.start_line, false);
                 if (hit.end_line > 0) try appendJsonIntField(&payload, self.allocator, "end_line", hit.end_line, false);
-                if (request.mode == .full or hit.name == null) {
+                if (request.mode == .full) {
+                    try appendJsonStringField(&payload, self.allocator, "source", hit.snippet, false);
+                } else if (hit.name == null) {
                     try appendJsonStringField(&payload, self.allocator, "snippet", hit.snippet, false);
                 }
                 if (hit.name) |name| {
@@ -137,14 +160,14 @@ pub const QueryRouter = struct {
                     if (match_idx > 0) try payload.append(self.allocator, ',');
                     try payload.writer(self.allocator).print("{d}", .{match_line});
                 }
-                try payload.append(self.allocator, ']');
+                try payload.appendSlice(self.allocator, "]}");
             }
-            try payload.appendSlice(self.allocator, "}");
+            try payload.append(self.allocator, ']');
         }
         const dedup_ratio = try dedupRatioText(self.allocator, hits);
         defer self.allocator.free(dedup_ratio);
         try payload.writer(self.allocator).print(
-            "],\"has_more\":false,\"total_results\":{d},\"raw_match_count\":0,\"total_grep_matches\":{d},\"dedup_ratio\":{f}}}",
+            ",\"has_more\":false,\"total_results\":{d},\"raw_match_count\":0,\"total_grep_matches\":{d},\"dedup_ratio\":{f}}}",
             .{
                 hits.len,
                 totalSearchMatchLines(hits),
@@ -179,6 +202,17 @@ pub const QueryRouter = struct {
             return buildNodeSuggestionsPayload(self.allocator, request.qualified_name, suffix_matches);
         }
 
+        if (try self.findNodeByFileStemSuffix(request.project, request.qualified_name)) |node| {
+            defer self.db.freeNode(node);
+            return self.buildSnippetPayloadFromNode(
+                request.project,
+                status.root_path,
+                node,
+                request.include_neighbors,
+                "suffix",
+            );
+        }
+
         if (try self.db.findScipSymbolByQualifiedName(request.project, request.qualified_name)) |symbol| {
             defer self.db.freeScipSymbol(symbol);
             return self.buildSnippetPayloadFromScipSymbol(status.root_path, symbol, "scip");
@@ -194,6 +228,35 @@ pub const QueryRouter = struct {
         }
 
         return error.SymbolNotFound;
+    }
+
+    fn findNodeByFileStemSuffix(
+        self: *QueryRouter,
+        project: []const u8,
+        qualified_name: []const u8,
+    ) !?store.Node {
+        const separator = std.mem.lastIndexOfScalar(u8, qualified_name, '.') orelse return null;
+        const file_stem = qualified_name[0..separator];
+        const symbol_name = qualified_name[separator + 1 ..];
+        if (file_stem.len == 0 or symbol_name.len == 0) return null;
+
+        const matches = try self.db.searchNodes(.{
+            .project = project,
+            .name_pattern = symbol_name,
+            .limit = 25,
+        });
+        defer self.db.freeNodes(matches);
+
+        var resolved: ?store.Node = null;
+        for (matches) |candidate| {
+            if (!fileStemMatches(candidate.file_path, file_stem)) continue;
+            if (resolved != null) {
+                self.db.freeNode(resolved.?);
+                return null;
+            }
+            resolved = try self.db.findNodeByQualifiedName(project, candidate.qualified_name);
+        }
+        return resolved;
     }
 
     pub fn getArchitecturePayload(self: *QueryRouter, request: ArchitectureRequest) ![]u8 {
@@ -319,7 +382,7 @@ pub const QueryRouter = struct {
             null;
         defer if (source) |snippet| self.allocator.free(snippet);
 
-        const degree = try self.db.getNodeDegree(project, node.id);
+        const degree = try self.callOnlyDegree(project, node.id);
         const caller_names = if (include_neighbors) try self.collectNeighborNames(project, node.id, .inbound, 10) else null;
         defer if (caller_names) |names| freeOwnedStrings(self.allocator, names);
         const callee_names = if (include_neighbors) try self.collectNeighborNames(project, node.id, .outbound, 10) else null;
@@ -409,8 +472,8 @@ pub const QueryRouter = struct {
         limit: usize,
     ) ![][]u8 {
         const edges = switch (direction) {
-            .inbound => try self.db.findEdgesByTarget(project, node_id, null),
-            .outbound => try self.db.findEdgesBySource(project, node_id, null),
+            .inbound => try self.db.findEdgesByTarget(project, node_id, "CALLS"),
+            .outbound => try self.db.findEdgesBySource(project, node_id, "CALLS"),
             .both => unreachable,
         };
         defer self.db.freeEdges(edges);
@@ -445,6 +508,17 @@ pub const QueryRouter = struct {
         }
 
         return names.toOwnedSlice(self.allocator);
+    }
+
+    fn callOnlyDegree(self: *QueryRouter, project: []const u8, node_id: i64) !store.NodeDegree {
+        const inbound = try self.db.findEdgesByTarget(project, node_id, "CALLS");
+        defer self.db.freeEdges(inbound);
+        const outbound = try self.db.findEdgesBySource(project, node_id, "CALLS");
+        defer self.db.freeEdges(outbound);
+        return .{
+            .callers = @intCast(inbound.len),
+            .callees = @intCast(outbound.len),
+        };
     }
 };
 
@@ -814,7 +888,7 @@ fn collectSearchCodeHits(
         )) break :file_loop;
     }
 
-    if (mode != .files and out.items.len > 1) {
+    if (out.items.len > 1) {
         try foldContainedSearchHits(allocator, &out);
         std.sort.pdq(CodeSearchHit, out.items, {}, searchCodeLessThan);
     }
@@ -871,7 +945,7 @@ fn collectSearchCodeHitsFromPaths(
         )) break :path_loop;
     }
 
-    if (mode != .files and out.items.len > 1) {
+    if (out.items.len > 1) {
         try foldContainedSearchHits(allocator, &out);
         std.sort.pdq(CodeSearchHit, out.items, {}, searchCodeLessThan);
     }
@@ -896,7 +970,7 @@ fn appendSearchCodeHitsForPath(
     seen: *std.StringHashMap(usize),
 ) !bool {
     if (path_filter) |filter| {
-        if (std.mem.indexOf(u8, rel_path, filter) == null) return false;
+        if (!text_match.matchRegexish(allocator, rel_path, filter)) return false;
     }
     if (file_pattern) |pattern_filter| {
         if (!text_match.globMatch(rel_path, pattern_filter)) return false;
@@ -912,37 +986,23 @@ fn appendSearchCodeHitsForPath(
     while (line_iter.next()) |line| : (line_no += 1) {
         if (!searchPatternMatches(allocator, line, pattern, regex)) continue;
 
-        if (mode == .files) {
-            const key = try allocator.dupe(u8, rel_path);
-            if (seen.contains(key)) {
-                allocator.free(key);
-                break;
-            }
-            try seen.put(key, out.items.len);
-            try out.append(allocator, .{
-                .file_path = try allocator.dupe(u8, rel_path),
-                .snippet = try allocator.dupe(u8, ""),
-                .match_lines = try allocator.dupe(u32, &[_]u32{}),
-            });
-            return out.items.len >= limit;
-        }
-
-        const snippet = try buildSearchSnippet(allocator, bytes, line_no, if (mode == .full) context else 0);
         const symbol = bestSearchCodeNode(file_nodes, line_no);
-        const dedupe_key = if (mode == .compact and symbol != null)
+        const dedupe_key = if (symbol != null)
             try allocator.dupe(u8, symbol.?.qualified_name)
         else
             try std.fmt.allocPrint(allocator, "{s}:{d}", .{ rel_path, line_no });
         if (seen.get(dedupe_key)) |existing_index| {
             allocator.free(dedupe_key);
             const existing = &out.items[existing_index];
-            const lines = try allocator.realloc(existing.match_lines, existing.match_lines.len + 1);
-            lines[existing.match_lines.len] = line_no;
-            existing.match_lines = lines;
-            allocator.free(snippet);
+            try appendUniqueMatchLine(allocator, existing, line_no);
             continue;
         }
         try seen.put(dedupe_key, out.items.len);
+
+        const snippet = if (mode == .full and symbol != null)
+            try buildNodeSource(allocator, bytes, symbol.?.start_line, symbol.?.end_line)
+        else
+            try buildSearchSnippet(allocator, bytes, line_no, if (mode == .full) context else 0);
 
         const degree = if (symbol) |node|
             try db.getNodeDegree(project, node.id)
@@ -950,6 +1010,10 @@ fn appendSearchCodeHitsForPath(
             store.NodeDegree{};
         const match_lines = try allocator.alloc(u32, 1);
         match_lines[0] = line_no;
+        const end_line = if (symbol) |node|
+            resolvedSearchEndLine(bytes, node)
+        else
+            0;
 
         try out.append(allocator, .{
             .file_path = try allocator.dupe(u8, rel_path),
@@ -959,7 +1023,7 @@ fn appendSearchCodeHitsForPath(
             .label = if (symbol) |node| try allocator.dupe(u8, node.label) else null,
             .qualified_name = if (symbol) |node| try allocator.dupe(u8, node.qualified_name) else null,
             .start_line = if (symbol) |node| node.start_line else 0,
-            .end_line = if (symbol) |node| node.end_line else 0,
+            .end_line = end_line,
             .in_degree = degree.callers,
             .out_degree = degree.callees,
             .match_lines = match_lines,
@@ -1340,6 +1404,36 @@ fn buildSearchSnippet(
     return readInlineLines(allocator, bytes, start_line, end_line);
 }
 
+fn buildNodeSource(
+    allocator: std.mem.Allocator,
+    bytes: []const u8,
+    start_line: i32,
+    end_line: i32,
+) ![]u8 {
+    const range = snippetLineRange(start_line, end_line);
+    const source = try readInlineLines(allocator, bytes, range.start_line, range.end_line);
+    if (source.len == 0 or source[source.len - 1] == '\n') return source;
+    const with_newline = try allocator.alloc(u8, source.len + 1);
+    @memcpy(with_newline[0..source.len], source);
+    with_newline[source.len] = '\n';
+    allocator.free(source);
+    return with_newline;
+}
+
+fn countLines(bytes: []const u8) i32 {
+    if (bytes.len == 0) return 0;
+    var lines: i32 = 1;
+    for (bytes) |byte| {
+        if (byte == '\n') lines += 1;
+    }
+    return lines;
+}
+
+fn resolvedSearchEndLine(bytes: []const u8, node: store.Node) i32 {
+    if (std.mem.eql(u8, node.label, "Module")) return countLines(bytes);
+    return if (node.end_line >= node.start_line) node.end_line else node.start_line;
+}
+
 fn nthLine(bytes: []const u8, line_no: u32) ?[]const u8 {
     var iter = std.mem.splitAny(u8, bytes, "\n");
     var current: u32 = 1;
@@ -1387,13 +1481,7 @@ fn bestSearchCodeNode(nodes: []const store.Node, line_no: u32) ?store.Node {
 
 fn searchPatternMatches(allocator: std.mem.Allocator, line: []const u8, pattern: []const u8, regex: bool) bool {
     if (!regex) return std.mem.indexOf(u8, line, pattern) != null;
-    var iter = std.mem.splitSequence(u8, pattern, "|");
-    while (iter.next()) |branch| {
-        const trimmed = std.mem.trim(u8, branch, " \t");
-        if (trimmed.len == 0) continue;
-        if (text_match.matchRegexish(allocator, line, trimmed)) return true;
-    }
-    return false;
+    return text_match.matchRegexish(allocator, line, pattern);
 }
 
 fn searchCodeModeText(mode: SearchCodeMode) []const u8 {
@@ -1414,6 +1502,15 @@ fn resolveSnippetPath(allocator: std.mem.Allocator, root_path: []const u8, file_
     if (file_path.len == 0) return null;
     if (std.fs.path.isAbsolute(file_path)) return try allocator.dupe(u8, file_path);
     return std.fs.path.join(allocator, &.{ root_path, file_path }) catch null;
+}
+
+fn fileStemMatches(file_path: []const u8, requested_stem: []const u8) bool {
+    if (requested_stem.len == 0) return false;
+    const stem = std.fs.path.stem(file_path);
+    if (std.mem.eql(u8, stem, requested_stem)) return true;
+    if (!std.mem.endsWith(u8, file_path, requested_stem)) return false;
+    const prefix_index = file_path.len - requested_stem.len;
+    return prefix_index == 0 or file_path[prefix_index - 1] == '/' or file_path[prefix_index - 1] == '\\';
 }
 
 fn readFileLines(

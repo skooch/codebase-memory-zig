@@ -65,23 +65,8 @@
     [
       [
         "run",
-        "Settings",
-        "USAGE"
-      ],
-      [
-        "run",
         "add",
         "CALLS"
-      ],
-      [
-        "run",
-        "doubled",
-        "USAGE"
-      ],
-      [
-        "run",
-        "retry_limit",
-        "USAGE"
       ]
     ]
   ]

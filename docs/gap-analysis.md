@@ -37,7 +37,7 @@ Newest latest-upstream deltas reopened by `v0.6.0`:
   tasks rather than substantive graph-model gaps.
 
 Known coverage gaps in the current automated suite:
-- Current local audit on `2026-04-21`: `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh --zig-only`, `bash scripts/run_cli_parity.sh --zig-only`, and the current ops suite entrypoints all pass. The current `bash scripts/run_interop_alignment.sh` baseline now reports `35` fixtures, `267` comparisons, `150` strict matches, `39` diagnostic-only comparisons, and `0` mismatches, with the new `protocol-contract` fixture scoring as a strict shared match and `tool-surface-parity` remaining diagnostic-only because Zig still lacks a real `moderate` indexing mode.
+- Current local audit on `2026-04-21`: `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh --zig-only`, `bash scripts/run_cli_parity.sh --zig-only`, and the current ops suite entrypoints all pass. The current `bash scripts/run_interop_alignment.sh` baseline now reports `38` fixtures, `294` comparisons, `161` strict matches, `44` diagnostic-only comparisons, and `0` mismatches, with `protocol-contract` and the new query-analysis exact fixtures scoring as strict shared matches and `tool-surface-parity` remaining diagnostic-only because Zig still lacks a real `moderate` indexing mode.
 - Merge-blocking CI now includes the full Zig-vs-C compare for interop-touching pull requests and pushes to `main`, while non-interop changes still rely on zig-only goldens plus unit and integration tests.
 - Packaging and setup entrypoints are exercised by verification runs and workflows, and the release workflow now merges and validates a repo-owned `release-manifest.json`, but the repo still does not have exhaustive cross-platform regression automation for every shell, host, or archive flow.
 - Windows coverage is strong at config-path, installer-layout, no-`HOME` env fallback, runtime DB root creation, and PowerShell entrypoint level, but not exhaustive of native runtime and filesystem edge cases.
@@ -78,15 +78,17 @@ Completed now:
   - `Diagnostic-only comparisons: 9`
   - `Mismatches: 0`
 - The expanded full harness currently reports:
-  - `Fixtures: 35`
-  - `Comparisons: 267`
-  - `Strict matches: 150`
-  - `Diagnostic-only comparisons: 39`
+  - `Fixtures: 38`
+  - `Comparisons: 294`
+  - `Strict matches: 161`
+  - `Diagnostic-only comparisons: 44`
   - `Known mismatches: 0`
   - `cli_progress: match`
   - `protocol-contract`: strict shared match
+  - `snippet-trace-contract`: strict shared match
+  - `search-code-ranking-parity`: strict shared match
   - `tool-surface-parity`: diagnostic-only by design because latest-upstream `moderate` mode is still missing in Zig
-  - no remaining snippet, search, JavaScript-ordering, Java query-shape, or error-path comparison mismatches
+  - no remaining snippet, trace, search, JavaScript-ordering, Java query-shape, or error-path comparison mismatches
   - the former Go method-ownership delta is now diagnostic-only instead of a hard mismatch
 
 Completed after the readiness gate:

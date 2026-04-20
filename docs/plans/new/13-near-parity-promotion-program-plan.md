@@ -12,13 +12,13 @@ job is to:
 3. queue those plans in execution order
 
 ## Current Phase
-Pending
+In progress
 
 ## File Map
 - Modify: `docs/plans/new/13-near-parity-promotion-program-plan.md`
 - Modify: `docs/plans/new/README.md`
 - Create: `docs/plans/implemented/14-protocol-tool-surface-full-parity-plan.md`
-- Create: `docs/plans/new/15-query-analysis-full-parity-plan.md`
+- Create: `docs/plans/implemented/15-query-analysis-full-parity-plan.md`
 - Create: `docs/plans/new/16-graph-exactness-full-parity-plan.md`
 - Create: `docs/plans/new/17-runtime-cli-packaging-full-parity-plan.md`
 
@@ -102,22 +102,22 @@ A row must be downgraded to `Partial` if either is true:
 ## Phases
 
 ### Phase 1: Define the execution split
-- [ ] Keep this file scoped to program-level ordering and promotion rules only.
-- [ ] Create the four subsystem todo plans in `docs/plans/new/`.
-- [ ] Ensure each subsystem plan has an exact file map, concrete verification
+- [x] Keep this file scoped to program-level ordering and promotion rules only.
+- [x] Create the four subsystem todo plans in `docs/plans/new/`.
+- [x] Ensure each subsystem plan has an exact file map, concrete verification
       commands, and explicit downgrade criteria where needed.
-- **Status:** pending
+- **Status:** completed
 
 ### Phase 2: Order the queue
-- [ ] Put protocol/tool-surface first because it defines the public parity
+- [x] Put protocol/tool-surface first because it defines the public parity
       contract and harness shape.
-- [ ] Put query/analysis second because it depends on the protocol and fixture
+- [x] Put query/analysis second because it depends on the protocol and fixture
       posture but not on packaging decisions.
-- [ ] Put graph exactness third because some rows may be downgraded depending
+- [x] Put graph exactness third because some rows may be downgraded depending
       on model-vocabulary decisions discovered earlier.
-- [ ] Put runtime/CLI/packaging fourth because several rows likely need
+- [x] Put runtime/CLI/packaging fourth because several rows likely need
       reclassification, not implementation.
-- **Status:** pending
+- **Status:** completed
 
 ### Phase 3: Exit criteria for the program
 - [ ] Mark this program plan complete only when each subsystem plan has been

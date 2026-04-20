@@ -11,6 +11,7 @@
         "CONTAINS_FOLDER",
         "DEFINES"
       ],
+      "edges": 4,
       "languages": [
         "typescript"
       ],
@@ -20,7 +21,10 @@
         "Function",
         "Module",
         "Project"
-      ]
+      ],
+      "nodes": 5,
+      "project": "discovery-scope",
+      "status": "ready"
     }
   ],
   "index_repository": {
@@ -39,9 +43,13 @@
     {
       "results": [
         {
+          "end_line": 0,
           "file_path": "src/index.ts",
           "label": "",
-          "name": ""
+          "match_lines": [],
+          "name": "",
+          "snippet": "",
+          "start_line": 0
         }
       ],
       "total_results": 1

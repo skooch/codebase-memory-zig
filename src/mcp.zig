@@ -259,7 +259,7 @@ pub const McpServer = struct {
                 \\{"name":"index_repository","description":"Index a repository into the knowledge graph","inputSchema":{"type":"object","properties":{"repo_path":{"type":"string","description":"Path to the repository"},"mode":{"type":"string","enum":["full","fast"],"default":"full","description":"full: all passes. fast: structure-first discovery."}},"required":["repo_path"]}},
                 \\{"name":"search_graph","description":"Structured graph search with filtering, degree-aware ranking, pagination, and optional connected-node context","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"label":{"type":"string"},"label_pattern":{"type":"string"},"name_pattern":{"type":"string"},"qn_pattern":{"type":"string"},"file_pattern":{"type":"string"},"relationship":{"type":"string"},"exclude_entry_points":{"type":"boolean"},"include_connected":{"type":"boolean"},"limit":{"type":"number"},"offset":{"type":"number"},"min_degree":{"type":"number"},"max_degree":{"type":"number"},"sort_by":{"type":"string"},"sort_direction":{"type":"string"}}}},
                 \\{"name":"query_graph","description":"Run a read-only Cypher-like query","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"query":{"type":"string"},"max_rows":{"type":"number"}}}},
-                \\{"name":"trace_call_path","description":"Trace call paths between nodes with configurable edge types, modes, risk labels, and test filtering","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"start_node_qn":{"type":"string","description":"Qualified name of start node"},"function_name":{"type":"string","description":"Alias for start_node_qn (bare name lookup)"},"direction":{"type":"string","enum":["in","out","both"]},"depth":{"type":"number"},"mode":{"type":"string","enum":["calls","data_flow","cross_service"],"description":"Preset edge type set (default: calls)"},"edge_types":{"type":"array","items":{"type":"string"},"description":"Explicit edge types override (takes priority over mode)"},"risk_labels":{"type":"boolean","description":"Include hop-based risk classification per node"},"include_tests":{"type":"boolean","description":"Include test-file nodes in results (default: true)"}}}},
+                \\{"name":"trace_call_path","description":"Trace call paths between nodes with configurable edge types, modes, risk labels, and test filtering","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"start_node_qn":{"type":"string","description":"Qualified name of start node"},"function_name":{"type":"string","description":"Alias for start_node_qn (bare name lookup)"},"direction":{"type":"string","enum":["in","out","both"]},"depth":{"type":"number"},"mode":{"type":"string","enum":["calls","data_flow","cross_service"],"description":"Preset edge type set (default: calls)"},"edge_types":{"type":"array","items":{"type":"string"},"description":"Explicit edge types override (takes priority over mode)"},"risk_labels":{"type":"boolean","description":"Include hop-based risk classification per node"},"include_tests":{"type":"boolean","description":"Include test-file nodes in results (default: false)"}}}},
                 \\{"name":"get_code_snippet","description":"Read source code for a function/class/symbol. IMPORTANT: First call search_graph to find the exact qualified_name, then pass it here. This is a read tool, not a search tool. Accepts full qualified_name (exact match) or short function name (returns suggestions if ambiguous).","inputSchema":{"type":"object","properties":{"qualified_name":{"type":"string","description":"Full qualified_name from search_graph, or short function name"},"project":{"type":"string"},"include_neighbors":{"type":"boolean","default":false}},"required":["qualified_name","project"]}},
                 \\{"name":"get_graph_schema","description":"Get the schema of the knowledge graph (node labels, edge types)","inputSchema":{"type":"object","properties":{"project":{"type":"string"}},"required":["project"]}},
                 \\{"name":"get_architecture","description":"High-level project summary: structure, dependencies, languages, hotspots, entry points, routes, and messaging","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"aspects":{"type":"array","items":{"type":"string"}}},"required":["project"]}},
@@ -522,18 +522,16 @@ pub const McpServer = struct {
         const explicit_mode = stringArg(args, "mode");
         const mode = explicit_mode orelse "calls";
         const risk_labels = boolArg(args, "risk_labels") orelse false;
-        const include_tests = boolArg(args, "include_tests") orelse true;
+        const include_tests = boolArg(args, "include_tests") orelse false;
 
-        // Resolve edge types: explicit edge_types > mode defaults > null (all edges)
-        // When neither mode nor edge_types is specified, pass null for backward compat
+        // Resolve edge types: explicit edge_types > mode defaults.
+        // The public contract treats omitted mode as "calls".
         const explicit_types = stringArrayArg(self.allocator, args, "edge_types");
         defer if (explicit_types) |et| self.allocator.free(et);
         const edge_types: ?[]const []const u8 = if (explicit_types) |et|
             et
-        else if (explicit_mode) |m|
-            resolveTraceEdgeTypes(m)
         else
-            null;
+            resolveTraceEdgeTypes(mode);
 
         // Look up start node: try qualified name first, then exact name match
         const start = try self.db.findNodeByQualifiedName(project, qn) orelse
@@ -550,21 +548,11 @@ pub const McpServer = struct {
         // Top-level fields
         try w.print("{{\"function\":\"{s}\",\"direction\":\"{s}\",\"mode\":\"{s}\"", .{ start.name, direction, mode });
 
-        // Collect edges from both directions for the flat edges array
-        var all_edges = std.ArrayList(store.TraversalEdge).empty;
-        defer {
-            // Do not free items -- they are owned by the direction-specific slices below
-            all_edges.deinit(self.allocator);
-        }
-
         // Run outbound traversal for callees
         var outbound_edges: []store.TraversalEdge = &.{};
         defer self.db.freeTraversalEdges(outbound_edges);
         if (traversal_direction == .outbound or traversal_direction == .both) {
             outbound_edges = try self.db.traverseEdgesBreadthFirst(project, start.id, .outbound, max_depth, edge_types, 100);
-            for (outbound_edges) |edge| {
-                try all_edges.append(self.allocator, edge);
-            }
         }
 
         // Run inbound traversal for callers
@@ -572,25 +560,65 @@ pub const McpServer = struct {
         defer self.db.freeTraversalEdges(inbound_edges);
         if (traversal_direction == .inbound or traversal_direction == .both) {
             inbound_edges = try self.db.traverseEdgesBreadthFirst(project, start.id, .inbound, max_depth, edge_types, 100);
-            for (inbound_edges) |edge| {
-                try all_edges.append(self.allocator, edge);
-            }
         }
 
-        // Emit flat edges array (interop backward compat)
+        // Emit a start-centered flat edge array that matches the upstream trace contract.
         try payload.appendSlice(self.allocator, ",\"edges\":[");
         {
             var edge_count: usize = 0;
-            for (all_edges.items) |edge| {
-                const source = (try self.db.findNodeById(project, edge.source_id)) orelse continue;
-                defer freeOwnedNode(self.allocator, source);
+            var emitted = std.StringHashMap(void).init(self.allocator);
+            defer {
+                var it = emitted.iterator();
+                while (it.next()) |entry| self.allocator.free(entry.key_ptr.*);
+                emitted.deinit();
+            }
+
+            for (outbound_edges) |edge| {
                 const target = (try self.db.findNodeById(project, edge.target_id)) orelse continue;
                 defer freeOwnedNode(self.allocator, target);
 
+                const target_is_test = isTestFile(target.file_path);
+                if (!include_tests and target_is_test) continue;
+
+                const key = try std.fmt.allocPrint(self.allocator, "{s}|{s}|{s}", .{
+                    start.qualified_name,
+                    edge.edge_type,
+                    target.qualified_name,
+                });
+                const entry = try emitted.getOrPut(key);
+                if (entry.found_existing) {
+                    self.allocator.free(key);
+                    continue;
+                }
                 if (edge_count > 0) try payload.append(self.allocator, ',');
                 try w.print(
                     "{{\"source\":\"{s}\",\"target\":\"{s}\",\"type\":\"{s}\"}}",
-                    .{ source.qualified_name, target.qualified_name, edge.edge_type },
+                    .{ start.qualified_name, target.qualified_name, edge.edge_type },
+                );
+                edge_count += 1;
+            }
+
+            for (inbound_edges) |edge| {
+                const source = (try self.db.findNodeById(project, edge.source_id)) orelse continue;
+                defer freeOwnedNode(self.allocator, source);
+
+                const source_is_test = isTestFile(source.file_path);
+                if (!include_tests and source_is_test) continue;
+
+                const key = try std.fmt.allocPrint(self.allocator, "{s}|{s}|{s}", .{
+                    source.qualified_name,
+                    edge.edge_type,
+                    start.qualified_name,
+                });
+                const entry = try emitted.getOrPut(key);
+                if (entry.found_existing) {
+                    self.allocator.free(key);
+                    continue;
+                }
+                if (edge_count > 0) try payload.append(self.allocator, ',');
+                try w.print(
+                    "{{\"source\":\"{s}\",\"target\":\"{s}\",\"type\":\"{s}\"}}",
+                    .{ source.qualified_name, start.qualified_name, edge.edge_type },
                 );
                 edge_count += 1;
             }
@@ -1620,10 +1648,10 @@ test "trace_call_path risk_labels and include_tests" {
     var srv = McpServer.init(std.testing.allocator, &s);
     defer srv.deinit();
 
-    // Test with risk_labels=true
+    // Test with risk_labels=true and explicit include_tests=true
     {
         const response = (try srv.handleRequest(
-            \\{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"trace_call_path","arguments":{"project":"demo","start_node_qn":"demo:main","direction":"both","depth":2,"risk_labels":true}}}
+            \\{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"trace_call_path","arguments":{"project":"demo","start_node_qn":"demo:main","direction":"both","depth":2,"risk_labels":true,"include_tests":true}}}
         )).?;
         defer std.testing.allocator.free(response);
 
@@ -1642,10 +1670,10 @@ test "trace_call_path risk_labels and include_tests" {
         try std.testing.expectEqual(true, callers.items[0].object.get("is_test").?.bool);
     }
 
-    // Test with include_tests=false
+    // Default behavior should exclude tests.
     {
         const response = (try srv.handleRequest(
-            \\{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"trace_call_path","arguments":{"project":"demo","start_node_qn":"demo:main","direction":"both","depth":2,"include_tests":false}}}
+            \\{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"trace_call_path","arguments":{"project":"demo","start_node_qn":"demo:main","direction":"both","depth":2}}}
         )).?;
         defer std.testing.allocator.free(response);
 
@@ -2275,6 +2303,76 @@ test "get_code_snippet returns source, match metadata, and suggestions" {
     const ambiguous_result = ambiguous_parsed.value.object.get("result").?.object;
     try std.testing.expectEqualStrings("ambiguous", ambiguous_result.get("status").?.string);
     try std.testing.expect(ambiguous_result.get("suggestions").?.array.items.len >= 2);
+}
+
+test "trace_call_path defaults omitted mode to calls" {
+    var s = try store.Store.openMemory(std.testing.allocator);
+    defer s.deinit();
+    try s.upsertProject("demo", "/tmp/demo");
+    const start_id = try s.upsertNode(.{
+        .project = "demo",
+        .label = "Function",
+        .name = "start",
+        .qualified_name = "demo:start",
+        .file_path = "main.py",
+    });
+    const target_id = try s.upsertNode(.{
+        .project = "demo",
+        .label = "Function",
+        .name = "finish",
+        .qualified_name = "demo:finish",
+        .file_path = "main.py",
+    });
+    _ = try s.upsertEdge(.{
+        .project = "demo",
+        .source_id = start_id,
+        .target_id = target_id,
+        .edge_type = "CALLS",
+    });
+    _ = try s.upsertEdge(.{
+        .project = "demo",
+        .source_id = start_id,
+        .target_id = target_id,
+        .edge_type = "USAGE",
+    });
+
+    var srv = McpServer.init(std.testing.allocator, &s);
+    defer srv.deinit();
+
+    const response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"trace_call_path","arguments":{"project":"demo","start_node_qn":"demo:start","direction":"out","depth":1}}}
+    )).?;
+    defer std.testing.allocator.free(response);
+
+    try std.testing.expect(std.mem.indexOf(u8, response, "\"mode\":\"calls\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, response, "\"type\":\"CALLS\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, response, "\"type\":\"USAGE\"") == null);
+}
+
+test "get_code_snippet file stem suffix resolves colon qualified names" {
+    var s = try store.Store.openMemory(std.testing.allocator);
+    defer s.deinit();
+    try s.upsertProject("demo", "/tmp/demo");
+    _ = try s.upsertNode(.{
+        .project = "demo",
+        .label = "Function",
+        .name = "entry",
+        .qualified_name = "demo:main.py:python:symbol:python:entry",
+        .file_path = "main.py",
+        .start_line = 1,
+        .end_line = 2,
+    });
+
+    var srv = McpServer.init(std.testing.allocator, &s);
+    defer srv.deinit();
+
+    const response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"get_code_snippet","arguments":{"project":"demo","qualified_name":"main.entry"}}}
+    )).?;
+    defer std.testing.allocator.free(response);
+
+    try std.testing.expect(std.mem.indexOf(u8, response, "\"name\":\"entry\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, response, "\"match_method\":\"suffix\"") != null);
 }
 
 test "search_graph returns totals pagination and connected summaries" {

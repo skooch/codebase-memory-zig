@@ -5,6 +5,7 @@ const std = @import("std");
 /// Simplified regex-like matching: handles ^...$, .* wildcards, and substring matching.
 /// Allocates temporarily for .* stripping; caller provides allocator.
 pub fn matchRegexish(allocator: std.mem.Allocator, actual: []const u8, pattern: []const u8) bool {
+    if (expandAlternationAndMatch(allocator, actual, pattern)) |matched| return matched;
     if (pattern.len >= 2 and pattern[0] == '^' and pattern[pattern.len - 1] == '$') {
         const inner = pattern[1 .. pattern.len - 1];
         if (std.mem.eql(u8, inner, ".*")) return true;
@@ -29,6 +30,66 @@ pub fn matchRegexish(allocator: std.mem.Allocator, actual: []const u8, pattern: 
     }
     if (tmp.items.len == 0) return true;
     return std.mem.indexOf(u8, actual, tmp.items) != null;
+}
+
+fn expandAlternationAndMatch(
+    allocator: std.mem.Allocator,
+    actual: []const u8,
+    pattern: []const u8,
+) ?bool {
+    if (pattern.len == 0) return null;
+
+    var depth: usize = 0;
+    var first_pipe: ?usize = null;
+    for (pattern, 0..) |ch, idx| {
+        switch (ch) {
+            '(' => depth += 1,
+            ')' => {
+                if (depth > 0) depth -= 1;
+            },
+            '|' => if (depth == 0) {
+                first_pipe = idx;
+                break;
+            },
+            else => {},
+        }
+    }
+    if (first_pipe) |_| {
+        var branch_start: usize = 0;
+        depth = 0;
+        for (pattern, 0..) |ch, idx| {
+            switch (ch) {
+                '(' => depth += 1,
+                ')' => {
+                    if (depth > 0) depth -= 1;
+                },
+                '|' => if (depth == 0) {
+                    if (matchRegexish(allocator, actual, pattern[branch_start..idx])) return true;
+                    branch_start = idx + 1;
+                },
+                else => {},
+            }
+        }
+        return matchRegexish(allocator, actual, pattern[branch_start..]);
+    }
+
+    const open = std.mem.indexOfScalar(u8, pattern, '(') orelse return null;
+    const close_offset = std.mem.indexOfScalar(u8, pattern[open + 1 ..], ')') orelse return null;
+    const close = open + 1 + close_offset;
+    const group = pattern[open + 1 .. close];
+    if (std.mem.indexOfScalar(u8, group, '|') == null) return null;
+
+    var iter = std.mem.splitScalar(u8, group, '|');
+    while (iter.next()) |branch| {
+        const expanded = std.fmt.allocPrint(allocator, "{s}{s}{s}", .{
+            pattern[0..open],
+            branch,
+            pattern[close + 1 ..],
+        }) catch return false;
+        defer allocator.free(expanded);
+        if (matchRegexish(allocator, actual, expanded)) return true;
+    }
+    return false;
 }
 
 /// Simple glob matching with a single * wildcard.
@@ -58,6 +119,12 @@ test "matchRegexish strip dotstar" {
     try std.testing.expect(matchRegexish(std.testing.allocator, "hello world", ".*hello.*"));
     try std.testing.expect(matchRegexish(std.testing.allocator, "hello world", "hello"));
     try std.testing.expect(!matchRegexish(std.testing.allocator, "goodbye", "hello"));
+}
+
+test "matchRegexish alternation groups" {
+    try std.testing.expect(matchRegexish(std.testing.allocator, "needle alpha", "needle (alpha|beta)"));
+    try std.testing.expect(matchRegexish(std.testing.allocator, "needle beta", "needle (alpha|beta)"));
+    try std.testing.expect(!matchRegexish(std.testing.allocator, "needle gamma", "needle (alpha|beta)"));
 }
 
 test "globMatch patterns" {

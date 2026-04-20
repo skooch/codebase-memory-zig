@@ -72,31 +72,6 @@
   "trace_call_path": [
     [
       [
-        "Counter",
-        "bump",
-        "DEFINES_METHOD"
-      ],
-      [
-        "Counter",
-        "new",
-        "DEFINES_METHOD"
-      ],
-      [
-        "Counter",
-        "notify",
-        "DEFINES_METHOD"
-      ],
-      [
-        "Notifier",
-        "notify",
-        "DEFINES_METHOD"
-      ],
-      [
-        "build",
-        "Counter",
-        "USAGE"
-      ],
-      [
         "build",
         "bump",
         "CALLS"
@@ -107,12 +82,7 @@
         "CALLS"
       ],
       [
-        "emit",
-        "Notifier",
-        "USAGE"
-      ],
-      [
-        "emit",
+        "build",
         "notify",
         "CALLS"
       ]

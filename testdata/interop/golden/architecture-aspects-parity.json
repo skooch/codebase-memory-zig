@@ -1,0 +1,165 @@
+{
+  "delete_project": [],
+  "detect_changes_count": 0,
+  "fixture_id": "architecture-aspects-parity",
+  "get_architecture": [
+    {
+      "edge_types": [
+        "CALLS",
+        "CONTAINS_FILE",
+        "CONTAINS_FOLDER",
+        "DEFINES",
+        "IMPORTS",
+        "TESTS"
+      ],
+      "entry_points": [],
+      "hotspots": [
+        {
+          "file_path": "app/main.py",
+          "in_degree": 1,
+          "label": "File",
+          "name": "main.py",
+          "out_degree": 4,
+          "symbol": "py"
+        },
+        {
+          "file_path": "app/main.py",
+          "in_degree": 3,
+          "label": "Function",
+          "name": "bootstrap",
+          "out_degree": 1,
+          "symbol": "bootstrap"
+        },
+        {
+          "file_path": "tests/test_main.py",
+          "in_degree": 1,
+          "label": "File",
+          "name": "test_main.py",
+          "out_degree": 3,
+          "symbol": "py"
+        },
+        {
+          "file_path": ".",
+          "in_degree": 0,
+          "label": "Project",
+          "name": "architecture-aspects-parity",
+          "out_degree": 3,
+          "symbol": "architecture-aspects-parity"
+        },
+        {
+          "file_path": "lib/helpers.py",
+          "in_degree": 1,
+          "label": "File",
+          "name": "helpers.py",
+          "out_degree": 2,
+          "symbol": "py"
+        },
+        {
+          "file_path": "app/main.py",
+          "in_degree": 2,
+          "label": "Function",
+          "name": "run",
+          "out_degree": 1,
+          "symbol": "run"
+        },
+        {
+          "file_path": "tests/test_main.py",
+          "in_degree": 1,
+          "label": "Function",
+          "name": "test_bootstrap",
+          "out_degree": 2,
+          "symbol": "test_bootstrap"
+        },
+        {
+          "file_path": ".",
+          "in_degree": 1,
+          "label": "Folder",
+          "name": "app",
+          "out_degree": 1,
+          "symbol": "app"
+        },
+        {
+          "file_path": "app/main.py",
+          "in_degree": 2,
+          "label": "Module",
+          "name": "app/main.py",
+          "out_degree": 0,
+          "symbol": "py"
+        },
+        {
+          "file_path": "lib/helpers.py",
+          "in_degree": 2,
+          "label": "Function",
+          "name": "helper",
+          "out_degree": 0,
+          "symbol": "helper"
+        }
+      ],
+      "languages": [
+        {
+          "count": 3,
+          "language": "python"
+        }
+      ],
+      "messages": [],
+      "node_labels": [
+        "File",
+        "Folder",
+        "Function",
+        "Module",
+        "Project"
+      ],
+      "packages": [
+        {
+          "count": 1,
+          "name": "app"
+        },
+        {
+          "count": 1,
+          "name": "lib"
+        },
+        {
+          "count": 1,
+          "name": "tests"
+        }
+      ],
+      "project": "architecture-aspects-parity",
+      "routes": [],
+      "total_edges": 19,
+      "total_nodes": 14
+    }
+  ],
+  "get_code_snippet": [],
+  "get_graph_schema": [],
+  "index_repository": {
+    "edges_actual": 19,
+    "edges_min": 4,
+    "nodes_actual": 14,
+    "nodes_min": 7
+  },
+  "index_status": [],
+  "list_projects": [
+    "architecture-aspects-parity"
+  ],
+  "manage_adr": [],
+  "query_graph": [],
+  "search_code": [],
+  "search_graph": [],
+  "tools_list": [
+    "delete_project",
+    "detect_changes",
+    "get_architecture",
+    "get_code_snippet",
+    "get_graph_schema",
+    "index_repository",
+    "index_status",
+    "ingest_traces",
+    "list_projects",
+    "manage_adr",
+    "query_graph",
+    "search_code",
+    "search_graph",
+    "trace_call_path"
+  ],
+  "trace_call_path": []
+}

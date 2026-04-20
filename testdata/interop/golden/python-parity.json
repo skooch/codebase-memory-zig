@@ -1,7 +1,8 @@
 {
   "delete_project": [
     {
-      "deleted": true
+      "deleted": true,
+      "status": "deleted"
     }
   ],
   "detect_changes_count": 1,
@@ -26,14 +27,29 @@
         "Module",
         "Project",
         "Variable"
-      ]
+      ],
+      "project": "python-parity",
+      "total_edges": 29,
+      "total_nodes": 19
     }
   ],
   "get_code_snippet": [
     {
+      "callee_names": [],
+      "callees": 2,
+      "caller_names": [],
+      "callers": 0,
+      "end_line": 16,
       "file_path": "main.py",
+      "is_exported": false,
+      "label": "Function",
+      "match_method": "",
+      "name": "bootstrap",
       "qualified_name": "python-parity:main.py:python:symbol:python:bootstrap",
-      "source": "def bootstrap() -> ActiveWorker:\n    worker = ActiveWorker(\"primary\")\n    worker.configure(\"mode\", \"batch\")\n    worker.run()\n    return worker"
+      "signature": "",
+      "source": "def bootstrap() -> ActiveWorker:\n    worker = ActiveWorker(\"primary\")\n    worker.configure(\"mode\", \"batch\")\n    worker.run()\n    return worker",
+      "start_line": 12,
+      "status": "ok"
     }
   ],
   "get_graph_schema": [
@@ -48,6 +64,7 @@
         "IMPORTS",
         "USAGE"
       ],
+      "edges": 29,
       "languages": [
         "python",
         "yaml"
@@ -60,7 +77,10 @@
         "Module",
         "Project",
         "Variable"
-      ]
+      ],
+      "nodes": 19,
+      "project": "python-parity",
+      "status": "ready"
     }
   ],
   "index_repository": {
@@ -306,19 +326,38 @@
     {
       "results": [
         {
+          "end_line": 16,
           "file_path": "main.py",
           "label": "Function",
-          "name": "bootstrap"
+          "match_lines": [
+            12
+          ],
+          "name": "bootstrap",
+          "snippet": "",
+          "start_line": 12
         },
         {
+          "end_line": 11,
           "file_path": "models.py",
           "label": "Function",
-          "name": "trace"
+          "match_lines": [
+            10
+          ],
+          "name": "trace",
+          "snippet": "",
+          "start_line": 10
         },
         {
+          "end_line": 17,
           "file_path": "main.py",
           "label": "Module",
-          "name": "main.py"
+          "match_lines": [
+            2,
+            11
+          ],
+          "name": "main.py",
+          "snippet": "",
+          "start_line": 1
         }
       ],
       "total_results": 3
@@ -379,16 +418,6 @@
   "trace_call_path": [
     [
       [
-        "Worker",
-        "run",
-        "DEFINES_METHOD"
-      ],
-      [
-        "bootstrap",
-        "Worker",
-        "USAGE"
-      ],
-      [
         "bootstrap",
         "configure",
         "CALLS"
@@ -397,11 +426,6 @@
         "bootstrap",
         "run",
         "CALLS"
-      ],
-      [
-        "bootstrap",
-        "trace",
-        "DECORATES"
       ]
     ]
   ]

@@ -11,9 +11,9 @@ The interop harness is in materially better shape than the 2026-04-12 review des
 Current verified state:
 - `zig build test` passes in the execution worktree.
 - `bash scripts/run_cli_parity.sh --zig-only` passes.
-- `bash scripts/run_interop_alignment.sh --zig-only` passes at `35/35`.
+- `bash scripts/run_interop_alignment.sh --zig-only` passes at `38/38`.
 - `bash scripts/run_interop_alignment.sh` now reports no hard mismatches instead of the earlier six-item set.
-- The current full compare baseline is `35` fixtures, `267` comparisons, `150` strict matches, `39` diagnostic-only comparisons, and `0` mismatches.
+- The current full compare baseline is `38` fixtures, `294` comparisons, `161` strict matches, `44` diagnostic-only comparisons, and `0` mismatches.
 - The full-compare workflow no longer hides failures behind `continue-on-error` and now runs as a path-scoped PR or `main` gate in addition to the weekly scheduled sweep.
 
 The review from 2026-04-12 is no longer accurate as a live issue register. Several items it flagged have already been resolved in the repo, and the remaining debt is narrower than that review implied.
@@ -31,7 +31,7 @@ The review from 2026-04-12 is no longer accurate as a live issue register. Sever
 ### Fixture Footprint
 
 Current manifest footprint:
-- `35` fixtures in `testdata/interop/manifest.json`
+- `38` fixtures in `testdata/interop/manifest.json`
 - zig-only goldens committed for all manifest fixtures
 - basic, parity, graph-model, enrichment, discovery-scope, error-path, language-expansion, route-expansion, semantic-expansion, config-expansion, and exact protocol-contract coverage all present
 
@@ -106,6 +106,7 @@ The interop and parity verification surface is now strong enough to support the 
 
 - all shared MCP tools are behavior-tested somewhere in the manifest
 - the MCP handshake and tool-surface layer now have dedicated exact fixtures via `protocol-contract` and `tool-surface-parity`
+- the query/analysis surface now also has dedicated exact fixtures for snippet or trace behavior, architecture-aspect coverage, and search-code ranking or mode behavior
 - the shared `query_graph` contract is now behavior-tested past simple counts, including bounded `DISTINCT`, boolean-precedence filters, numeric property predicates, and edge-type filtering
 - the bounded Go hybrid-resolution sidecar contract is now exercised on both the original single-call fixture and the expanded multi-document fixture
 - the broader route surface now explicitly includes one additional strict shared framework slice via `route-expansion-httpx`, while `keyword_request_styles` and `semantic-expansion-send-task` stay diagnostic-only by design

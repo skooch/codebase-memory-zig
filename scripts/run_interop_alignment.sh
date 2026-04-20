@@ -200,7 +200,7 @@ def canonical_search_nodes(payload: Any) -> list[dict[str, str]]:
     return normalized
 
 
-def canonical_query(payload: Any) -> tuple[tuple[str, ...], list[tuple[str, ...]]]:
+def canonical_query(payload: Any, preserve_order: bool = False) -> tuple[tuple[str, ...], list[tuple[str, ...]]]:
     if not isinstance(payload, dict):
         return tuple(), []
     columns = []
@@ -216,7 +216,8 @@ def canonical_query(payload: Any) -> tuple[tuple[str, ...], list[tuple[str, ...]
         if not isinstance(row, list):
             continue
         rows.append(tuple(str(cell) for cell in row))
-    rows.sort()
+    if not preserve_order:
+        rows.sort()
     return tuple(columns), rows
 
 
@@ -262,6 +263,61 @@ def canonical_trace(payload: Any) -> list[tuple[str, str, str]]:
         edges.append((canonical_symbol_identity(source), canonical_symbol_identity(function_name), "CALLS"))
     edges.sort()
     return edges
+
+
+def _normalize_trace_direction(direction: str) -> str:
+    lowered = direction.lower()
+    if lowered in ("outbound", "out"):
+        return "out"
+    if lowered in ("inbound", "in"):
+        return "in"
+    return lowered
+
+
+def canonical_trace_contract(payload: Any) -> dict[str, Any]:
+    error = canonical_error(payload)
+    if error is not None:
+        return {"error": error}
+    if not isinstance(payload, dict):
+        return {}
+
+    def normalize_entries(values: Any) -> list[dict[str, Any]]:
+        if not isinstance(values, list):
+            return []
+        normalized: list[dict[str, Any]] = []
+        for value in values:
+            if isinstance(value, dict):
+                symbol = canonical_symbol_identity(
+                    value.get("qualified_name", value.get("name", ""))
+                )
+                normalized.append(
+                    {
+                        "symbol": symbol,
+                        "hop": int(value.get("hop", 0) or 0),
+                        "risk": str(value.get("risk", "")),
+                        "is_test": bool(value.get("is_test", False)),
+                    }
+                )
+            else:
+                normalized.append(
+                    {
+                        "symbol": canonical_symbol_identity(value),
+                        "hop": 0,
+                        "risk": "",
+                        "is_test": False,
+                    }
+                )
+        normalized.sort(key=lambda item: (item["hop"], item["symbol"], item["risk"], item["is_test"]))
+        return normalized
+
+    return {
+        "function": canonical_symbol_identity(payload.get("function_name", payload.get("function", ""))),
+        "direction": _normalize_trace_direction(str(payload.get("direction", ""))),
+        "mode": str(payload.get("mode", "")) or "calls",
+        "edges": canonical_trace(payload),
+        "callees": normalize_entries(payload.get("callees", [])),
+        "callers": normalize_entries(payload.get("callers", [])),
+    }
 
 
 def canonical_list_projects(payload: Any) -> list[dict[str, Any]]:
@@ -345,9 +401,15 @@ def canonical_tool_schema_contract(payload: Any) -> dict[str, dict[str, Any]]:
     return normalized
 
 
-def canonical_architecture(payload: Any) -> dict[str, list[str]]:
+def canonical_architecture(payload: Any) -> dict[str, Any]:
     if not isinstance(payload, dict):
-        return {"node_labels": [], "edge_types": []}
+        return {
+            "project": "",
+            "total_nodes": 0,
+            "total_edges": 0,
+            "node_labels": [],
+            "edge_types": [],
+        }
 
     def collect_named(entries: Any, key: str) -> list[str]:
         if not isinstance(entries, list):
@@ -358,17 +420,106 @@ def canonical_architecture(payload: Any) -> dict[str, list[str]]:
                 out.append(str(entry[key]))
         return sorted(set(out))
 
-    return {
+    def collect_counted(entries: Any, key: str) -> list[dict[str, Any]]:
+        if not isinstance(entries, list):
+            return []
+        out: list[dict[str, Any]] = []
+        for entry in entries:
+            if not isinstance(entry, dict) or not entry.get(key):
+                continue
+            out.append(
+                {
+                    key: str(entry[key]),
+                    "count": int(entry.get("count", 0) or 0),
+                }
+            )
+        out.sort(key=lambda item: (item[key], item["count"]))
+        return out
+
+    def collect_symbol_rows(entries: Any) -> list[dict[str, Any]]:
+        if not isinstance(entries, list):
+            return []
+        out: list[dict[str, Any]] = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            out.append(
+                {
+                    "name": str(entry.get("name", "")),
+                    "symbol": canonical_symbol_identity(entry.get("qualified_name", entry.get("name", ""))),
+                    "file_path": normalize_path_for_manifest(str(entry.get("file_path", ""))),
+                    "label": str(entry.get("label", "")),
+                    "in_degree": int(entry.get("in_degree", 0) or 0),
+                    "out_degree": int(entry.get("out_degree", 0) or 0),
+                }
+            )
+        return out
+
+    def collect_routes(entries: Any) -> list[dict[str, str]]:
+        if not isinstance(entries, list):
+            return []
+        out: list[dict[str, str]] = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            out.append(
+                {
+                    "name": str(entry.get("name", "")),
+                    "file_path": normalize_path_for_manifest(str(entry.get("file_path", ""))),
+                    "target": str(entry.get("target", "")),
+                    "type": str(entry.get("type", "")),
+                }
+            )
+        out.sort(key=lambda item: (item["name"], item["file_path"], item["target"], item["type"]))
+        return out
+
+    def collect_messages(entries: Any) -> list[dict[str, Any]]:
+        if not isinstance(entries, list):
+            return []
+        out: list[dict[str, Any]] = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            emitters = sorted(str(item) for item in entry.get("emitters", []) if isinstance(item, str))
+            subscribers = sorted(str(item) for item in entry.get("subscribers", []) if isinstance(item, str))
+            out.append(
+                {
+                    "name": str(entry.get("name", "")),
+                    "file_path": normalize_path_for_manifest(str(entry.get("file_path", ""))),
+                    "emitters": emitters,
+                    "subscribers": subscribers,
+                }
+            )
+        out.sort(key=lambda item: (item["name"], item["file_path"]))
+        return out
+
+    normalized = {
+        "project": str(payload.get("project", "")),
+        "total_nodes": int(payload.get("total_nodes", 0) or 0),
+        "total_edges": int(payload.get("total_edges", 0) or 0),
         "node_labels": collect_named(payload.get("node_labels"), "label"),
         "edge_types": collect_named(payload.get("edge_types"), "type"),
     }
+    if "languages" in payload:
+        normalized["languages"] = collect_counted(payload.get("languages"), "language")
+    if "packages" in payload:
+        normalized["packages"] = collect_counted(payload.get("packages"), "name")
+    if "hotspots" in payload:
+        normalized["hotspots"] = collect_symbol_rows(payload.get("hotspots"))
+    if "entry_points" in payload:
+        normalized["entry_points"] = collect_symbol_rows(payload.get("entry_points"))
+    if "routes" in payload:
+        normalized["routes"] = collect_routes(payload.get("routes"))
+    if "messages" in payload:
+        normalized["messages"] = collect_messages(payload.get("messages"))
+    return normalized
 
 
 def canonical_search_code(payload: Any) -> dict[str, Any]:
     if not isinstance(payload, dict):
         return {"total_results": 0, "results": []}
     results = payload.get("results", [])
-    normalized: list[dict[str, str]] = []
+    normalized: list[dict[str, Any]] = []
     if isinstance(results, list):
         for row in results:
             if not isinstance(row, dict):
@@ -378,6 +529,10 @@ def canonical_search_code(payload: Any) -> dict[str, Any]:
                     "file_path": normalize_path_for_manifest(str(row.get("file_path", row.get("file", "")))),
                     "name": str(row.get("name", row.get("node", ""))),
                     "label": str(row.get("label", "")),
+                    "start_line": int(row.get("start_line", 0) or 0),
+                    "end_line": int(row.get("end_line", 0) or 0),
+                    "snippet": str(row.get("source", row.get("snippet", ""))).rstrip("\n"),
+                    "match_lines": [int(value) for value in row.get("match_lines", []) if isinstance(value, int)],
                 }
             )
     if not normalized:
@@ -388,6 +543,10 @@ def canonical_search_code(payload: Any) -> dict[str, Any]:
                     "file_path": normalize_path_for_manifest(str(path)),
                     "name": "",
                     "label": "",
+                    "start_line": 0,
+                    "end_line": 0,
+                    "snippet": "",
+                    "match_lines": [],
                 }
                 for path in files
             ]
@@ -487,7 +646,7 @@ def canonical_contract_tool_result(payload: Any) -> dict[str, Any]:
 
 def canonical_graph_schema(payload: Any) -> dict[str, Any]:
     if not isinstance(payload, dict):
-        return {"node_labels": [], "edge_types": [], "languages": []}
+        return {"project": "", "status": "", "nodes": 0, "edges": 0, "node_labels": [], "edge_types": [], "languages": []}
     node_labels = payload.get("node_labels", [])
     edge_types = payload.get("edge_types", [])
     languages = payload.get("languages", [])
@@ -509,6 +668,10 @@ def canonical_graph_schema(payload: Any) -> dict[str, Any]:
         return sorted(set(out))
 
     return {
+        "project": str(payload.get("project", "")),
+        "status": str(payload.get("status", "")),
+        "nodes": int(payload.get("nodes", 0) or 0),
+        "edges": int(payload.get("edges", 0) or 0),
         "node_labels": collect_strings(node_labels, "label"),
         "edge_types": collect_strings(edge_types, "type"),
         "languages": sorted(
@@ -521,14 +684,35 @@ def canonical_graph_schema(payload: Any) -> dict[str, Any]:
 
 def canonical_code_snippet(payload: Any) -> dict[str, Any]:
     if isinstance(payload, str) and "symbol not found" in payload.lower():
-        return {"qualified_name": "", "source": "", "file_path": ""}
+        return {"status": "not_found", "qualified_name": "", "source": "", "file_path": ""}
     if isinstance(payload, dict) and "__error__" in payload:
         error_payload = payload.get("__error__", {})
         if isinstance(error_payload, dict) and "symbol not found" in str(error_payload.get("message", "")).lower():
-            return {"qualified_name": "", "source": "", "file_path": ""}
-        return {"qualified_name": "", "source": "", "file_path": ""}
+            return {"status": "not_found", "qualified_name": "", "source": "", "file_path": ""}
+        return {"status": "error", "qualified_name": "", "source": "", "file_path": ""}
     if not isinstance(payload, dict):
-        return {"qualified_name": "", "source": "", "file_path": ""}
+        return {"status": "", "qualified_name": "", "source": "", "file_path": ""}
+    if payload.get("status") == "ambiguous":
+        suggestions = payload.get("suggestions", [])
+        normalized_suggestions = []
+        if isinstance(suggestions, list):
+            for suggestion in suggestions:
+                if not isinstance(suggestion, dict):
+                    continue
+                normalized_suggestions.append(
+                    {
+                        "symbol": canonical_symbol_identity(suggestion.get("qualified_name", suggestion.get("name", ""))),
+                        "name": str(suggestion.get("name", "")),
+                        "label": str(suggestion.get("label", "")),
+                        "file_path": Path(normalize_path_for_manifest(str(suggestion.get("file_path", "")))).name,
+                    }
+                )
+        normalized_suggestions.sort(key=lambda item: (item["symbol"], item["file_path"]))
+        return {
+            "status": "ambiguous",
+            "message": str(payload.get("message", "")),
+            "suggestions": normalized_suggestions,
+        }
     fp = str(payload.get("file_path", ""))
     qn = str(payload.get("qualified_name", ""))
     # Make file_path relative: extract project name from qualified_name
@@ -544,38 +728,70 @@ def canonical_code_snippet(payload: Any) -> dict[str, Any]:
     if fp == ".":
         fp = ""
     return {
+        "status": "ok",
+        "name": str(payload.get("name", "")),
+        "label": str(payload.get("label", "")),
         "qualified_name": qn,
         "source": str(payload.get("source", "")),
         "file_path": normalize_path_for_manifest(fp),
+        "start_line": int(payload.get("start_line", 0) or 0),
+        "end_line": int(payload.get("end_line", 0) or 0),
+        "match_method": str(payload.get("match_method", "")),
+        "callers": int(payload.get("callers", 0) or 0),
+        "callees": int(payload.get("callees", 0) or 0),
+        "caller_names": sorted(str(value) for value in payload.get("caller_names", []) if isinstance(value, str)),
+        "callee_names": sorted(str(value) for value in payload.get("callee_names", []) if isinstance(value, str)),
+        "signature": str(payload.get("signature", "")),
+        "is_exported": bool(payload.get("is_exported", False)),
     }
 
 
 def comparable_code_snippet(payload: Any) -> dict[str, str]:
     snippet = canonical_code_snippet(payload)
-    file_path = snippet.get("file_path", "")
+    if snippet.get("status") == "ambiguous":
+        return {
+            "status": "ambiguous",
+            "suggestions": snippet.get("suggestions", []),
+            "message": str(snippet.get("message", "")),
+        }
+    file_path = str(snippet.get("file_path", ""))
     if file_path:
         file_path = Path(file_path).name
     return {
+        "status": str(snippet.get("status", "")),
+        "name": str(snippet.get("name", "")),
+        "label": str(snippet.get("label", "")),
         "symbol": snippet_lookup_name(str(snippet.get("qualified_name", ""))),
         "source": str(snippet.get("source", "")).rstrip("\n"),
         "file_path": file_path,
+        "start_line": int(snippet.get("start_line", 0) or 0),
+        "end_line": int(snippet.get("end_line", 0) or 0),
+        "callers": int(snippet.get("callers", 0) or 0),
+        "callees": int(snippet.get("callees", 0) or 0),
+        "caller_names": snippet.get("caller_names", []),
+        "callee_names": snippet.get("callee_names", []),
     }
 
 
-def canonical_index_status(payload: Any) -> dict[str, str]:
+def canonical_index_status(payload: Any) -> dict[str, Any]:
     if not isinstance(payload, dict):
         return {"status": "unknown"}
-    return {"status": str(payload.get("status", "unknown"))}
+    return {
+        "status": str(payload.get("status", "unknown")),
+    }
 
 
-def canonical_delete_project(payload: Any) -> dict[str, bool]:
+def canonical_delete_project(payload: Any) -> dict[str, Any]:
     if not isinstance(payload, dict):
         return {"deleted": False}
     deleted = (
         payload.get("status") == "deleted"
         or payload.get("success", False)
     )
-    return {"deleted": bool(deleted)}
+    return {
+        "status": str(payload.get("status", "")),
+        "deleted": bool(deleted),
+    }
 
 
 def send_rpc_request(process: subprocess.Popen[str], request: dict[str, Any]) -> tuple[dict[str, Any], str]:
@@ -2271,8 +2487,11 @@ def run_compare_mode(
                     has_mismatch = False
                     has_diagnostic = False
                     for index, assertion in enumerate(assertions.get("query_graph", [])):
-                        z_case = canonical_query(z_entries[index]["payload"])
-                        c_case = canonical_query(c_entries[index]["payload"])
+                        expected = assertion.get("expect", {})
+                        exact_compare = bool(expected.get("exact_compare", False))
+                        preserve_order = bool(expected.get("preserve_order", exact_compare))
+                        z_case = canonical_query(z_entries[index]["payload"], preserve_order=preserve_order)
+                        c_case = canonical_query(c_entries[index]["payload"], preserve_order=preserve_order)
                         z_failures = check_assertions("query_graph", z_entries[index]["payload"], [assertion])
                         c_failures = check_assertions("query_graph", c_entries[index]["payload"], [assertion])
                         case = {
@@ -2281,7 +2500,10 @@ def run_compare_mode(
                             "zig_failures": z_failures,
                             "c_failures": c_failures,
                         }
-                        if z_failures != c_failures:
+                        if exact_compare:
+                            if z_failures or c_failures or z_case != c_case:
+                                has_mismatch = True
+                        elif z_failures != c_failures:
                             has_mismatch = True
                         elif z_case != c_case:
                             has_diagnostic = True
@@ -2309,6 +2531,18 @@ def run_compare_mode(
                     cases = []
                     has_mismatch = False
                     for index, assertion in enumerate(assertions.get("trace_call_path", [])):
+                        if assertion.get("expect", {}).get("exact_compare"):
+                            z_contract = canonical_trace_contract(z_entries[index]["payload"])
+                            c_contract = canonical_trace_contract(c_entries[index]["payload"])
+                            case = {
+                                "zig": z_contract,
+                                "c": c_contract,
+                                "exact_compare": True,
+                            }
+                            if z_contract != c_contract:
+                                has_mismatch = True
+                            cases.append(case)
+                            continue
                         required = sorted(set(assertion.get("expect", {}).get("required_edge_types", [])))
                         z_types = sorted({edge[2] for edge in canonical_trace(z_entries[index]["payload"])})
                         c_types = sorted({edge[2] for edge in canonical_trace(c_entries[index]["payload"])})
@@ -2342,10 +2576,24 @@ def run_compare_mode(
                 else:
                     cases = []
                     has_mismatch = False
+                    has_diagnostic = False
                     for index, assertion in enumerate(assertions.get("get_architecture", [])):
                         expected = assertion.get("expect", {})
                         z_arch = canonical_architecture(z_entries[index]["payload"])
                         c_arch = canonical_architecture(c_entries[index]["payload"])
+                        if expected.get("exact_compare"):
+                            case = {
+                                "zig": z_arch,
+                                "c": c_arch,
+                                "exact_compare": True,
+                            }
+                            if z_arch != c_arch:
+                                if expected.get("compare_mode") == "diagnostic":
+                                    has_diagnostic = True
+                                else:
+                                    has_mismatch = True
+                            cases.append(case)
+                            continue
                         case = {}
                         for expected_key, actual_key in (
                             ("required_node_labels", "node_labels"),
@@ -2365,6 +2613,12 @@ def run_compare_mode(
                             {"fixture": fixture_id, "tool": scope, "category": "architecture_contract"}
                         )
                         comparisons[scope] = {"status": "mismatch", "cases": cases}
+                    elif has_diagnostic:
+                        comparisons[scope] = {
+                            "status": "diagnostic",
+                            "note": "exact architecture aspect payloads still differ across implementations",
+                            "cases": cases,
+                        }
                     else:
                         comparisons[scope] = {"status": "match", "count": len(cases)}
 
@@ -2379,8 +2633,21 @@ def run_compare_mode(
                     cases = []
                     has_mismatch = False
                     for index, assertion in enumerate(assertions.get("search_code", [])):
-                        expected_rows = assertion.get("expect", {}).get("required_results", [])
-                        expected_files = assertion.get("expect", {}).get("required_files", [])
+                        expected = assertion.get("expect", {})
+                        if expected.get("exact_compare"):
+                            z_rows = canonical_search_code(z_entries[index]["payload"])
+                            c_rows = canonical_search_code(c_entries[index]["payload"])
+                            case = {
+                                "zig": z_rows,
+                                "c": c_rows,
+                                "exact_compare": True,
+                            }
+                            if z_rows != c_rows:
+                                has_mismatch = True
+                            cases.append(case)
+                            continue
+                        expected_rows = expected.get("required_results", [])
+                        expected_files = expected.get("required_files", [])
                         z_rows = canonical_search_code(z_entries[index]["payload"])
                         c_rows = canonical_search_code(c_entries[index]["payload"])
                         same_shape = z_rows == c_rows
@@ -2500,10 +2767,24 @@ def run_compare_mode(
                 else:
                     cases = []
                     has_mismatch = False
+                    has_diagnostic = False
                     for index, assertion in enumerate(assertions.get("get_graph_schema", [])):
                         expected = assertion.get("expect", {})
                         z_schema = canonical_graph_schema(z_entries[index]["payload"])
                         c_schema = canonical_graph_schema(c_entries[index]["payload"])
+                        if expected.get("exact_compare"):
+                            case = {
+                                "zig": z_schema,
+                                "c": c_schema,
+                                "exact_compare": True,
+                            }
+                            if z_schema != c_schema:
+                                if expected.get("compare_mode") == "diagnostic":
+                                    has_diagnostic = True
+                                else:
+                                    has_mismatch = True
+                            cases.append(case)
+                            continue
                         case = {}  # type: Dict[str, Any]
                         for expected_key, actual_key in (
                             ("required_node_labels", "node_labels"),
@@ -2523,6 +2804,12 @@ def run_compare_mode(
                             {"fixture": fixture_id, "tool": scope, "category": "graph_schema_contract"}
                         )
                         comparisons[scope] = {"status": "mismatch", "cases": cases}
+                    elif has_diagnostic:
+                        comparisons[scope] = {
+                            "status": "diagnostic",
+                            "note": "exact schema payloads still differ because graph vocabulary is not yet fully aligned",
+                            "cases": cases,
+                        }
                     else:
                         comparisons[scope] = {"status": "match", "count": len(cases)}
 
@@ -2552,7 +2839,10 @@ def run_compare_mode(
                             "zig_failures": z_failures,
                             "c_failures": c_failures,
                         }
-                        if z_failures != c_failures:
+                        if assertion.get("expect", {}).get("exact_compare"):
+                            if z_failures or c_failures or z_comparable != c_comparable:
+                                has_mismatch = True
+                        elif z_failures != c_failures:
                             has_mismatch = True
                         elif z_comparable != c_comparable:
                             has_diagnostic = True
@@ -2588,7 +2878,10 @@ def run_compare_mode(
                             "zig": z_status,
                             "c": c_status,
                         }
-                        if z_status != c_status:
+                        if assertion.get("expect", {}).get("exact_compare"):
+                            if z_status != c_status:
+                                has_mismatch = True
+                        elif z_status.get("status") != c_status.get("status"):
                             has_mismatch = True
                         cases.append(case)
                     if has_mismatch:
@@ -2616,7 +2909,10 @@ def run_compare_mode(
                             "zig": z_result,
                             "c": c_result,
                         }
-                        if z_result != c_result:
+                        if assertion.get("expect", {}).get("exact_compare"):
+                            if z_result != c_result:
+                                has_mismatch = True
+                        elif z_result.get("deleted") != c_result.get("deleted"):
                             has_mismatch = True
                         cases.append(case)
                     if has_mismatch:
@@ -2628,20 +2924,48 @@ def run_compare_mode(
                         comparisons[scope] = {"status": "match", "count": len(cases)}
 
             if scope == "list_projects":
-                z_fp = results["zig"].get("fixture_project", {})
-                c_fp = results["c"].get("fixture_project", {})
-                if not z_fp or not c_fp:
-                    comparisons[scope] = {"status": "missing", "zig": bool(z_fp), "c": bool(c_fp)}
+                z_entries = get_entries("zig", scope)
+                c_entries = get_entries("c", scope)
+                if not z_entries and not c_entries:
+                    comparisons[scope] = {"status": "not_requested"}
+                elif not z_entries or not c_entries:
+                    comparisons[scope] = {"status": "missing", "zig": bool(z_entries), "c": bool(c_entries)}
                 else:
-                    z_project = {k: z_fp[k] for k in ("root_path",)}
-                    c_project = {k: c_fp[k] for k in ("root_path",)}
-                    if z_project != c_project:
+                    cases = []
+                    has_mismatch = False
+                    zig_fixture_project_name = fixture.get("project")
+                    c_fixture_project_name = results["c"].get("tool_ctx", {}).get("c_project", zig_fixture_project_name)
+                    for index, assertion in enumerate(assertions.get("list_projects", [])):
+                        z_projects = canonical_list_projects(z_entries[index]["payload"])
+                        c_projects = canonical_list_projects(c_entries[index]["payload"])
+                        if assertion.get("expect", {}).get("exact_compare"):
+                            z_project = next((item for item in z_projects if item.get("name") == zig_fixture_project_name), None)
+                            c_project = next((item for item in c_projects if item.get("name") == c_fixture_project_name), None)
+                            case = {
+                                "zig": {"root_path": (z_project or {}).get("root_path", "")},
+                                "c": {"root_path": (c_project or {}).get("root_path", "")},
+                                "exact_compare": True,
+                            }
+                            if case["zig"] != case["c"]:
+                                has_mismatch = True
+                            cases.append(case)
+                        else:
+                            z_project = next((item for item in z_projects if item.get("name") == zig_fixture_project_name), None)
+                            c_project = next((item for item in c_projects if item.get("name") == c_fixture_project_name), None)
+                            case = {
+                                "zig": {"root_path": (z_project or {}).get("root_path", "")},
+                                "c": {"root_path": (c_project or {}).get("root_path", "")},
+                            }
+                            if case["zig"] != case["c"]:
+                                has_mismatch = True
+                            cases.append(case)
+                    if has_mismatch:
                         report["mismatches"].append(
                             {"fixture": fixture_id, "tool": scope, "category": "list_projects"}
                         )
-                        comparisons[scope] = {"status": "mismatch", "zig": z_project, "c": c_project}
+                        comparisons[scope] = {"status": "mismatch", "cases": cases}
                     else:
-                        comparisons[scope] = {"status": "match"}
+                        comparisons[scope] = {"status": "match", "count": len(cases)}
 
             if scope == "index_repository":
                 z_entries = get_entries("zig", scope)

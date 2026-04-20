@@ -78,13 +78,13 @@
   "trace_call_path": [
     [
       [
+        "run",
         "emit",
-        "format",
         "CALLS"
       ],
       [
         "run",
-        "emit",
+        "format",
         "CALLS"
       ]
     ]

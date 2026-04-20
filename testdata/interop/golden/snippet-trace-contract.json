@@ -1,0 +1,153 @@
+{
+  "delete_project": [
+    {
+      "deleted": true,
+      "status": "deleted"
+    }
+  ],
+  "detect_changes_count": 0,
+  "fixture_id": "snippet-trace-contract",
+  "get_architecture": [],
+  "get_code_snippet": [
+    {
+      "callee_names": [],
+      "callees": 0,
+      "caller_names": [
+        "entry",
+        "run"
+      ],
+      "callers": 2,
+      "end_line": 2,
+      "file_path": "main.py",
+      "is_exported": false,
+      "label": "Function",
+      "match_method": "",
+      "name": "helper",
+      "qualified_name": "snippet-trace-contract:main.py:python:symbol:python:helper",
+      "signature": "",
+      "source": "def helper(value):\n    return value",
+      "start_line": 1,
+      "status": "ok"
+    },
+    {
+      "callee_names": [],
+      "callees": 1,
+      "caller_names": [],
+      "callers": 1,
+      "end_line": 6,
+      "file_path": "main.py",
+      "is_exported": false,
+      "label": "Function",
+      "match_method": "suffix",
+      "name": "entry",
+      "qualified_name": "snippet-trace-contract:main.py:python:symbol:python:entry",
+      "signature": "",
+      "source": "def entry():\n    return helper(1)",
+      "start_line": 5,
+      "status": "ok"
+    },
+    {
+      "message": "2 matches for \"run\". Pick a qualified_name from suggestions below, or use search_graph(name_pattern=\"...\") to narrow results.",
+      "status": "ambiguous",
+      "suggestions": [
+        {
+          "file_path": "main.py",
+          "label": "Function",
+          "name": "run",
+          "symbol": "run"
+        },
+        {
+          "file_path": "worker.py",
+          "label": "Function",
+          "name": "run",
+          "symbol": "run"
+        }
+      ]
+    }
+  ],
+  "get_graph_schema": [
+    {
+      "edge_types": [
+        "CALLS",
+        "CONTAINS_FILE",
+        "DEFINES",
+        "IMPORTS",
+        "TESTS",
+        "TESTS_FILE"
+      ],
+      "edges": 17,
+      "languages": [
+        "python"
+      ],
+      "node_labels": [
+        "File",
+        "Function",
+        "Module",
+        "Project"
+      ],
+      "nodes": 12,
+      "project": "snippet-trace-contract",
+      "status": "ready"
+    }
+  ],
+  "index_repository": {
+    "edges_actual": 17,
+    "edges_min": 3,
+    "nodes_actual": 12,
+    "nodes_min": 6
+  },
+  "index_status": [
+    {
+      "status": "ready"
+    }
+  ],
+  "list_projects": [
+    "snippet-trace-contract"
+  ],
+  "manage_adr": [],
+  "query_graph": [],
+  "search_code": [],
+  "search_graph": [],
+  "tools_list": [
+    "delete_project",
+    "detect_changes",
+    "get_architecture",
+    "get_code_snippet",
+    "get_graph_schema",
+    "index_repository",
+    "index_status",
+    "ingest_traces",
+    "list_projects",
+    "manage_adr",
+    "query_graph",
+    "search_code",
+    "search_graph",
+    "trace_call_path"
+  ],
+  "trace_call_path": [
+    [
+      [
+        "entry",
+        "helper",
+        "CALLS"
+      ],
+      [
+        "run",
+        "helper",
+        "CALLS"
+      ]
+    ],
+    [
+      [
+        "entry",
+        "helper",
+        "CALLS"
+      ],
+      [
+        "run",
+        "helper",
+        "CALLS"
+      ]
+    ]
+  ]
+}

@@ -1,0 +1,239 @@
+{
+  "delete_project": [],
+  "detect_changes_count": 0,
+  "fixture_id": "search-code-ranking-parity",
+  "get_architecture": [],
+  "get_code_snippet": [],
+  "get_graph_schema": [],
+  "index_repository": {
+    "edges_actual": 13,
+    "edges_min": 2,
+    "nodes_actual": 14,
+    "nodes_min": 7
+  },
+  "index_status": [],
+  "list_projects": [
+    "search-code-ranking-parity"
+  ],
+  "manage_adr": [],
+  "query_graph": [],
+  "search_code": [
+    {
+      "results": [
+        {
+          "end_line": 7,
+          "file_path": "src/main.py",
+          "label": "Function",
+          "match_lines": [
+            5,
+            6
+          ],
+          "name": "alpha",
+          "snippet": "",
+          "start_line": 4
+        },
+        {
+          "end_line": 11,
+          "file_path": "src/main.py",
+          "label": "Function",
+          "match_lines": [
+            11
+          ],
+          "name": "beta",
+          "snippet": "",
+          "start_line": 10
+        },
+        {
+          "end_line": 2,
+          "file_path": "src/worker.py",
+          "label": "Function",
+          "match_lines": [
+            2
+          ],
+          "name": "gamma",
+          "snippet": "",
+          "start_line": 1
+        },
+        {
+          "end_line": 2,
+          "file_path": "tests/test_main.py",
+          "label": "Function",
+          "match_lines": [
+            2
+          ],
+          "name": "test_alpha",
+          "snippet": "",
+          "start_line": 1
+        },
+        {
+          "end_line": 1,
+          "file_path": "src/main.py",
+          "label": "Variable",
+          "match_lines": [
+            1
+          ],
+          "name": "NEEDLE_CONSTANT",
+          "snippet": "",
+          "start_line": 1
+        }
+      ],
+      "total_results": 5
+    },
+    {
+      "results": [
+        {
+          "end_line": 7,
+          "file_path": "src/main.py",
+          "label": "Function",
+          "match_lines": [
+            5,
+            6
+          ],
+          "name": "alpha",
+          "snippet": "def alpha():\n    first = \"needle alpha\"\n    second = \"needle alpha again\"\n    return first + second",
+          "start_line": 4
+        },
+        {
+          "end_line": 11,
+          "file_path": "src/main.py",
+          "label": "Function",
+          "match_lines": [
+            11
+          ],
+          "name": "beta",
+          "snippet": "def beta():\n    return \"needle beta\"",
+          "start_line": 10
+        },
+        {
+          "end_line": 2,
+          "file_path": "src/worker.py",
+          "label": "Function",
+          "match_lines": [
+            2
+          ],
+          "name": "gamma",
+          "snippet": "def gamma():\n    return \"needle gamma\"",
+          "start_line": 1
+        },
+        {
+          "end_line": 2,
+          "file_path": "tests/test_main.py",
+          "label": "Function",
+          "match_lines": [
+            2
+          ],
+          "name": "test_alpha",
+          "snippet": "def test_alpha():\n    return \"needle test\"",
+          "start_line": 1
+        },
+        {
+          "end_line": 1,
+          "file_path": "src/main.py",
+          "label": "Variable",
+          "match_lines": [
+            1
+          ],
+          "name": "NEEDLE_CONSTANT",
+          "snippet": "NEEDLE_CONSTANT = \"needle constant\"",
+          "start_line": 1
+        }
+      ],
+      "total_results": 5
+    },
+    {
+      "results": [
+        {
+          "end_line": 0,
+          "file_path": "src/main.py",
+          "label": "",
+          "match_lines": [],
+          "name": "",
+          "snippet": "",
+          "start_line": 0
+        },
+        {
+          "end_line": 0,
+          "file_path": "src/worker.py",
+          "label": "",
+          "match_lines": [],
+          "name": "",
+          "snippet": "",
+          "start_line": 0
+        },
+        {
+          "end_line": 0,
+          "file_path": "tests/test_main.py",
+          "label": "",
+          "match_lines": [],
+          "name": "",
+          "snippet": "",
+          "start_line": 0
+        }
+      ],
+      "total_results": 5
+    },
+    {
+      "results": [
+        {
+          "end_line": 7,
+          "file_path": "src/main.py",
+          "label": "Function",
+          "match_lines": [
+            5,
+            6
+          ],
+          "name": "alpha",
+          "snippet": "",
+          "start_line": 4
+        },
+        {
+          "end_line": 11,
+          "file_path": "src/main.py",
+          "label": "Function",
+          "match_lines": [
+            11
+          ],
+          "name": "beta",
+          "snippet": "",
+          "start_line": 10
+        }
+      ],
+      "total_results": 2
+    },
+    {
+      "results": [
+        {
+          "end_line": 7,
+          "file_path": "src/main.py",
+          "label": "Function",
+          "match_lines": [
+            5,
+            6
+          ],
+          "name": "alpha",
+          "snippet": "",
+          "start_line": 4
+        }
+      ],
+      "total_results": 1
+    }
+  ],
+  "search_graph": [],
+  "tools_list": [
+    "delete_project",
+    "detect_changes",
+    "get_architecture",
+    "get_code_snippet",
+    "get_graph_schema",
+    "index_repository",
+    "index_status",
+    "ingest_traces",
+    "list_projects",
+    "manage_adr",
+    "query_graph",
+    "search_code",
+    "search_graph",
+    "trace_call_path"
+  ],
+  "trace_call_path": []
+}

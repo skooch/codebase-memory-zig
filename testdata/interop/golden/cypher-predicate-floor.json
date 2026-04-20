@@ -73,6 +73,18 @@
           "trace"
         ]
       ]
+    },
+    {
+      "columns": [
+        "a.name",
+        "b.name"
+      ],
+      "rows": [
+        [
+          "trace",
+          "helper"
+        ]
+      ]
     }
   ],
   "search_code": [],

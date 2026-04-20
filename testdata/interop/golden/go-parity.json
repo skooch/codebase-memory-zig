@@ -101,21 +101,6 @@
   "trace_call_path": [
     [
       [
-        "NewWorker",
-        "Config",
-        "USAGE"
-      ],
-      [
-        "NewWorker",
-        "Worker",
-        "USAGE"
-      ],
-      [
-        "Worker",
-        "Run",
-        "DEFINES_METHOD"
-      ],
-      [
         "boot",
         "NewWorker",
         "CALLS"

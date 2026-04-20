@@ -21,7 +21,8 @@
     {
       "file_path": "",
       "qualified_name": "",
-      "source": ""
+      "source": "",
+      "status": "not_found"
     }
   ],
   "get_graph_schema": [],

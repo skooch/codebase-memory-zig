@@ -2717,7 +2717,8 @@
               "columns": [
                 "count"
               ],
-              "required_rows_min": 1
+              "required_rows_min": 1,
+              "exact_compare": true
             }
           },
           {
@@ -2730,7 +2731,8 @@
               "columns": [
                 "count"
               ],
-              "required_rows_min": 1
+              "required_rows_min": 1,
+              "exact_compare": true
             }
           },
           {
@@ -2744,7 +2746,8 @@
                 "n.label",
                 "n.name"
               ],
-              "required_rows_min": 1
+              "required_rows_min": 1,
+              "exact_compare": true
             }
           },
           {
@@ -2757,7 +2760,23 @@
               "columns": [
                 "n.name"
               ],
-              "required_rows_min": 1
+              "required_rows_min": 1,
+              "exact_compare": true
+            }
+          },
+          {
+            "args": {
+              "query": "MATCH (a:Function)-[:CALLS]->(b:Function) RETURN a.name, b.name ORDER BY a.name ASC, b.name ASC",
+              "project": "predicate-floor",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": [
+                "a.name",
+                "b.name"
+              ],
+              "required_rows_min": 1,
+              "exact_compare": true
             }
           }
         ]
@@ -2808,6 +2827,253 @@
                 "b.name"
               ],
               "required_rows_min": 2
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "snippet-trace-contract",
+      "path": "testdata/interop/snippet-trace-contract",
+      "project": "snippet-trace-contract",
+      "language": "python",
+      "scope_tools": [
+        "index_repository",
+        "trace_call_path",
+        "get_code_snippet",
+        "get_graph_schema",
+        "index_status",
+        "list_projects",
+        "delete_project"
+      ],
+      "assertions": {
+        "index_repository": {
+          "expect": {
+            "nodes_min": 6,
+            "edges_min": 3
+          }
+        },
+        "trace_call_path": [
+          {
+            "args": {
+              "project": "snippet-trace-contract",
+              "function_name": "helper",
+              "direction": "both",
+              "depth": 2,
+              "risk_labels": true
+            },
+            "expect": {
+              "exact_compare": true
+            }
+          },
+          {
+            "args": {
+              "project": "snippet-trace-contract",
+              "function_name": "helper",
+              "direction": "both",
+              "depth": 2,
+              "include_tests": false
+            },
+            "expect": {
+              "exact_compare": true
+            }
+          }
+        ],
+        "get_code_snippet": [
+          {
+            "args": {
+              "qualified_name": "snippet-trace-contract:main.py:python:symbol:python:helper",
+              "include_neighbors": true
+            },
+            "expect": {
+              "has_source": true,
+              "source_contains": [
+                "def helper"
+              ],
+              "exact_compare": true
+            }
+          },
+          {
+            "args": {
+              "qualified_name": "main.entry"
+            },
+            "expect": {
+              "has_source": true,
+              "source_contains": [
+                "def entry"
+              ],
+              "exact_compare": true
+            }
+          },
+          {
+            "args": {
+              "qualified_name": "run"
+            },
+            "expect": {
+              "exact_compare": true
+            }
+          }
+        ],
+        "get_graph_schema": [
+          {
+            "args": {},
+            "expect": {
+              "required_node_labels": ["File", "Function", "Module"],
+              "required_edge_types": ["CALLS", "DEFINES", "IMPORTS"],
+              "exact_compare": true,
+              "compare_mode": "diagnostic"
+            }
+          }
+        ],
+        "index_status": [
+          {
+            "args": {},
+            "expect": {
+              "status": "indexed",
+              "exact_compare": true
+            }
+          }
+        ],
+        "list_projects": [
+          {
+            "args": {},
+            "expect": {
+              "required_names": [
+                "snippet-trace-contract"
+              ],
+              "exact_compare": true
+            }
+          }
+        ],
+        "delete_project": [
+          {
+            "args": {},
+            "expect": {
+              "status": "deleted",
+              "exact_compare": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "architecture-aspects-parity",
+      "path": "testdata/interop/architecture-aspects-parity",
+      "project": "architecture-aspects-parity",
+      "language": "python",
+      "scope_tools": [
+        "index_repository",
+        "get_architecture",
+        "list_projects"
+      ],
+      "assertions": {
+        "index_repository": {
+          "expect": {
+            "nodes_min": 7,
+            "edges_min": 4
+          }
+        },
+        "get_architecture": [
+          {
+            "args": {
+              "aspects": [
+                "structure",
+                "dependencies",
+                "languages",
+                "packages",
+                "hotspots",
+                "entry_points",
+                "route_summaries",
+                "message_summaries"
+              ]
+            },
+            "expect": {
+              "required_node_labels": [
+                "File",
+                "Function",
+                "Module"
+              ],
+              "required_edge_types": [
+                "CALLS",
+                "DEFINES",
+                "IMPORTS"
+              ],
+              "exact_compare": true,
+              "compare_mode": "diagnostic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "search-code-ranking-parity",
+      "path": "testdata/interop/search-code-ranking-parity",
+      "project": "search-code-ranking-parity",
+      "language": "python",
+      "scope_tools": [
+        "index_repository",
+        "search_code",
+        "list_projects"
+      ],
+      "assertions": {
+        "index_repository": {
+          "expect": {
+            "nodes_min": 7,
+            "edges_min": 2
+          }
+        },
+        "search_code": [
+          {
+            "args": {
+              "pattern": "needle",
+              "mode": "compact",
+              "limit": 10
+            },
+            "expect": {
+              "exact_compare": true
+            }
+          },
+          {
+            "args": {
+              "pattern": "needle",
+              "mode": "full",
+              "context": 1,
+              "limit": 10
+            },
+            "expect": {
+              "exact_compare": true
+            }
+          },
+          {
+            "args": {
+              "pattern": "needle",
+              "mode": "files",
+              "limit": 10
+            },
+            "expect": {
+              "exact_compare": true
+            }
+          },
+          {
+            "args": {
+              "pattern": "needle (alpha|beta)",
+              "regex": true,
+              "mode": "compact",
+              "limit": 10
+            },
+            "expect": {
+              "exact_compare": true
+            }
+          },
+          {
+            "args": {
+              "pattern": "needle alpha",
+              "regex": false,
+              "mode": "compact",
+              "limit": 10
+            },
+            "expect": {
+              "exact_compare": true
             }
           }
         ]
