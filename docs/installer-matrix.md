@@ -1,6 +1,6 @@
 # Installer And Client Matrix
 
-Refresh date: 2026-04-19
+Refresh date: 2026-04-20
 
 This matrix records only the installer and startup paths that have explicit
 fixture or harness evidence in this repo. It is not a wish list.
@@ -37,6 +37,7 @@ fixture or harness evidence in this repo. It is not a wish list.
 | Detected-scope `install` reports the broader 10-agent matrix | Verified | `bash scripts/run_cli_parity.sh --zig-only` |
 | Detected-scope `update --dry-run` succeeds for the broader 10-agent matrix | Verified | `bash scripts/run_cli_parity.sh --zig-only` |
 | Detected-scope `uninstall` removes the broader 10-agent matrix while preserving seeded user config | Verified | `bash scripts/run_cli_parity.sh --zig-only` |
+| Configured `update` can replace the installed binary from a packaged local release archive on supported Unix and macOS hosts | Verified | `bash scripts/run_cli_parity.sh --zig-only` |
 | Shared Codex/Claude install/update/uninstall behavior still matches the original C binary | Verified | `bash scripts/run_cli_parity.sh` |
 
 ## Verified Startup Behavior
@@ -51,9 +52,11 @@ fixture or harness evidence in this repo. It is not a wish list.
 
 ## Explicitly Not Claimed Yet
 
-- Binary self-replacement parity with the original `update` flow
 - The original multi-skill Claude layout; Zig currently ships one consolidated
   `codebase-memory` skill package instead
 - Windows-native process execution, archive, or shell behavior outside the
   fixture-backed path and config-root contract
+- Network-backed updater behavior, broader release-source trust policy, and
+  any self-replacement flow outside the verified file-backed packaged-archive
+  contract
 - Packaging trust, release signing, or setup-script parity

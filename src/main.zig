@@ -601,8 +601,29 @@ fn runUpdateCommand(allocator: std.mem.Allocator) !void {
         }
         std.process.exit(1);
     }
-    if (config.download_url) |_| {
-        try stdout_file.writeAll("download_url is configured, but binary self-replacement is intentionally deferred for source builds.\n");
+    if (config.download_url) |download_url| {
+        const artifact = cli.currentSelfUpdateArtifact() catch |err| {
+            try printFile(stdout_file, "Configured self-update is not available on this platform: {}\n", .{err});
+            std.process.exit(1);
+        };
+        if (parsed.dry_run) {
+            try printFile(
+                stdout_file,
+                "Dry run complete. Binary would be replaced from the configured release archive ({s}) and agent configs would be refreshed.\n",
+                .{artifact.archive_name},
+            );
+        } else {
+            cli.selfReplaceBinaryFromDownloadRoot(allocator, binary_path, download_url) catch |err| {
+                try printFile(stdout_file, "Binary self-replacement failed: {}\n", .{err});
+                std.process.exit(1);
+            };
+            try printFile(
+                stdout_file,
+                "Binary replaced from the configured release archive ({s}). Agent configs were refreshed to the current binary path.\n",
+                .{artifact.archive_name},
+            );
+            try stdout_file.writeAll("Restart your MCP client to pick up the new binary.\n");
+        }
     } else {
         if (parsed.dry_run) {
             try stdout_file.writeAll("Dry run complete. Agent configs would be refreshed to the current binary path.\n");

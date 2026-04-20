@@ -156,6 +156,173 @@ pub fn parseInstallScopeName(value: []const u8) ?InstallScope {
     return null;
 }
 
+const SelfUpdateArtifact = struct {
+    archive_name: []const u8,
+    binary_name: []const u8,
+};
+
+pub fn currentSelfUpdateArtifact() !SelfUpdateArtifact {
+    return switch (builtin.os.tag) {
+        .macos => switch (builtin.cpu.arch) {
+            .aarch64 => .{ .archive_name = "cbm-darwin-arm64.tar.gz", .binary_name = "cbm" },
+            .x86_64 => .{ .archive_name = "cbm-darwin-amd64.tar.gz", .binary_name = "cbm" },
+            else => error.UnsupportedSelfUpdatePlatform,
+        },
+        .linux => switch (builtin.cpu.arch) {
+            .aarch64 => .{ .archive_name = "cbm-linux-arm64.tar.gz", .binary_name = "cbm" },
+            .x86_64 => .{ .archive_name = "cbm-linux-amd64.tar.gz", .binary_name = "cbm" },
+            else => error.UnsupportedSelfUpdatePlatform,
+        },
+        else => error.UnsupportedSelfUpdatePlatform,
+    };
+}
+
+pub fn selfReplaceBinaryFromDownloadRoot(
+    allocator: std.mem.Allocator,
+    binary_path: []const u8,
+    download_root: []const u8,
+) !void {
+    const artifact = try currentSelfUpdateArtifact();
+    const archive_path = try resolveSelfUpdateArchivePath(allocator, download_root, artifact.archive_name);
+    defer allocator.free(archive_path);
+
+    const checksum_dir = std.fs.path.dirname(archive_path) orelse ".";
+    try verifyReleaseChecksum(allocator, archive_path, artifact.archive_name, checksum_dir);
+
+    const binary_bytes = try extractBinaryFromTarGz(allocator, archive_path, artifact.binary_name);
+    defer allocator.free(binary_bytes);
+
+    try replaceBinaryAtPath(allocator, binary_path, binary_bytes);
+}
+
+fn resolveSelfUpdateArchivePath(
+    allocator: std.mem.Allocator,
+    download_root: []const u8,
+    archive_name: []const u8,
+) ![]u8 {
+    const base_path = try resolveSelfUpdateBasePath(allocator, download_root);
+    defer allocator.free(base_path);
+
+    if (std.mem.eql(u8, std.fs.path.basename(base_path), archive_name)) {
+        return allocator.dupe(u8, base_path);
+    }
+    return std.fs.path.join(allocator, &.{ base_path, archive_name });
+}
+
+fn resolveSelfUpdateBasePath(allocator: std.mem.Allocator, download_root: []const u8) ![]u8 {
+    if (std.mem.startsWith(u8, download_root, "file://")) {
+        const suffix = download_root["file://".len..];
+        if (suffix.len == 0) return error.InvalidDownloadRoot;
+        return allocator.dupe(u8, suffix);
+    }
+    if (std.mem.indexOf(u8, download_root, "://") != null) {
+        return error.UnsupportedDownloadRootScheme;
+    }
+    if (download_root.len == 0) return error.InvalidDownloadRoot;
+    return allocator.dupe(u8, download_root);
+}
+
+fn verifyReleaseChecksum(
+    allocator: std.mem.Allocator,
+    archive_path: []const u8,
+    archive_name: []const u8,
+    checksum_dir: []const u8,
+) !void {
+    const checksums_path = try std.fs.path.join(allocator, &.{ checksum_dir, "checksums.txt" });
+    defer allocator.free(checksums_path);
+
+    const checksums = std.fs.cwd().readFileAlloc(allocator, checksums_path, 1024 * 1024) catch |err| switch (err) {
+        error.FileNotFound => return,
+        else => return err,
+    };
+    defer allocator.free(checksums);
+
+    var expected_hex: ?[]const u8 = null;
+    var lines = std.mem.splitScalar(u8, checksums, '\n');
+    while (lines.next()) |line| {
+        const trimmed = std.mem.trim(u8, line, " \t\r");
+        if (trimmed.len == 0) continue;
+        var parts = std.mem.tokenizeAny(u8, trimmed, " \t");
+        const digest = parts.next() orelse continue;
+        const name = parts.next() orelse continue;
+        if (std.mem.eql(u8, name, archive_name)) {
+            expected_hex = digest;
+            break;
+        }
+    }
+    if (expected_hex == null) return;
+
+    const archive_bytes = try std.fs.cwd().readFileAlloc(allocator, archive_path, 64 * 1024 * 1024);
+    defer allocator.free(archive_bytes);
+
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(archive_bytes, &digest, .{});
+    const actual_hex = std.fmt.bytesToHex(digest, .lower);
+    if (!std.mem.eql(u8, expected_hex.?, actual_hex[0..expected_hex.?.len])) {
+        return error.ReleaseChecksumMismatch;
+    }
+}
+
+fn extractBinaryFromTarGz(
+    allocator: std.mem.Allocator,
+    archive_path: []const u8,
+    binary_name: []const u8,
+) ![]u8 {
+    var archive_file = try std.fs.cwd().openFile(archive_path, .{});
+    defer archive_file.close();
+
+    var archive_buffer: [8192]u8 = undefined;
+    var archive_reader = archive_file.reader(&archive_buffer);
+    var inflate_buffer: [std.compress.flate.max_window_len]u8 = undefined;
+    var decompressor = std.compress.flate.Decompress.init(&archive_reader.interface, .gzip, &inflate_buffer);
+    var file_name_buffer: [std.fs.max_path_bytes]u8 = undefined;
+    var link_name_buffer: [std.fs.max_path_bytes]u8 = undefined;
+    var iterator = std.tar.Iterator.init(&decompressor.reader, .{
+        .file_name_buffer = &file_name_buffer,
+        .link_name_buffer = &link_name_buffer,
+    });
+
+    while (try iterator.next()) |entry| {
+        if (entry.kind != .file) continue;
+        const entry_name = std.fs.path.basename(entry.name);
+        if (!std.mem.eql(u8, entry_name, binary_name)) continue;
+        if (entry.size > 64 * 1024 * 1024) return error.ReleaseBinaryTooLarge;
+        var limit_buffer: [1]u8 = undefined;
+        var limited = decompressor.reader.limited(.limited(@intCast(entry.size)), &limit_buffer);
+        return std.Io.Reader.readAlloc(&limited.interface, allocator, @intCast(entry.size));
+    }
+    return error.ReleaseBinaryNotFound;
+}
+
+fn replaceBinaryAtPath(
+    allocator: std.mem.Allocator,
+    binary_path: []const u8,
+    binary_bytes: []const u8,
+) !void {
+    const dir_path = std.fs.path.dirname(binary_path) orelse ".";
+    const base_name = std.fs.path.basename(binary_path);
+    const tmp_name = try std.fmt.allocPrint(allocator, ".{s}.update.tmp", .{base_name});
+    defer allocator.free(tmp_name);
+    const tmp_path = try std.fs.path.join(allocator, &.{ dir_path, tmp_name });
+    defer allocator.free(tmp_path);
+
+    std.fs.cwd().deleteFile(tmp_path) catch {};
+    errdefer std.fs.cwd().deleteFile(tmp_path) catch {};
+
+    var tmp_file = try std.fs.cwd().createFile(tmp_path, .{ .truncate = true, .mode = 0o755 });
+    defer tmp_file.close();
+    try tmp_file.writeAll(binary_bytes);
+    try tmp_file.sync();
+
+    std.fs.cwd().rename(tmp_path, binary_path) catch |err| switch (err) {
+        error.PathAlreadyExists => {
+            try std.fs.cwd().deleteFile(binary_path);
+            try std.fs.cwd().rename(tmp_path, binary_path);
+        },
+        else => return err,
+    };
+}
+
 fn runtimeCacheDirForPlatform(
     allocator: std.mem.Allocator,
     home: ?[]const u8,
@@ -2743,4 +2910,28 @@ test "generic mcp json formats produce correct structure" {
         try std.testing.expect(std.mem.indexOf(u8, updated, "\"enabled\": true") != null);
         try std.testing.expect(std.mem.indexOf(u8, updated, "\"local\"") != null);
     }
+}
+
+test "self update base path accepts local roots and file URLs" {
+    const allocator = std.testing.allocator;
+
+    const plain = try resolveSelfUpdateBasePath(allocator, "/tmp/releases");
+    defer allocator.free(plain);
+    try std.testing.expectEqualStrings("/tmp/releases", plain);
+
+    const file_url = try resolveSelfUpdateBasePath(allocator, "file:///tmp/releases");
+    defer allocator.free(file_url);
+    try std.testing.expectEqualStrings("/tmp/releases", file_url);
+
+    try std.testing.expectError(
+        error.UnsupportedDownloadRootScheme,
+        resolveSelfUpdateBasePath(allocator, "https://example.com/releases"),
+    );
+}
+
+test "current self update artifact matches supported host targets" {
+    const artifact = try currentSelfUpdateArtifact();
+    try std.testing.expect(std.mem.eql(u8, artifact.binary_name, "cbm"));
+    try std.testing.expect(std.mem.startsWith(u8, artifact.archive_name, "cbm-"));
+    try std.testing.expect(std.mem.endsWith(u8, artifact.archive_name, ".tar.gz"));
 }

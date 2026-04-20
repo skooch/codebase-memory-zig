@@ -64,9 +64,12 @@ python3 - "$ZIG_BIN" "$C_BIN" "$REPORT_DIR" "$MODE" "$GOLDEN_DIR" "$CLI_FIXTURE_
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
+import zipfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -77,6 +80,7 @@ mode = sys.argv[4] if len(sys.argv) > 4 else "compare"
 golden_dir = Path(sys.argv[5]) if len(sys.argv) > 5 else None
 fixture_dir = Path(sys.argv[6]) if len(sys.argv) > 6 else None
 windows_fixture_dir = Path(sys.argv[7]) if len(sys.argv) > 7 else None
+root_dir = Path.cwd()
 
 
 def contains_ci(text: str, needle: str) -> bool:
@@ -94,6 +98,10 @@ def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def sha256_path(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def parse_cli_json(text: str) -> Dict[str, Any]:
     for line in reversed([ln.strip() for ln in text.splitlines() if ln.strip()]):
         try:
@@ -109,6 +117,74 @@ def parse_json_file(path: Path) -> Dict[str, Any]:
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def host_release_artifact() -> Dict[str, str]:
+    machine = os.uname().machine.lower()
+    if sys.platform == "darwin":
+        if machine in ("arm64", "aarch64"):
+            return {"archive": "cbm-darwin-arm64.tar.gz", "binary": "cbm", "target": "aarch64-macos", "type": "tar.gz"}
+        if machine in ("x86_64", "amd64"):
+            return {"archive": "cbm-darwin-amd64.tar.gz", "binary": "cbm", "target": "x86_64-macos", "type": "tar.gz"}
+    if sys.platform.startswith("linux"):
+        if machine in ("arm64", "aarch64"):
+            return {"archive": "cbm-linux-arm64.tar.gz", "binary": "cbm", "target": "aarch64-linux-musl", "type": "tar.gz"}
+        if machine in ("x86_64", "amd64"):
+            return {"archive": "cbm-linux-amd64.tar.gz", "binary": "cbm", "target": "x86_64-linux-musl", "type": "tar.gz"}
+    raise RuntimeError(f"unsupported host artifact for {sys.platform}/{machine}")
+
+
+def build_local_release_fixture(root: Path, output_dir: Path) -> Dict[str, str]:
+    artifact = host_release_artifact()
+    version = "9.9.9-installer-update"
+    build_root = output_dir / "build"
+    prefix_dir = build_root / "prefix"
+    cache_dir = build_root / "cache"
+    global_cache_dir = build_root / "global-cache"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        [
+            "zig",
+            "build",
+            "release",
+            f"-Dversion={version}",
+            f"-Dtarget={artifact['target']}",
+            "--prefix",
+            str(prefix_dir),
+            "--cache-dir",
+            str(cache_dir),
+            "--global-cache-dir",
+            str(global_cache_dir),
+        ],
+        cwd=root,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    stage_dir = build_root / "stage"
+    stage_dir.mkdir(parents=True, exist_ok=True)
+    built_binary = prefix_dir / "bin" / artifact["binary"]
+    packaged_binary = stage_dir / artifact["binary"]
+    shutil.copy2(built_binary, packaged_binary)
+    packaged_binary.chmod(0o755)
+
+    archive_path = output_dir / artifact["archive"]
+    if artifact["type"] == "tar.gz":
+        with tarfile.open(archive_path, "w:gz") as tar:
+            tar.add(packaged_binary, arcname=artifact["binary"])
+    else:
+        with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.write(packaged_binary, arcname=artifact["binary"])
+
+    checksums_path = output_dir / "checksums.txt"
+    checksums_path.write_text(f"{sha256_path(archive_path)}  {artifact['archive']}\n")
+    return {
+        "archive": artifact["archive"],
+        "binary": artifact["binary"],
+        "version": version,
+        "download_root": str(output_dir),
+    }
 
 
 def run_cmd(
@@ -470,6 +546,62 @@ def inspect_operational_controls(binary: Path) -> Dict[str, Any]:
         }
 
 
+def inspect_installer_productization(binary: Path, root: Path) -> Dict[str, Any]:
+    with tempfile.TemporaryDirectory(prefix="cbm-cli-productization-") as tmp:
+        home = Path(tmp)
+        (home / ".local" / "bin").mkdir(parents=True, exist_ok=True)
+        (home / ".codex").mkdir(parents=True, exist_ok=True)
+        (home / ".claude").mkdir(parents=True, exist_ok=True)
+
+        installed_binary = home / ".local" / "bin" / binary.name
+        shutil.copy2(binary, installed_binary)
+        installed_binary.chmod(0o755)
+
+        codex_config = home / ".codex" / "config.toml"
+        claude_nested = home / ".claude" / ".mcp.json"
+        claude_legacy = home / ".claude.json"
+        codex_config.write_text("[mcp_servers.codebase-memory-zig]\ncommand = \"/old/stale/path\"\n")
+        claude_nested.write_text(json.dumps({"mcpServers": {"codebase-memory-zig": {"command": "/old/stale/path"}}}, indent=2) + "\n")
+        claude_legacy.write_text(json.dumps({"mcpServers": {"codebase-memory-zig": {"command": "/old/stale/path"}}}, indent=2) + "\n")
+
+        release_root = home / "release-fixture"
+        release_info = build_local_release_fixture(root, release_root)
+
+        set_download_url = run_cmd([str(installed_binary), "config", "set", "download_url", release_info["download_root"]], home)
+        get_download_url = run_cmd([str(installed_binary), "config", "get", "download_url"], home)
+
+        version_before = run_cmd([str(installed_binary), "--version"], home)
+        hash_before = sha256_path(installed_binary)
+        update_dry_run = run_cmd([str(installed_binary), "update", "-y", "--dry-run", "--force"], home)
+        hash_after_dry_run = sha256_path(installed_binary)
+
+        update_real = run_cmd([str(installed_binary), "update", "-y", "--force"], home)
+        hash_after_update = sha256_path(installed_binary)
+        version_after = run_cmd([str(installed_binary), "--version"], home)
+
+        codex_after_update = file_text(codex_config)
+        claude_nested_after_update = file_text(claude_nested)
+        claude_legacy_after_update = file_text(claude_legacy)
+
+        return {
+            "productization_contract": {
+                "config_set_download_url_success": set_download_url.returncode == 0,
+                "config_get_download_url_matches": get_download_url.stdout.strip() == release_info["download_root"],
+                "self_update_dry_run_success": update_dry_run.returncode == 0,
+                "self_update_dry_run_mentions_archive": contains_ci(update_dry_run.stdout, release_info["archive"]),
+                "self_update_dry_run_keeps_binary_hash": hash_before == hash_after_dry_run,
+                "self_update_success": update_real.returncode == 0,
+                "self_update_mentions_archive": contains_ci(update_real.stdout, release_info["archive"]),
+                "self_update_changes_binary_hash": hash_before != hash_after_update,
+                "self_update_changes_version": version_before.stdout.strip() != version_after.stdout.strip()
+                and contains_ci(version_after.stdout, release_info["version"]),
+                "self_update_refreshes_codex_config": str(installed_binary) in codex_after_update,
+                "self_update_refreshes_claude_nested": str(installed_binary) in claude_nested_after_update,
+                "self_update_refreshes_claude_legacy": str(installed_binary) in claude_legacy_after_update,
+            },
+        }
+
+
 def inspect_impl(label: str, binary: Path) -> dict:
     with tempfile.TemporaryDirectory(prefix=f"cbm-cli-{label}-") as tmp:
         home = Path(tmp)
@@ -554,6 +686,11 @@ def inspect_impl(label: str, binary: Path) -> dict:
             if label == "zig"
             else {"operational_contract": {}}
         )
+        productization_result = (
+            inspect_installer_productization(binary, root_dir)
+            if label == "zig"
+            else {"productization_contract": {}}
+        )
 
         return {
             "home": str(home),
@@ -581,6 +718,7 @@ def inspect_impl(label: str, binary: Path) -> dict:
             "installer_ecosystem_contract": installer_result["installer_ecosystem_contract"],
             "windows_contract": windows_result["windows_contract"],
             "operational_contract": operational_result["operational_contract"],
+            "productization_contract": productization_result["productization_contract"],
         }
 
 
@@ -597,6 +735,7 @@ def run_update_golden(zig_result: Dict[str, Any]) -> None:
         "installer_ecosystem_contract": zig_result.get("installer_ecosystem_contract", {}),
         "windows_contract": zig_result.get("windows_contract", {}),
         "operational_contract": zig_result.get("operational_contract", {}),
+        "productization_contract": zig_result.get("productization_contract", {}),
     }
     golden_path.write_text(json.dumps(snapshot, indent=2, sort_keys=True) + "\n")
     print("updated: %s" % golden_path)
@@ -629,6 +768,10 @@ def run_zig_only(zig_result: Dict[str, Any]) -> None:
         "operational_contract": (
             golden.get("operational_contract", {}),
             zig_result.get("operational_contract", {}),
+        ),
+        "productization_contract": (
+            golden.get("productization_contract", {}),
+            zig_result.get("productization_contract", {}),
         ),
     }
     compare_keys = []

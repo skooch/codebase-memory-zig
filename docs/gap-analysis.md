@@ -374,8 +374,9 @@ Completion evidence:
 Intentional residual delta after completion:
 - the shipped default scope remains `shipped`, even though the broader
   detected-scope matrix is now verified
-- binary self-replacement remains intentionally deferred in the Zig `update`
-  flow
+- the verified self-update contract is intentionally bounded to configured
+  file-backed packaged archives on supported Unix and macOS hosts rather than
+  the original's broader network-backed updater flow
 - Claude skill packaging remains consolidated into one `codebase-memory` skill
   rather than the original multi-skill layout
 
@@ -646,7 +647,7 @@ The historical rows below describe the acceptance targets used by completed shar
 | Semantic edges | Zig covers a narrower semantic slice | The Zig graph emits the same overlapping `INHERITS`, `IMPLEMENTS`, and `DECORATES` facts as the original on shared target-language fixture cases | `src/extractor.zig`, `src/pipeline.zig`, `src/store.zig` | Pipeline tests plus parity fixture graph queries |
 | `CONFIGURES` / `USES_TYPE` | `CONFIGURES` and `USES_TYPE` are at shared-fixture parity; `WRITES` / `READS` now have bounded shared zero-row coverage across the exercised Python, JavaScript, TypeScript, and local-state micro-cases, but broader positive overlap is still unproven | The Zig graph emits the same overlapping edge families, target resolution, and retained metadata as the original on parity fixtures that exercise config files and type references | `src/extractor.zig`, `src/pipeline.zig`, `src/graph_buffer.zig`, `src/store.zig` | Parity fixtures plus interop graph/query comparisons |
 | `THROWS` / `RAISES` | Zig now extracts throw/raise edges for JS/TS/TSX | The Zig graph emits `THROWS` and `RAISES` edges from throw statements with the same checked/unchecked classification heuristic as the original | `src/extractor.zig`, `src/pipeline.zig` | Edge-parity fixture plus store tests |
-| `install`, `uninstall`, `update` | Zig now proves the broader detected-scope matrix, but still keeps binary self-replacement deferred | The Zig CLI verifies broader detected-scope config persistence, reporting, and reversible filesystem changes in temp-HOME tests while keeping the shared Codex/Claude compare green against the original | `src/cli.zig`, `src/main.zig` | Temp-HOME command parity checks, expanded zig-only installer matrix lane, and shared Zig/C command comparison |
+| `install`, `uninstall`, `update` | Zig now proves the broader detected-scope matrix plus a bounded file-backed self-update path | The Zig CLI verifies broader detected-scope config persistence, reporting, reversible filesystem changes, and packaged-archive self-replacement in temp-HOME tests while keeping the shared Codex/Claude compare green against the original | `src/cli.zig`, `src/main.zig` | Temp-HOME command parity checks, expanded zig-only installer matrix lane, and shared Zig/C command comparison |
 | Auto-detected agent integrations | Zig now detects and reports the broader 10-agent matrix it claims to support, while the shipped default scope stays narrower | The Zig CLI auto-detects every current supported target in the same environments its temp-home harness creates and reports the same broader matrix shape the original documents | `src/cli.zig`, `src/main.zig` | Temp-HOME detection matrix tests plus CLI output comparison |
 
 Review-validated notes for graph-fidelity follow-ons:
@@ -685,7 +686,8 @@ Deferred or optional future slices:
   - richer decorator/enrichment promotion
   - completed entrypoint: [graph-model-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/graph-model-parity-plan.md)
 - Productization beyond the current contract:
-  - binary self-replacement parity in `update`
+  - broader network-backed or trust-layered self-replacement behavior beyond
+    the verified file-backed packaged-archive contract in `update`
   - any future installer side effects beyond the now-verified ten-agent matrix
   - broader post-build security layers beyond the implemented static audit
     suite
