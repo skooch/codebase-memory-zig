@@ -1,5 +1,11 @@
 # Zig Port of codebase-memory-mcp
 
+This file is now primarily a historical plan and architecture reference.
+
+For the current public status and comparison against the C original, use:
+- [README.md](/Users/skooch/projects/codebase-memory-zig/README.md)
+- [port-comparison.md](/Users/skooch/projects/codebase-memory-zig/docs/port-comparison.md)
+
 ## Status: Current Target Contract Complete / Deferred Enhancements Remain
 
 ### Current Snapshot
@@ -29,6 +35,7 @@ Completed now:
   - Zig
   - Go
   - Java
+  - C#
   - PowerShell
   - GDScript
 - The first-gate fixture corpus and harness report:

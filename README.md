@@ -1,72 +1,81 @@
 # codebase-memory-zig
 
-Zig port of [`codebase-memory-mcp`](https://github.com/DeusData/codebase-memory-mcp), an MCP server that builds a searchable knowledge graph from source code repositories.
+Zig port of [`codebase-memory-mcp`](https://github.com/DeusData/codebase-memory-mcp), an MCP server that builds a searchable knowledge graph from source repositories.
 
-This is not a line-for-line translation. The Zig port restructures internals for better performance, cuts some features, introduces a hybrid serving architecture (FTS5 + graph + optional SCIP overlay), and ships tooling that the C original does not have.
+This is not a line-for-line translation. The Zig port keeps the original's daily-use MCP contract, restructures the internals around Zig + SQLite + tree-sitter, and deliberately narrows or cuts a few long-tail subsystems from the C project.
 
-**This project is not currently in a finished state, I'm still porting it. Please don't submit bugs just yet!**
+## Current State
 
-## Some differences compared to the original
+The current target contract is complete. This repo is now best described as a usable, actively verified Zig implementation of the original's shared daily-use surface, not as an unfinished prototype.
 
-| Area | What Changed | Impact |
-|------|-------------|--------|
-| Cold indexing | 3.2x--8.2x faster across all benchmarked fixtures | Small repos index in ~13 ms vs ~48 ms; medium repos in ~1.4 s vs ~11.2 s |
-| Free-text search | SQLite FTS5 virtual table with `unicode61` tokenizer | Prefix matching and token-aware ranking without spawning grep subprocesses |
-| Query routing | `query_router.zig` dispatches each tool to the best substrate | FTS5 for `search_code`, graph for `trace_call_path`, SCIP for enrichment |
-| SCIP sidecar | Optional `.codebase-memory/scip.json` import | Precise type/symbol metadata from language servers, without blocking baseline indexing |
-| Graph queries | CTE pre-computation + batch BFS traversal | Fewer DB round-trips; replaces O(N * \|edges\|) correlated subqueries |
-| JSON marshaling | `std.json` comptime struct reflection | ~1000 fewer LOC vs manual yyjson; new fields require only struct changes |
-| Error safety | Error unions with `try`/`errdefer` | Missing error checks fail at compile time; transactional indexing prevents corrupt state |
-| SQLite tuning | WAL journal, 64 MB mmap, `busy_timeout = 10s` | Better concurrent-access behavior and read throughput out of the box |
+What that means in practice:
 
-Benchmark data: [`.benchmark_reports/benchmark_report.md`](.benchmark_reports/benchmark_report.md) -- Details: [`docs/differentiators.md`](docs/differentiators.md)
+| Area | Current state | Notes |
+|------|---------------|-------|
+| Shared MCP surface | Implemented | `13` meaningful tools are shipped; the original's `14th` tool, `ingest_traces`, is still a stub upstream and remains unimplemented here |
+| Interop/parity harness | Green | Current recorded full compare: `33` fixtures, `251` comparisons, `0` mismatches, `cli_progress: match` |
+| Core indexing pipeline | Strong shared parity for the chosen contract | Structure, definitions, imports, calls, usages, semantic hints, incremental indexing, watcher lifecycle, and similarity are all implemented |
+| Language support | Broader than the original readiness floor | Parser-backed extraction covers Python, JavaScript, TypeScript, TSX, Rust, Zig, Go, Java, C#, PowerShell, and GDScript |
+| Installer/productization | Broadly implemented | Shared Codex/Claude flows are parity-tested; detected-scope installer coverage now exercises the broader 10-agent matrix |
+| Still intentionally narrower than C | Yes | No built-in UI server, no infra scanning pass family, no OTLP trace ingestion, and no claim of exhaustive Cypher/LSP parity |
 
-## Port progress
+Full comparison: [docs/port-comparison.md](docs/port-comparison.md)
 
-The Zig port covers the daily-use MCP surface and core indexing pipeline. It is not yet a full feature-for-feature replacement for every C subsystem. Full details: [`docs/port-comparison.md`](docs/port-comparison.md)
+## Compared To The Original
 
-| Area | Status | Notes |
-|------|--------|-------|
-| MCP tools (13 of 14) | Near parity | All tools except `ingest_traces` (stubbed in C too) |
-| Core indexing (structure, definitions, imports, calls, usages, semantics) | Near parity | Parallel extraction, incremental reindex, transactional writes |
-| Languages (Python, JavaScript, TypeScript, Rust, Zig) | Near parity | Tree-sitter-backed; heuristic fallback for other languages |
-| Similarity detection (`SIMILAR_TO`) | Near parity | MinHash/LSH with tuned thresholds |
-| Watcher / auto-reindex / runtime lifecycle | Near parity | Adaptive polling, persistent runtime DB, signal-driven shutdown |
-| CLI install/uninstall/update (Codex CLI, Claude Code) | Near parity | 2 of the original's 10 agent targets |
-| Route / cross-service graph | Partial | Verified graph-model fixture contract covers HTTP/async route callers, route nodes, handlers, route-linked data flow, and route summaries; broader framework expansion remains optional |
-| LSP hybrid type resolution | Deferred | C has Go/C/C++ LSP-assisted paths |
-| Git history / config linking passes | Near parity | Git change-coupling and verified config-link fixture slices are implemented; broader config-language/key-shape expansion remains optional |
-| Graph UI | Cut | C ships an optional visualization server |
-| Infra scanning (Docker, K8s, Terraform) | Cut | Outside project scope |
+The biggest differences from the C project today are:
 
-## Requirements
+| Area | Zig port | Impact |
+|------|----------|--------|
+| Cold indexing | `3.2x` to `8.2x` faster on the measured fixtures | Faster first-index experience on small and medium repos |
+| Free-text search | SQLite `FTS5` with `unicode61` tokenizer | Prefix matching and token-aware ranking without grep subprocesses |
+| Query routing | `query_router.zig` dispatches to graph, FTS5, filesystem, or SCIP overlay paths | Each tool can use the best underlying substrate without changing the MCP contract |
+| Sidecar enrichment | Optional `.codebase-memory/scip.json` import | Extra symbol/type precision without making baseline indexing depend on LSP |
+| Graph execution | CTE pre-computation and batch BFS traversal | Fewer SQLite round-trips on dense graphs and deeper traces |
+| Error handling | Zig error unions and `errdefer`-guarded transactions | Failures are harder to ignore and partial writes are easier to avoid |
+| Tooling | Repo-owned interop, CLI parity, benchmark, soak, and security suites | Better ongoing evidence for compatibility and regressions |
+
+Benchmark data: [`.benchmark_reports/benchmark_report.md`](.benchmark_reports/benchmark_report.md)
+More detail: [docs/differentiators.md](docs/differentiators.md)
+
+## Setup
+
+Requirements:
 
 - Zig `0.15.2`
-- SQLite is vendored in-repo
-- tree-sitter support is vendored and wired through `build.zig`
+- `mise` for tool installation
+- vendored SQLite and tree-sitter sources in this repo
 
-Tool versions are managed with `mise`:
+Install tools and fetch vendored grammars for a fresh checkout:
 
 ```sh
 mise install
-zig version
+mise run bootstrap
 ```
 
-## Build
+If grammar sources are already present and you want to refresh them:
+
+```sh
+bash scripts/fetch_grammars.sh --force
+```
+
+`mise install` now bootstraps both `zig` and the pinned `zlint` binary used by this repo.
+
+## Build And Run
+
+Build:
 
 ```sh
 zig build
 ```
 
-## Test
+Run tests:
 
 ```sh
 zig build test
 ```
 
-## Run
-
-Start the MCP server over stdio:
+Run the stdio MCP server:
 
 ```sh
 zig build run
@@ -79,80 +88,77 @@ zig build run -- --help
 zig build run -- --version
 ```
 
-Call a single CLI tool directly:
+Call a single tool directly:
 
 ```sh
 zig build run -- cli <tool> [json]
 ```
 
-Cross-compile a target binary:
+Cross-compile or set an explicit version:
 
 ```sh
 zig build -Dtarget=aarch64-linux-musl
-```
-
-Set an explicit build version:
-
-```sh
 zig build -Dversion=1.0.0
 ```
 
-## Lint
+## Verification
 
-Formatting is enforced with `zig fmt`:
-
-```sh
-zig fmt src/ build.zig
-```
-
-This repo also uses `zlint` for Zig source linting. Install the pinned release for your platform, put it on your `PATH`, then run:
-
-```sh
-find src -name '*.zig' | zlint -S
-```
-
-Pinned `zlint` release: `v0.7.9`
-
-## Project layout
-
-```text
-src/
-  root.zig          Module root, re-exports public API
-  main.zig          CLI entry point + MCP server startup
-  store.zig         SQLite graph store (nodes, edges, projects)
-  graph_buffer.zig  In-memory graph buffer before SQLite persistence
-  pipeline.zig      Multi-pass indexing pipeline orchestrator
-  mcp.zig           MCP JSON-RPC server
-  cypher.zig        Cypher query engine
-  discover.zig      File discovery and gitignore handling
-  watcher.zig       Auto-reindex watcher support
-  registry.zig      Symbol and call-edge resolution
-  minhash.zig       Near-clone fingerprinting
-testdata/
-  interop/          Cross-implementation interoperability fixtures
-scripts/
-  run_interop_alignment.sh  Compare Zig and C implementations
-vendored/
-  sqlite3/          Vendored SQLite amalgamation
-  tree_sitter/      Vendored tree-sitter headers
-  grammars/         Vendored parser grammars
-```
-
-## Docs
-
-- [CLAUDE.md](CLAUDE.md) for agent-facing repo guidance
-- [docs/differentiators.md](docs/differentiators.md) for where the Zig port is better than the C original
-- [docs/port-comparison.md](docs/port-comparison.md) for full feature-by-feature parity tracking
-- [docs/zig-port-plan.md](docs/zig-port-plan.md) for the broader port roadmap
-- [docs/gap-analysis.md](docs/gap-analysis.md) for parity and remaining gaps
-
-## Verification notes
-
-Typical local verification for behavior or build changes:
+Typical local verification for code changes:
 
 ```sh
 zig build
 zig build test
 zig fmt --check src/ build.zig
-find src -name '*.zig' | zlint -S
+mise run lint
 ```
+
+If `zig build` reports missing vendored grammar sources, run `mise run bootstrap` and retry.
+
+## Project Layout
+
+```text
+src/
+  root.zig              Public module root
+  main.zig              CLI entry point and stdio server startup
+  mcp.zig               MCP JSON-RPC transport and tool handlers
+  cli.zig               install/update/uninstall/config support
+  pipeline.zig          Indexing orchestration
+  extractor.zig         tree-sitter and line-based extraction
+  store.zig             SQLite graph store
+  graph_buffer.zig      In-memory graph build buffer
+  cypher.zig            Cypher-like query support
+  discover.zig          File discovery and language detection
+  registry.zig          Symbol and call-edge resolution
+  watcher.zig           Auto-reindex watcher
+  runtime_lifecycle.zig Runtime DB lifecycle and startup/update behavior
+  query_router.zig      Tool-to-substrate dispatch
+  search_index.zig      FTS5-backed lexical search support
+  scip.zig              Optional SCIP overlay import
+  git_history.zig       Git coupling pass
+  route_nodes.zig       Route/data-flow synthesis helpers
+  adr.zig               ADR storage helpers
+  minhash.zig           Similarity detection
+testdata/
+  interop/              Zig-vs-C and zig-only fixture corpus
+scripts/
+  run_interop_alignment.sh  Full Zig-vs-C MCP comparison
+  run_cli_parity.sh         CLI/install parity harness
+  run_benchmark_suite.sh    Benchmark and accuracy suite
+  run_soak_suite.sh         Repeated runtime/index/query soak checks
+  run_security_audit.sh     Static audit checks
+vendored/
+  sqlite3/              Vendored SQLite amalgamation
+  tree_sitter/          Vendored tree-sitter headers
+  grammars/             Vendored parser grammars
+```
+
+## Docs
+
+- [CLAUDE.md](CLAUDE.md): repo-specific working rules
+- [docs/port-comparison.md](docs/port-comparison.md): authoritative current comparison with the C original
+- [docs/differentiators.md](docs/differentiators.md): places where the Zig port is better or simpler
+- [docs/language-support.md](docs/language-support.md): language detection vs parser-backed extraction vs semantic parity
+- [docs/install.md](docs/install.md): packaged install and release entrypoints
+- [docs/installer-matrix.md](docs/installer-matrix.md): verified agent/config/install matrix
+- [docs/gap-analysis.md](docs/gap-analysis.md): historical subsystem gap register, with a current snapshot at the top
+- [docs/zig-port-plan.md](docs/zig-port-plan.md): completed plan history and architectural reference

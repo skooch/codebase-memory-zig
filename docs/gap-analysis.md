@@ -1,17 +1,23 @@
 # Gap Analysis: Zig Port vs C Original
 
-What the C codebase has that the Zig port does NOT yet have. Excludes deliberately cut features (see zig-port-plan.md Section 2 "CUT" list).
+Historical subsystem gap register for the Zig port versus the original C implementation.
+
+This document no longer represents an "everything still missing" list. Most of the previously important shared-surface gaps are now closed. Use it as a detailed backlog and planning reference, not as the first-stop summary of current project status.
 
 Status key: **WORKS** (implemented for the current target contract), **STUB** (type signatures exist, no implementation), **MISSING** (not present at all), **PARTIAL** (some logic, incomplete)
 
 For the most readable current-state comparison against the original implementation, see:
 - [port-comparison.md](/Users/skooch/projects/codebase-memory-zig/docs/port-comparison.md)
 
+For the repo-facing summary and setup story, see:
+- [README.md](/Users/skooch/projects/codebase-memory-zig/README.md)
+
 The detailed subsystem tables below are historical backlog references. When a table entry disagrees with the current snapshot, treat the current snapshot and [port-comparison.md](/Users/skooch/projects/codebase-memory-zig/docs/port-comparison.md) as authoritative, and update the table during the next focused phase for that subsystem.
 
 ## Current Snapshot
 
 Verification posture today:
+- The current target contract is complete; the remaining backlog is mostly optional exhaustive parity work, deliberate scope exclusions, or historical subsystem notes.
 - The repo has broad automated coverage across `zig build test`, zig-only interop goldens, zig-only CLI parity goldens, and CI-run benchmark, soak, and static security checks.
 - CI now also runs the full Zig-vs-C interop and CLI parity comparison against the reference implementation on pull requests and pushes to `main` when interop-relevant files change, while retaining a weekly scheduled sweep.
 - That coverage is broad enough to support the current daily-use contract claims, but it is **not** exhaustive of every feature and edge case.

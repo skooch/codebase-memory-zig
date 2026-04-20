@@ -59,11 +59,13 @@ It is intentionally not a wish list. It describes:
 | Area | Original C | Zig Port | Status | Interoperable? |
 |------|------------|----------|--------|----------------|
 | Readiness/interoperability gate | Full shared-capability reference implementation | Expanded shared-capability parity harness completed, automated, and passing | `Near parity` | Yes |
-| Daily-use MCP surface | Full 14-tool surface, though `ingest_traces` is stubbed | Complete overlapping tool surface, now served through a stable MCP contract with internal hybrid routing for search/snippet/architecture/change detection | `Partial` | No |
+| Daily-use MCP surface | Full 14-tool surface, though `ingest_traces` is stubbed | All 13 meaningful shared tools are implemented, with stable hybrid routing behind the MCP contract | `Near parity` | Yes |
 | Core indexing pipeline | Broad multi-pass pipeline including routes, tests, config links, infra scans, git history, similarity | Strong core pipeline for structure, definitions, imports, calls, usages, semantics, incremental, parallel, similarity, plus embedded FTS5 refresh and optional SCIP sidecar import | `Partial` | No |
 | Runtime lifecycle | Watcher, auto-index, update notifications, UI-capable runtime | Watcher, auto-index, incremental, transactional indexing, persistent runtime DB | `Near parity` | Yes |
-| CLI/productization | Rich install/update/config for 10 agents plus hooks/instructions | Source-build-friendly install/update/config for the broader 10-agent matrix, with explicit shipped-vs-detected scope and fixture-backed extras coverage | `Partial` | No |
+| CLI/productization | Rich install/update/config for 10 agents plus hooks/instructions | Source-build-friendly install/update/config for the broader 10-agent matrix, with parity-tested shared flows and fixture-backed extras coverage | `Partial` | No |
 | Optional/long-tail systems | UI, route graph, infra/resource indexing, git history, config linking | Git history coupling implemented; graph-model parity fixture contract completed for route nodes and config linking; UI and infra scanning remain deferred or cut | `Partial` / `Cut` | No |
+
+As of `2026-04-20`, the comparison is no longer mostly about open shared-surface gaps. Most of the historically important day-to-day parity rows are now closed. The remaining differences are concentrated in deliberate scope choices: the original UI binary, infra/resource scanning families, deeper Cypher and LSP breadth, and the upstream-stub `ingest_traces` tool.
 
 ## Verification Posture
 
