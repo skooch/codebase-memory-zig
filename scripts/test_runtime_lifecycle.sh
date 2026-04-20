@@ -5,6 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 BINARY="${CODEBASE_MEMORY_ZIG_BIN:-$ROOT_DIR/zig-out/bin/cbm}"
+WINDOWS_RUNTIME_FIXTURE="$ROOT_DIR/testdata/runtime/windows-edge-cases/initialize-with-update.jsonl"
 
 if [ ! -x "$BINARY" ]; then
   zig build >/dev/null
@@ -145,3 +146,53 @@ if "Update available: 0.0.0 -> 9.9.9" not in notice:
     raise SystemExit(f"missing expected update notice after initialized notification: {notice!r}")
 PY
 echo "OK: initialized notification stays silent"
+
+echo "Testing Windows env fallback runtime cache root..."
+WINDOWS_PROFILE="$TMPDIR/Users/Windows User"
+WINDOWS_LOCALAPPDATA="$WINDOWS_PROFILE/AppData/Local"
+mkdir -p "$WINDOWS_LOCALAPPDATA"
+
+env -u HOME \
+  CBM_CONFIG_PLATFORM=windows \
+  USERPROFILE="$WINDOWS_PROFILE" \
+  LOCALAPPDATA="$WINDOWS_LOCALAPPDATA" \
+  CBM_UPDATE_CHECK_CURRENT=0.0.0 \
+  CBM_UPDATE_CHECK_LATEST=9.9.9 \
+  "$BINARY" < "$WINDOWS_RUNTIME_FIXTURE" > "$TMPDIR/windows-runtime.out" 2> "$TMPDIR/windows-runtime.err"
+
+WINDOWS_DB_PATH="$WINDOWS_LOCALAPPDATA/codebase-memory-zig/codebase-memory-zig.db"
+if [ ! -f "$WINDOWS_DB_PATH" ]; then
+  echo "FAIL: Windows runtime DB was not created at $WINDOWS_DB_PATH"
+  exit 1
+fi
+
+python3 - "$TMPDIR/windows-runtime.out" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+decoder = json.JSONDecoder()
+text = Path(sys.argv[1]).read_text()
+responses = []
+idx = 0
+while idx < len(text):
+    while idx < len(text) and text[idx].isspace():
+        idx += 1
+    if idx >= len(text):
+        break
+    response, next_idx = decoder.raw_decode(text, idx)
+    responses.append(response)
+    idx = next_idx
+
+if len(responses) != 2:
+    raise SystemExit(f"expected 2 responses, got {len(responses)}")
+
+init_resp, tools_resp = responses
+if "protocolVersion" not in init_resp.get("result", {}):
+    raise SystemExit("initialize response missing protocolVersion")
+
+notice = tools_resp.get("result", {}).get("update_notice", "")
+if "Update available: 0.0.0 -> 9.9.9" not in notice:
+    raise SystemExit(f"missing expected update notice under Windows env fallback: {notice!r}")
+PY
+echo "OK: Windows env fallback runtime cache root"

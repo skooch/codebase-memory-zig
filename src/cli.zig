@@ -332,20 +332,61 @@ fn runtimeCacheDirForPlatform(
     xdg_cache_home: ?[]const u8,
 ) ![]u8 {
     if (cache_override) |value| return allocator.dupe(u8, value);
-    if (home) |home_dir| {
-        return switch (platform) {
-            .windows => if (local_appdata) |value|
-                std.fs.path.join(allocator, &.{ value, server_name })
-            else
-                std.fs.path.join(allocator, &.{ home_dir, "AppData", "Local", server_name }),
-            .macos => std.fs.path.join(allocator, &.{ home_dir, ".cache", server_name }),
-            .unix => if (xdg_cache_home) |value|
-                std.fs.path.join(allocator, &.{ value, server_name })
-            else
-                std.fs.path.join(allocator, &.{ home_dir, ".cache", server_name }),
-        };
+    return switch (platform) {
+        .windows => if (local_appdata) |value|
+            std.fs.path.join(allocator, &.{ value, server_name })
+        else if (home) |home_dir|
+            std.fs.path.join(allocator, &.{ home_dir, "AppData", "Local", server_name })
+        else
+            std.fs.path.join(allocator, &.{ ".cache", server_name }),
+        .macos => if (home) |home_dir|
+            std.fs.path.join(allocator, &.{ home_dir, ".cache", server_name })
+        else
+            std.fs.path.join(allocator, &.{ ".cache", server_name }),
+        .unix => if (xdg_cache_home) |value|
+            std.fs.path.join(allocator, &.{ value, server_name })
+        else if (home) |home_dir|
+            std.fs.path.join(allocator, &.{ home_dir, ".cache", server_name })
+        else
+            std.fs.path.join(allocator, &.{ ".cache", server_name }),
+    };
+}
+
+fn homeDirForPlatform(
+    allocator: std.mem.Allocator,
+    platform: ConfigPlatform,
+    home: ?[]const u8,
+    userprofile: ?[]const u8,
+    homedrive: ?[]const u8,
+    homepath: ?[]const u8,
+) ![]u8 {
+    if (home) |value| {
+        return allocator.dupe(u8, value);
     }
-    return std.fs.path.join(allocator, &.{ ".cache", server_name });
+    if (platform == .windows) {
+        if (userprofile) |value| {
+            return allocator.dupe(u8, value);
+        }
+        if (homedrive) |drive| {
+            if (homepath) |path| {
+                return std.mem.concat(allocator, u8, &.{ drive, path });
+            }
+        }
+    }
+    return error.HomeDirectoryUnavailable;
+}
+
+fn ownedHomeDirForCurrentPlatform(allocator: std.mem.Allocator) ![]u8 {
+    const platform = currentConfigPlatform(allocator);
+    const home = envVarOwnedOrNull(allocator, "HOME");
+    defer if (home) |value| allocator.free(value);
+    const userprofile = envVarOwnedOrNull(allocator, "USERPROFILE");
+    defer if (userprofile) |value| allocator.free(value);
+    const homedrive = envVarOwnedOrNull(allocator, "HOMEDRIVE");
+    defer if (homedrive) |value| allocator.free(value);
+    const homepath = envVarOwnedOrNull(allocator, "HOMEPATH");
+    defer if (homepath) |value| allocator.free(value);
+    return homeDirForPlatform(allocator, platform, home, userprofile, homedrive, homepath);
 }
 
 fn appConfigPrefixForPlatform(
@@ -409,7 +450,7 @@ fn kilocodeConfigPathForPlatform(
 }
 
 pub fn runtimeCacheDir(allocator: std.mem.Allocator) ![]u8 {
-    const home = envVarOwnedOrNull(allocator, "HOME");
+    const home = ownedHomeDirForCurrentPlatform(allocator) catch null;
     defer if (home) |value| allocator.free(value);
     const cache_dir = envVarOwnedOrNull(allocator, "CBM_CACHE_DIR");
     defer if (cache_dir) |value| allocator.free(value);
@@ -435,7 +476,7 @@ pub fn configPath(allocator: std.mem.Allocator) ![]u8 {
 }
 
 pub fn homeDir(allocator: std.mem.Allocator) ![]u8 {
-    return try std.process.getEnvVarOwned(allocator, "HOME");
+    return ownedHomeDirForCurrentPlatform(allocator);
 }
 
 pub fn loadConfig(allocator: std.mem.Allocator) !AppConfig {
@@ -2232,6 +2273,54 @@ test "runtime cache dir uses windows local appdata when platform is overridden" 
         "C:/Users/test/AppData/Local/codebase-memory-zig",
         path,
     );
+}
+
+test "runtime cache dir uses windows local appdata without home" {
+    const allocator = std.testing.allocator;
+    const path = try runtimeCacheDirForPlatform(
+        allocator,
+        null,
+        .windows,
+        null,
+        "C:/Users/test/AppData/Local",
+        null,
+    );
+    defer allocator.free(path);
+
+    try std.testing.expectEqualStrings(
+        "C:/Users/test/AppData/Local/codebase-memory-zig",
+        path,
+    );
+}
+
+test "home dir falls back to userprofile on windows" {
+    const allocator = std.testing.allocator;
+    const path = try homeDirForPlatform(
+        allocator,
+        .windows,
+        null,
+        "C:/Users/Windows User",
+        null,
+        null,
+    );
+    defer allocator.free(path);
+
+    try std.testing.expectEqualStrings("C:/Users/Windows User", path);
+}
+
+test "home dir falls back to homedrive and homepath on windows" {
+    const allocator = std.testing.allocator;
+    const path = try homeDirForPlatform(
+        allocator,
+        .windows,
+        null,
+        null,
+        "C:",
+        "\\Users\\WindowsUser",
+    );
+    defer allocator.free(path);
+
+    try std.testing.expectEqualStrings("C:\\Users\\WindowsUser", path);
 }
 
 test "windows client config paths use roaming appdata roots" {

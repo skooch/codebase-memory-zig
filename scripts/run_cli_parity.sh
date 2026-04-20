@@ -189,13 +189,16 @@ def build_local_release_fixture(root: Path, output_dir: Path) -> Dict[str, str]:
 
 def run_cmd(
     argv: List[str],
-    home: Path,
+    home: Optional[Path],
     extra_env: Optional[Dict[str, str]] = None,
     use_default_cache: bool = True,
 ) -> subprocess.CompletedProcess:
     env = os.environ.copy()
-    env["HOME"] = str(home)
-    if use_default_cache:
+    if home is not None:
+        env["HOME"] = str(home)
+    else:
+        env.pop("HOME", None)
+    if use_default_cache and home is not None:
         env["CBM_CACHE_DIR"] = str(home / ".cache" / "codebase-memory-zig")
     if extra_env:
         env.update(extra_env)
@@ -210,10 +213,10 @@ def seed_fixture(path: Path, fixture: Path) -> None:
 def inspect_windows_layout(binary: Path, fixture_root: Path) -> Dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix="cbm-cli-windows-") as tmp:
         root = Path(tmp)
-        home = root / "home"
-        home.mkdir(parents=True, exist_ok=True)
-        appdata = home / "AppData" / "Roaming"
-        localappdata = home / "AppData" / "Local"
+        userprofile = root / "Users" / "Windows User"
+        userprofile.mkdir(parents=True, exist_ok=True)
+        appdata = userprofile / "AppData" / "Roaming"
+        localappdata = userprofile / "AppData" / "Local"
         appdata.mkdir(parents=True, exist_ok=True)
         localappdata.mkdir(parents=True, exist_ok=True)
 
@@ -227,14 +230,15 @@ def inspect_windows_layout(binary: Path, fixture_root: Path) -> Dict[str, Any]:
 
         env = {
             "CBM_CONFIG_PLATFORM": "windows",
+            "USERPROFILE": str(userprofile),
             "APPDATA": str(appdata),
             "LOCALAPPDATA": str(localappdata),
         }
 
-        install = run_cmd([str(binary), "install", "-y", "--force", "--scope", "detected"], home, env, use_default_cache=False)
+        install = run_cmd([str(binary), "install", "-y", "--force", "--scope", "detected"], None, env, use_default_cache=False)
         config_set = run_cmd(
             [str(binary), "config", "set", "auto_index", "true"],
-            home,
+            None,
             env,
             use_default_cache=False,
         )
@@ -251,7 +255,9 @@ def inspect_windows_layout(binary: Path, fixture_root: Path) -> Dict[str, Any]:
                 "stderr": config_set.stderr.splitlines(),
             },
             "windows_contract": {
+                "home_less_install_success": install.returncode == 0,
                 "config_set_success": config_set.returncode == 0,
+                "config_set_without_home_success": config_set.returncode == 0,
                 "config_uses_localappdata": config_path.exists(),
                 "windows_vscode_wrote_binary": str(binary) in file_text(vscode_path),
                 "windows_zed_wrote_binary": str(binary) in file_text(zed_path),

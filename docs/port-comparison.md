@@ -80,7 +80,7 @@ What this does **not** justify claiming:
 
 - exhaustive tool-surface parity for every MCP edge case
 - exhaustive framework-specific route or async-broker coverage
-- exhaustive Windows-native runtime, installer, and archive behavior
+- exhaustive Windows-native runtime, installer, and archive behavior beyond the verified path-root and no-`HOME` fallback contract
 - exhaustive packaging and setup regression coverage across all shells and platforms
 
 The current automated posture is strong enough to support the repo's daily-use parity claims. It is not strong enough to claim that every implemented feature and every error path is exhaustively locked down.
@@ -214,7 +214,7 @@ This section compares what kinds of graph entities the two systems are built to 
 | Capability | Original C | Zig Port | Status | Interoperable? | Notes |
 |-----------|------------|----------|--------|----------------|-------|
 | Default stdio MCP server | Yes | Yes | `Near parity` | Yes | This is the default mode in both entrypoints, and Zig now has explicit `1 MiB` request-line and `4 MiB` response-envelope guardrails validated by unit tests plus the runtime harness. |
-| Persistent runtime cache / DB | Yes | Yes | `Near parity` | Yes | Zig now proves cache-root selection through `CBM_CACHE_DIR`, Windows `LOCALAPPDATA`, Unix `XDG_CACHE_HOME`, and `HOME` fallback behavior via fixture-backed installer checks. |
+| Persistent runtime cache / DB | Yes | Yes | `Near parity` | Yes | Zig now proves cache-root selection through `CBM_CACHE_DIR`, Windows `LOCALAPPDATA`, Windows no-`HOME` fallback via `USERPROFILE` / `HOMEDRIVE` + `HOMEPATH`, Unix `XDG_CACHE_HOME`, and `HOME` fallback behavior via fixture-backed installer and runtime checks. |
 | Watcher-driven auto-reindex | Yes | Yes | `Near parity` | Yes | Both use git-based watcher logic. |
 | Startup auto-index | Yes | Yes | `Near parity` | Yes | Zig supports config-driven or env-driven startup auto-index. |
 | Previously indexed project watcher registration | Yes | Yes | `Near parity` | Yes | Explicitly wired in Zig Phase 6. |
@@ -226,7 +226,7 @@ This section compares what kinds of graph entities the two systems are built to 
 
 | Capability | Original C | Zig Port | Status | Interoperable? | Notes |
 |-----------|------------|----------|--------|----------------|-------|
-| Shared `install` flow (`Codex CLI` / `Claude Code`) | Yes | Yes | `Near parity` | Yes | The temp-HOME CLI parity harness proves the overlapping install reporting and config-file effects for the two shared agent targets, and the Zig CLI now makes both the shipped scope and MCP-only side-effect behavior explicit. |
+| Shared `install` flow (`Codex CLI` / `Claude Code`) | Yes | Yes | `Near parity` | Yes | The temp-HOME CLI parity harness proves the overlapping install reporting and config-file effects for the two shared agent targets, the Zig CLI now makes both the shipped scope and MCP-only side-effect behavior explicit, and the Windows lane now proves install succeeds with `HOME` unset when `USERPROFILE`, `APPDATA`, and `LOCALAPPDATA` are present. |
 | Shared `uninstall` flow (`Codex CLI` / `Claude Code`) | Yes | Yes | `Near parity` | Yes | The same temp-HOME parity harness locks the overlapping uninstall behavior, including dry-run preservation and dual Claude config cleanup, while the Zig CLI now defaults uninstall scope to the shipped agent set and can skip extra side effects with `--mcp-only`. |
 | Shared `update` flow (`Codex CLI` / `Claude Code`) | Yes, release-oriented updater plus config refresh | Yes, shared config refresh plus a verified file-backed packaged-archive self-replacement path on supported Unix and macOS hosts | `Near parity` | Yes | Phase 4 still proves the overlapping config-refresh and reporting contract, and plan 09 adds a temp-home self-update lane driven by configured `download_url` plus packaged release fixtures. The remaining delta is broader network-backed updater behavior and the original's wider packaging surface, not the bounded local self-replacement path now under test. |
 | `config` | Yes | Yes | `Near parity` | Yes | Zig now supports persisted config for `auto_index`, `auto_index_limit`, `idle_store_timeout_ms`, `update_check_disable`, `install_scope`, `install_extras`, and `download_url`, with temp-home fixture evidence for `set`, `get`, `list`, and `reset` on the operational controls it exposes today; env-only `CBM_EXTENSION_MAP` is verified separately through the same parity harness. |
@@ -268,7 +268,7 @@ If someone asks “what still separates the Zig port from the original?”, the 
 | No LSP-assisted hybrid resolution | Some higher-fidelity call/type resolution paths remain original-only. |
 | Broader config normalization expansion | Git-history coupling is implemented, config linking has dependency-import matching and deduplication coverage, a strict shared key-symbol normalization fixture, a strict shared env-style config-key fixture, and a strict shared YAML key-shape fixture. Broader config-language and key-shape expansion remains optional future work, while `WRITES` / `READS` still have only a bounded shared zero-row harness contract across the exercised parity micro-cases rather than proven positive overlap. |
 | No UI subsystem | The original can run a graph visualization UI; the Zig port intentionally cannot. |
-| Installer ecosystem still differs | The Zig port now proves the broader 10-agent detected-scope matrix, hooks, reminders, instructions, and a bounded file-backed self-update path, but it still keeps the shipped default scope narrower, consolidates the Claude skill layout, and stops short of broader network-backed updater and release-trust behavior. |
+| Installer ecosystem still differs | The Zig port now proves the broader 10-agent detected-scope matrix, hooks, reminders, instructions, a bounded file-backed self-update path, and the Windows no-`HOME` path-root fallback contract, but it still keeps the shipped default scope narrower, consolidates the Claude skill layout, and stops short of broader network-backed updater, release-trust behavior, and full native Windows process or archive parity. |
 
 ## Bottom Line
 

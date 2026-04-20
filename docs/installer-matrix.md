@@ -9,7 +9,7 @@ fixture or harness evidence in this repo. It is not a wish list.
 
 | Surface | Verified roots | Evidence |
 |--------|----------------|----------|
-| Runtime config cache | `CBM_CACHE_DIR`, Windows `LOCALAPPDATA`, Unix `XDG_CACHE_HOME`, `HOME` fallback | `src/cli.zig` unit tests plus `bash scripts/run_cli_parity.sh --zig-only` |
+| Runtime config cache | `CBM_CACHE_DIR`, Windows `LOCALAPPDATA`, Windows `USERPROFILE` / `HOMEDRIVE` + `HOMEPATH` home fallback, Unix `XDG_CACHE_HOME`, `HOME` fallback | `src/cli.zig` unit tests plus `bash scripts/run_cli_parity.sh --zig-only` |
 | Roaming client config roots | Windows `APPDATA`, Unix `XDG_CONFIG_HOME`, macOS `~/Library/Application Support` | `src/cli.zig` unit tests |
 | Broader temp-home agent paths | `~/.codex/config.toml`, `~/.claude/.mcp.json`, `~/.claude.json`, `~/.gemini/settings.json`, `~/.gemini/antigravity/mcp_config.json`, `~/.config/opencode/opencode.json`, `~/.openclaw/openclaw.json`, `~/Library/Application Support/Zed/settings.json`, `~/Library/Application Support/Code/User/mcp.json`, `~/Library/Application Support/Code/User/globalStorage/kilocode.kilo-code/settings/mcp_settings.json` | `bash scripts/run_cli_parity.sh --zig-only` |
 | Broader temp-home extras | `~/.claude/hooks/*`, `~/.claude/skills/codebase-memory/SKILL.md`, `~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md`, `~/.config/opencode/AGENTS.md`, `~/.gemini/antigravity/AGENTS.md`, `~/CONVENTIONS.md`, `~/.kilocode/rules/codebase-memory-mcp.md` | `bash scripts/run_cli_parity.sh --zig-only` |
@@ -37,6 +37,7 @@ fixture or harness evidence in this repo. It is not a wish list.
 | Detected-scope `install` reports the broader 10-agent matrix | Verified | `bash scripts/run_cli_parity.sh --zig-only` |
 | Detected-scope `update --dry-run` succeeds for the broader 10-agent matrix | Verified | `bash scripts/run_cli_parity.sh --zig-only` |
 | Detected-scope `uninstall` removes the broader 10-agent matrix while preserving seeded user config | Verified | `bash scripts/run_cli_parity.sh --zig-only` |
+| Windows-layout `install` and `config set` succeed with `HOME` unset when `USERPROFILE`, `APPDATA`, and `LOCALAPPDATA` are present | Verified | `bash scripts/run_cli_parity.sh --zig-only` |
 | Configured `update` can replace the installed binary from a packaged local release archive on supported Unix and macOS hosts | Verified | `bash scripts/run_cli_parity.sh --zig-only` |
 | Shared Codex/Claude install/update/uninstall behavior still matches the original C binary | Verified | `bash scripts/run_cli_parity.sh` |
 
@@ -47,6 +48,7 @@ fixture or harness evidence in this repo. It is not a wish list.
 | `initialize` response | Verified | `bash scripts/test_runtime_lifecycle.sh` |
 | One-shot startup update notice | Verified | `bash scripts/test_runtime_lifecycle.sh` |
 | `notifications/initialized` produces no response | Verified | `bash scripts/test_runtime_lifecycle.sh` and `src/mcp.zig` tests |
+| Windows env fallback creates the runtime DB under `LOCALAPPDATA` and preserves startup notice behavior with `HOME` unset | Verified | `bash scripts/test_runtime_lifecycle.sh` |
 | EOF shutdown | Verified | `bash scripts/test_runtime_lifecycle.sh` |
 | SIGTERM shutdown | Verified | `bash scripts/test_runtime_lifecycle.sh` |
 
@@ -55,7 +57,7 @@ fixture or harness evidence in this repo. It is not a wish list.
 - The original multi-skill Claude layout; Zig currently ships one consolidated
   `codebase-memory` skill package instead
 - Windows-native process execution, archive, or shell behavior outside the
-  fixture-backed path and config-root contract
+  fixture-backed path, config-root, and no-`HOME` env-fallback contract
 - Network-backed updater behavior, broader release-source trust policy, and
   any self-replacement flow outside the verified file-backed packaged-archive
   contract

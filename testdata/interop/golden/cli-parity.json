@@ -114,7 +114,9 @@
   },
   "windows_contract": {
     "config_set_success": true,
+    "config_set_without_home_success": true,
     "config_uses_localappdata": true,
+    "home_less_install_success": true,
     "windows_kilocode_wrote_binary": true,
     "windows_vscode_wrote_binary": true,
     "windows_zed_wrote_binary": true

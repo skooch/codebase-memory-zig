@@ -21,7 +21,7 @@ Known coverage gaps in the current automated suite:
 - Current local audit on `2026-04-20`: `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh --zig-only`, `bash scripts/run_cli_parity.sh --zig-only`, and the current ops suite entrypoints all pass. The route-cross-service framework-depth worktree also completed `bash scripts/run_interop_alignment.sh` with `33` fixtures, `251` comparisons, `143` strict matches, `38` diagnostic-only comparisons, and `0` mismatches, confirming that `route-expansion-httpx` is already a strict shared route slice while `keyword_request_styles` and `semantic-expansion-send-task` remain diagnostic-only because the current C reference still returns empty row sets there.
 - Merge-blocking CI now includes the full Zig-vs-C compare for interop-touching pull requests and pushes to `main`, while non-interop changes still rely on zig-only goldens plus unit and integration tests.
 - Packaging and setup entrypoints are exercised by verification runs and workflows, but do not yet have exhaustive cross-platform regression automation for every shell or archive flow.
-- Windows coverage is strong at config-path, installer-layout, and PowerShell entrypoint level, but not exhaustive of native runtime and filesystem edge cases.
+- Windows coverage is strong at config-path, installer-layout, no-`HOME` env fallback, runtime DB root creation, and PowerShell entrypoint level, but not exhaustive of native runtime and filesystem edge cases.
 - Framework-specific route registration, broker-specific event semantics, and richer Cypher permutations are covered by bounded fixtures rather than exhaustive matrix testing.
 - Error-path and state-transition coverage exists in unit tests for several subsystems, but not as a comprehensive end-to-end parity matrix across every MCP tool and CLI surface.
 
@@ -473,16 +473,23 @@ Completion evidence:
 - `src.cli.runtimeCacheDir` now accepts an explicit config-platform override and
   resolves Windows `LOCALAPPDATA`, Unix `XDG_CACHE_HOME`, and the existing
   `CBM_CACHE_DIR` / `HOME` fallback behavior through one shared helper layer.
+- `src.cli.homeDir` and the runtime-cache helpers now also handle Windows
+  sessions where `HOME` is unset but `USERPROFILE` or `HOMEDRIVE` plus
+  `HOMEPATH` are present, which removes a real Windows-native runtime and
+  installer path-resolution gap.
 - `src.cli.detectAgents` and the Zed, VS Code, and KiloCode install helpers now
   route through shared config-platform path helpers instead of deriving paths
   only from the host OS tag, which makes Windows-layout checks reproducible on
   a non-Windows host.
 - `scripts/run_cli_parity.sh --zig-only` now seeds fixture-backed Windows
-  layouts under `APPDATA` / `LOCALAPPDATA` and verifies the Zig installer and
-  runtime-config paths there.
+  layouts under `APPDATA` / `LOCALAPPDATA`, drops `HOME`, and verifies the Zig
+  installer plus runtime-config paths there through `USERPROFILE`.
 - `src.mcp.handleLine` now ignores no-`id` notifications, and the runtime
   harness proves `notifications/initialized` stays silent while the first real
   tool response still receives the one-shot update notice.
+- `scripts/test_runtime_lifecycle.sh` now also proves a Windows env-fallback
+  stdio session creates the runtime DB under `LOCALAPPDATA` and still carries
+  the one-shot startup notice while `HOME` is unset.
 
 ## Implemented Plan: Large-Repo Reliability and Crash Safety
 
