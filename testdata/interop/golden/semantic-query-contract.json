@@ -5,66 +5,66 @@
         "label": "semantic_query_contract",
         "name": "search_graph",
         "result": {
-          "total": 7,
+          "has_more": true,
           "results": [
             {
-              "name": "celery_send_task",
-              "qualified_name": "celery_send_task",
-              "label": "Project",
               "file_path": "",
               "in_degree": 0,
-              "out_degree": 1
+              "label": "Project",
+              "name": "celery_send_task",
+              "out_degree": 1,
+              "qualified_name": "celery_send_task"
             },
             {
-              "name": "enqueue_users",
-              "qualified_name": "celery_send_task:main.py:python:symbol:python:enqueue_users",
-              "label": "Function",
               "file_path": "main.py",
               "in_degree": 2,
-              "out_degree": 4
-            },
-            {
-              "name": "main.py",
-              "qualified_name": "celery_send_task:file:main.py:python",
-              "label": "File",
-              "file_path": "main.py",
-              "in_degree": 1,
-              "out_degree": 3
-            },
-            {
-              "name": "main.py",
-              "qualified_name": "celery_send_task:module:main.py:python",
-              "label": "Module",
-              "file_path": "main.py",
-              "in_degree": 1,
-              "out_degree": 0
-            },
-            {
-              "name": "refresh_users",
-              "qualified_name": "celery_send_task:main.py:python:symbol:python:refresh_users",
               "label": "Function",
+              "name": "enqueue_users",
+              "out_degree": 4,
+              "qualified_name": "celery_send_task:main.py:python:symbol:python:enqueue_users"
+            },
+            {
+              "file_path": "main.py",
+              "in_degree": 1,
+              "label": "File",
+              "name": "main.py",
+              "out_degree": 3,
+              "qualified_name": "celery_send_task:file:main.py:python"
+            },
+            {
+              "file_path": "main.py",
+              "in_degree": 1,
+              "label": "Module",
+              "name": "main.py",
+              "out_degree": 0,
+              "qualified_name": "celery_send_task:module:main.py:python"
+            },
+            {
               "file_path": "main.py",
               "in_degree": 3,
-              "out_degree": 3
+              "label": "Function",
+              "name": "refresh_users",
+              "out_degree": 3,
+              "qualified_name": "celery_send_task:main.py:python:symbol:python:refresh_users"
             }
           ],
-          "has_more": true,
           "semantic_results": [
             {
+              "file_path": "main.py",
+              "label": "Function",
               "name": "enqueue_users",
               "qualified_name": "celery_send_task:main.py:python:symbol:python:enqueue_users",
-              "label": "Function",
-              "file_path": "main.py",
               "score": 0.8084748337996043
             },
             {
+              "file_path": "main.py",
+              "label": "Function",
               "name": "refresh_users",
               "qualified_name": "celery_send_task:main.py:python:symbol:python:refresh_users",
-              "label": "Function",
-              "file_path": "main.py",
               "score": 0.8084748337996043
             }
-          ]
+          ],
+          "total": 7
         }
       }
     ]

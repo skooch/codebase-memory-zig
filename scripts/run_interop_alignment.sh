@@ -731,6 +731,13 @@ def canonical_contract_tool_result(payload: Any) -> dict[str, Any]:
             "has_edges": "edges" in payload,
         }
 
+    if any(key in payload for key in ("total", "results", "semantic_results", "has_more", "search_mode")):
+        normalized_search: dict[str, Any] = {}
+        for key in ("total", "results", "semantic_results", "has_more", "search_mode"):
+            if key in payload:
+                normalized_search[key] = payload.get(key)
+        return normalized_search
+
     normalized: dict[str, Any] = {}
     for key in ("status", "project", "mode", "traces_received", "note"):
         if key in payload:
@@ -1502,6 +1509,8 @@ def build_requests(project_root: Path, fixture: dict[str, Any], impl: str) -> tu
     for check in contract_checks.get("tool_calls", []):
         args = expand_contract_value(check.get("arguments", {}), impl, tool_ctx)
         tool_name = str(check.get("name", ""))
+        if isinstance(args, dict) and "project" in args:
+            args["project"] = project_name if impl == "zig" else c_project_name
         if impl == "c" and tool_name == "trace_call_path":
             tool_name = "trace_path"
         requests.append(
@@ -2602,6 +2611,7 @@ def run_compare_mode(
                         expected = assertion.get("expect", {})
                         exact_compare = bool(expected.get("exact_compare", False))
                         preserve_order = bool(expected.get("preserve_order", exact_compare))
+                        diagnostic_only = expected.get("compare_mode") == "diagnostic"
                         z_case = canonical_query(z_entries[index]["payload"], preserve_order=preserve_order)
                         c_case = canonical_query(c_entries[index]["payload"], preserve_order=preserve_order)
                         z_failures = check_assertions("query_graph", z_entries[index]["payload"], [assertion])
@@ -2614,7 +2624,10 @@ def run_compare_mode(
                         }
                         if exact_compare:
                             if z_failures or c_failures or z_case != c_case:
-                                has_mismatch = True
+                                if diagnostic_only:
+                                    has_diagnostic = True
+                                else:
+                                    has_mismatch = True
                         elif z_failures != c_failures:
                             has_mismatch = True
                         elif z_case != c_case:

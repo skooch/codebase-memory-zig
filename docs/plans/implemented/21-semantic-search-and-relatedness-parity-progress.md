@@ -39,3 +39,20 @@
   are no longer listed as open latest-upstream gaps; the remaining named
   latest-upstream graph-model delta is the channel vocabulary
   (`Channel` / `LISTENS_ON`).
+- Closed two verification-time interop regressions before final merge:
+  - `tools/list` was emitting multi-line JSON on the repo's newline-delimited
+    MCP transport, so `src/mcp.zig` now keeps that response single-line and has
+    a runFiles regression test that would catch framing breaks.
+  - `scripts/run_interop_alignment.sh` now treats diagnostic-only exact
+    `query_graph` rows as diagnostics, not hard mismatches, and rewrites
+    contract-tool-call `project` names to the runtime project name so the
+    `semantic-query-contract` golden captures the real semantic payload again;
+    its contract snapshot reducer also preserves search payload fields instead
+    of collapsing successful `search_graph` results to `{}`.
+- Final verification completed green on the merged semantic tree:
+  - `zig build`
+  - `zig build test`
+  - `bash scripts/run_interop_alignment.sh --update-golden`
+  - `bash scripts/run_interop_alignment.sh --zig-only`
+  - `bash scripts/run_interop_alignment.sh`
+  - `git diff --check`
