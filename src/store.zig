@@ -131,6 +131,11 @@ pub const GraphQueryPage = struct {
     hits: []GraphQueryHit,
 };
 
+pub const SemanticVectorRow = struct {
+    node: Node,
+    vector: []i8,
+};
+
 pub const TraversalDirection = enum {
     outbound,
     inbound,
@@ -279,6 +284,12 @@ pub const Store = struct {
                 "content, " ++
                 "tokenize='unicode61'" ++
                 ")",
+            "CREATE TABLE IF NOT EXISTS semantic_vectors (" ++
+                "project TEXT NOT NULL REFERENCES projects(name) ON DELETE CASCADE, " ++
+                "node_id INTEGER NOT NULL REFERENCES nodes(id) ON DELETE CASCADE, " ++
+                "vector BLOB NOT NULL, " ++
+                "PRIMARY KEY(project, node_id)" ++
+                ")",
             "CREATE TABLE IF NOT EXISTS scip_documents (" ++
                 "project TEXT NOT NULL REFERENCES projects(name) ON DELETE CASCADE, " ++
                 "rel_path TEXT NOT NULL, " ++
@@ -313,6 +324,7 @@ pub const Store = struct {
             "CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(project, source_id)",
             "CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(project, target_id)",
             "CREATE INDEX IF NOT EXISTS idx_edges_type ON edges(project, type)",
+            "CREATE INDEX IF NOT EXISTS idx_semantic_vectors_project ON semantic_vectors(project, node_id)",
             "CREATE INDEX IF NOT EXISTS idx_scip_symbols_qn ON scip_symbols(project, qualified_name)",
             "CREATE INDEX IF NOT EXISTS idx_scip_symbols_file ON scip_symbols(project, file_path)",
             "CREATE INDEX IF NOT EXISTS idx_scip_occurrences_file ON scip_occurrences(project, file_path)",
@@ -416,6 +428,13 @@ pub const Store = struct {
 
     pub fn clearSearchDocuments(self: *Store, project: []const u8) !void {
         const stmt = try self.prepare("DELETE FROM search_documents WHERE project = ?1");
+        defer self.finalize(stmt);
+        try self.bindText(stmt, 1, project);
+        _ = try self.stepNoResult(stmt);
+    }
+
+    pub fn clearSemanticVectors(self: *Store, project: []const u8) !void {
+        const stmt = try self.prepare("DELETE FROM semantic_vectors WHERE project = ?1");
         defer self.finalize(stmt);
         try self.bindText(stmt, 1, project);
         _ = try self.stepNoResult(stmt);
@@ -798,6 +817,29 @@ pub const Store = struct {
             .file_pattern = file_path,
             .limit = 10_000,
         });
+    }
+
+    pub fn listSemanticNodes(self: *Store, project: []const u8) ![]Node {
+        const stmt = try self.prepare(
+            "SELECT id, project, label, name, qualified_name, file_path, start_line, end_line, properties " ++
+                "FROM nodes WHERE project = ?1 AND label IN ('Function','Method','Class') " ++
+                "ORDER BY id",
+        );
+        defer self.finalize(stmt);
+        try self.bindText(stmt, 1, project);
+
+        var out = std.ArrayList(Node).empty;
+        errdefer {
+            for (out.items) |node| self.freeNode(node);
+            out.deinit(self.allocator);
+        }
+        while (true) {
+            const rc = c.sqlite3_step(stmt);
+            if (rc == c.SQLITE_DONE) break;
+            if (rc != c.SQLITE_ROW) return StoreError.SqlError;
+            try out.append(self.allocator, try self.rowToNode(stmt));
+        }
+        return out.toOwnedSlice(self.allocator);
     }
 
     pub fn findScipSymbolByQualifiedName(self: *Store, project: []const u8, qualified_name: []const u8) !?ScipSymbol {
@@ -1209,6 +1251,51 @@ pub const Store = struct {
         const rc = c.sqlite3_step(id_stmt);
         if (rc != c.SQLITE_ROW) return StoreError.SqlError;
         return c.sqlite3_column_int64(id_stmt, 0);
+    }
+
+    pub fn insertSemanticVector(self: *Store, project: []const u8, node_id: i64, vector: []const i8) !void {
+        const stmt = try self.prepare(
+            "INSERT INTO semantic_vectors(project, node_id, vector) VALUES(?1, ?2, ?3) " ++
+                "ON CONFLICT(project, node_id) DO UPDATE SET vector = excluded.vector",
+        );
+        const owned_vector = try self.allocator.dupe(u8, std.mem.sliceAsBytes(vector));
+        defer self.allocator.free(owned_vector);
+        defer self.finalize(stmt);
+        try self.bindText(stmt, 1, project);
+        try self.bindInt(stmt, 2, node_id);
+        try self.bindBlob(stmt, 3, owned_vector);
+        try self.stepDone(stmt);
+    }
+
+    pub fn listSemanticVectors(self: *Store, project: []const u8) ![]SemanticVectorRow {
+        const stmt = try self.prepare(
+            "SELECT n.id, n.project, n.label, n.name, n.qualified_name, n.file_path, n.start_line, n.end_line, n.properties, sv.vector " ++
+                "FROM semantic_vectors sv " ++
+                "JOIN nodes n ON n.project = sv.project AND n.id = sv.node_id " ++
+                "WHERE sv.project = ?1 " ++
+                "ORDER BY n.id",
+        );
+        defer self.finalize(stmt);
+        try self.bindText(stmt, 1, project);
+
+        var out = std.ArrayList(SemanticVectorRow).empty;
+        errdefer {
+            for (out.items) |row| {
+                self.freeNode(row.node);
+                self.allocator.free(row.vector);
+            }
+            out.deinit(self.allocator);
+        }
+        while (true) {
+            const rc = c.sqlite3_step(stmt);
+            if (rc == c.SQLITE_DONE) break;
+            if (rc != c.SQLITE_ROW) return StoreError.SqlError;
+            try out.append(self.allocator, .{
+                .node = try self.rowToNode(stmt),
+                .vector = try self.copyColumnBlobI8(stmt, 9),
+            });
+        }
+        return out.toOwnedSlice(self.allocator);
     }
 
     pub fn findEdgesBySource(
@@ -1666,6 +1753,14 @@ pub const Store = struct {
         }
     }
 
+    pub fn freeSemanticVectorRows(self: *Store, rows: []SemanticVectorRow) void {
+        for (rows) |row| {
+            self.freeNode(row.node);
+            self.allocator.free(row.vector);
+        }
+        self.allocator.free(rows);
+    }
+
     fn prepare(self: *Store, sql: []const u8) !*c.sqlite3_stmt {
         const sql_c = try self.allocator.dupeZ(u8, sql);
         defer self.allocator.free(sql_c);
@@ -1694,6 +1789,11 @@ pub const Store = struct {
         if (rc != c.SQLITE_OK) return StoreError.SqlError;
     }
 
+    fn bindBlob(_: *Store, stmt: *c.sqlite3_stmt, idx: c_int, bytes: []const u8) !void {
+        const rc = c.sqlite3_bind_blob(stmt, idx, bytes.ptr, @intCast(bytes.len), null);
+        if (rc != c.SQLITE_OK) return StoreError.SqlError;
+    }
+
     fn stepNoResult(self: *Store, stmt: *c.sqlite3_stmt) !i32 {
         _ = self;
         const rc = c.sqlite3_step(stmt);
@@ -1710,6 +1810,16 @@ pub const Store = struct {
         if (raw == null) return self.allocator.dupe(u8, "");
         const len = c.sqlite3_column_bytes(stmt, idx);
         return self.allocator.dupe(u8, raw[0..@intCast(len)]);
+    }
+
+    fn copyColumnBlobI8(self: *Store, stmt: *c.sqlite3_stmt, idx: c_int) ![]i8 {
+        const len = c.sqlite3_column_bytes(stmt, idx);
+        if (len <= 0) return self.allocator.alloc(i8, 0);
+        const raw = c.sqlite3_column_blob(stmt, idx) orelse return self.allocator.alloc(i8, 0);
+        const raw_bytes: [*]const u8 = @ptrCast(raw);
+        const out = try self.allocator.alloc(i8, @intCast(len));
+        @memcpy(std.mem.sliceAsBytes(out), raw_bytes[0..@intCast(len)]);
+        return out;
     }
 
     fn rowToNode(self: *Store, stmt: *c.sqlite3_stmt) !Node {

@@ -10,10 +10,43 @@
         "CONTAINS_FOLDER",
         "DEFINES",
         "IMPORTS",
+        "SEMANTICALLY_RELATED",
         "TESTS"
       ],
       "entry_points": [],
       "hotspots": [
+        {
+          "file_path": "app/main.py",
+          "in_degree": 6,
+          "label": "Function",
+          "name": "bootstrap",
+          "out_degree": 4,
+          "symbol": "bootstrap"
+        },
+        {
+          "file_path": "app/main.py",
+          "in_degree": 5,
+          "label": "Function",
+          "name": "run",
+          "out_degree": 4,
+          "symbol": "run"
+        },
+        {
+          "file_path": "tests/test_main.py",
+          "in_degree": 4,
+          "label": "Function",
+          "name": "test_bootstrap",
+          "out_degree": 5,
+          "symbol": "test_bootstrap"
+        },
+        {
+          "file_path": "lib/helpers.py",
+          "in_degree": 5,
+          "label": "Function",
+          "name": "helper",
+          "out_degree": 3,
+          "symbol": "helper"
+        },
         {
           "file_path": "app/main.py",
           "in_degree": 1,
@@ -21,14 +54,6 @@
           "name": "main.py",
           "out_degree": 4,
           "symbol": "py"
-        },
-        {
-          "file_path": "app/main.py",
-          "in_degree": 3,
-          "label": "Function",
-          "name": "bootstrap",
-          "out_degree": 1,
-          "symbol": "bootstrap"
         },
         {
           "file_path": "tests/test_main.py",
@@ -55,22 +80,6 @@
           "symbol": "py"
         },
         {
-          "file_path": "app/main.py",
-          "in_degree": 2,
-          "label": "Function",
-          "name": "run",
-          "out_degree": 1,
-          "symbol": "run"
-        },
-        {
-          "file_path": "tests/test_main.py",
-          "in_degree": 1,
-          "label": "Function",
-          "name": "test_bootstrap",
-          "out_degree": 2,
-          "symbol": "test_bootstrap"
-        },
-        {
           "file_path": ".",
           "in_degree": 1,
           "label": "Folder",
@@ -85,14 +94,6 @@
           "name": "app/main.py",
           "out_degree": 0,
           "symbol": "py"
-        },
-        {
-          "file_path": "lib/helpers.py",
-          "in_degree": 2,
-          "label": "Function",
-          "name": "helper",
-          "out_degree": 0,
-          "symbol": "helper"
         }
       ],
       "languages": [
@@ -125,14 +126,14 @@
       ],
       "project": "architecture-aspects-parity",
       "routes": [],
-      "total_edges": 19,
+      "total_edges": 31,
       "total_nodes": 14
     }
   ],
   "get_code_snippet": [],
   "get_graph_schema": [],
   "index_repository": {
-    "edges_actual": 19,
+    "edges_actual": 31,
     "edges_min": 4,
     "nodes_actual": 14,
     "nodes_min": 7

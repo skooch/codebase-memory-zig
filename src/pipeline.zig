@@ -20,11 +20,12 @@ const test_tagging = @import("test_tagging.zig");
 const git_history = @import("git_history.zig");
 const routes = @import("routes.zig");
 const semantic_links = @import("semantic_links.zig");
+const semantic_index = @import("semantic_index.zig");
 const service_patterns = @import("service_patterns.zig");
 
 pub const IndexMode = enum {
     full, // read everything, build from scratch
-    moderate, // fast discovery plus the current non-semantic enrichment passes
+    moderate, // fast discovery plus the current enrichment and semantic passes
     fast, // skip non-essential files
 };
 
@@ -151,6 +152,9 @@ pub const Pipeline = struct {
 
         if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
         try search_index.refreshProject(self.allocator, db, self.project_name, discovered_files);
+        if (profile.run_optional_passes) {
+            try semantic_index.refreshProject(self.allocator, db, self.project_name, discovered_files);
+        }
         try maybeImportScipOverlay(self, profile, db);
         std.log.info(
             "pipeline graph buffer: {} nodes, {} edges",
@@ -184,6 +188,10 @@ pub const Pipeline = struct {
             errdefer if (!committed) db.rollback() catch {};
             try db.upsertProject(self.project_name, self.repo_path);
             try persistFileHashes(db, self.project_name, discovered_files);
+            try search_index.refreshProject(self.allocator, db, self.project_name, discovered_files);
+            if (profile.run_optional_passes) {
+                try semantic_index.refreshProject(self.allocator, db, self.project_name, discovered_files);
+            }
             try db.commit();
             committed = true;
             std.log.info("pipeline incremental: no changes for {s}", .{self.project_name});
@@ -236,6 +244,9 @@ pub const Pipeline = struct {
 
         if (self.cancelled.load(.acquire)) return PipelineError.Cancelled;
         try search_index.refreshProject(self.allocator, db, self.project_name, discovered_files);
+        if (profile.run_optional_passes) {
+            try semantic_index.refreshProject(self.allocator, db, self.project_name, discovered_files);
+        }
         try maybeImportScipOverlay(self, profile, db);
         std.log.info(
             "pipeline incremental graph buffer: {} nodes, {} edges",

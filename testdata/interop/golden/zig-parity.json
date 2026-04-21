@@ -6,7 +6,7 @@
   "get_code_snippet": [],
   "get_graph_schema": [],
   "index_repository": {
-    "edges_actual": 16,
+    "edges_actual": 22,
     "edges_min": 2,
     "nodes_actual": 11,
     "nodes_min": 5

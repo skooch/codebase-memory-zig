@@ -1,0 +1,129 @@
+{
+  "contract_checks": {
+    "tool_calls": [
+      {
+        "label": "semantic_query_contract",
+        "name": "search_graph",
+        "result": {
+          "total": 7,
+          "results": [
+            {
+              "name": "celery_send_task",
+              "qualified_name": "celery_send_task",
+              "label": "Project",
+              "file_path": "",
+              "in_degree": 0,
+              "out_degree": 1
+            },
+            {
+              "name": "enqueue_users",
+              "qualified_name": "celery_send_task:main.py:python:symbol:python:enqueue_users",
+              "label": "Function",
+              "file_path": "main.py",
+              "in_degree": 2,
+              "out_degree": 4
+            },
+            {
+              "name": "main.py",
+              "qualified_name": "celery_send_task:file:main.py:python",
+              "label": "File",
+              "file_path": "main.py",
+              "in_degree": 1,
+              "out_degree": 3
+            },
+            {
+              "name": "main.py",
+              "qualified_name": "celery_send_task:module:main.py:python",
+              "label": "Module",
+              "file_path": "main.py",
+              "in_degree": 1,
+              "out_degree": 0
+            },
+            {
+              "name": "refresh_users",
+              "qualified_name": "celery_send_task:main.py:python:symbol:python:refresh_users",
+              "label": "Function",
+              "file_path": "main.py",
+              "in_degree": 3,
+              "out_degree": 3
+            }
+          ],
+          "has_more": true,
+          "semantic_results": [
+            {
+              "name": "enqueue_users",
+              "qualified_name": "celery_send_task:main.py:python:symbol:python:enqueue_users",
+              "label": "Function",
+              "file_path": "main.py",
+              "score": 0.8084748337996043
+            },
+            {
+              "name": "refresh_users",
+              "qualified_name": "celery_send_task:main.py:python:symbol:python:refresh_users",
+              "label": "Function",
+              "file_path": "main.py",
+              "score": 0.8084748337996043
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "delete_project": [],
+  "detect_changes_count": 0,
+  "fixture_id": "semantic-query-contract",
+  "get_architecture": [],
+  "get_code_snippet": [],
+  "get_graph_schema": [],
+  "index_repository": {
+    "edges_actual": 11,
+    "edges_min": 4,
+    "nodes_actual": 7,
+    "nodes_min": 4
+  },
+  "index_status": [],
+  "list_projects": [
+    "celery_send_task"
+  ],
+  "manage_adr": [],
+  "query_graph": [
+    {
+      "columns": [
+        "a.name",
+        "b.name",
+        "r.properties"
+      ],
+      "rows": [
+        [
+          "enqueue_users",
+          "refresh_users",
+          "{\"score\":1.000,\"same_file\":true}"
+        ],
+        [
+          "refresh_users",
+          "enqueue_users",
+          "{\"score\":1.000,\"same_file\":true}"
+        ]
+      ]
+    }
+  ],
+  "search_code": [],
+  "search_graph": [],
+  "tools_list": [
+    "delete_project",
+    "detect_changes",
+    "get_architecture",
+    "get_code_snippet",
+    "get_graph_schema",
+    "index_repository",
+    "index_status",
+    "ingest_traces",
+    "list_projects",
+    "manage_adr",
+    "query_graph",
+    "search_code",
+    "search_graph",
+    "trace_call_path"
+  ],
+  "trace_call_path": []
+}

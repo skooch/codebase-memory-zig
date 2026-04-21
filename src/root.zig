@@ -23,6 +23,7 @@ pub const service_patterns = @import("service_patterns.zig");
 pub const git_history = @import("git_history.zig");
 pub const routes = @import("routes.zig");
 pub const semantic_links = @import("semantic_links.zig");
+pub const semantic_index = @import("semantic_index.zig");
 pub const route_nodes = @import("route_nodes.zig");
 
 // Re-export core types at top level for convenience.
@@ -62,5 +63,6 @@ test {
     _ = @import("git_history_test.zig");
     _ = routes;
     _ = semantic_links;
+    _ = semantic_index;
     _ = route_nodes;
 }

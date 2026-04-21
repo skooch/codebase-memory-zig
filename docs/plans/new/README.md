@@ -31,6 +31,8 @@ the ordering program was closed.
   and
   [17-runtime-cli-packaging-full-parity-progress.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/17-runtime-cli-packaging-full-parity-progress.md).
 - The most recent completed maintenance slices are
+  [21-semantic-search-and-relatedness-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/21-semantic-search-and-relatedness-parity-plan.md),
+  [21-semantic-search-and-relatedness-parity-progress.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/21-semantic-search-and-relatedness-parity-progress.md),
   [20-moderate-index-mode-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/20-moderate-index-mode-parity-plan.md),
   [20-moderate-index-mode-parity-progress.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/20-moderate-index-mode-parity-progress.md),
   [19-search-graph-query-parity-plan.md](/Users/skooch/projects/codebase-memory-zig/docs/plans/implemented/19-search-graph-query-parity-plan.md),

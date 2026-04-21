@@ -112,8 +112,8 @@ The remaining debt is real, but it is narrower:
 6. The old discovery-scope warning is resolved.
    The direct Zig/C repro and the full compare both now show `search_code` agreement on the `discovery-scope` fixture: `scopeVisible` returns `src/index.ts`, while `ghostIgnoredHit`, `generatedBundleHit`, and `ghostNestedHit` all return zero results on both implementations. The earlier docs overstated a divergence that is no longer present in the measured baseline.
 
-7. Latest-upstream tool-surface parity still has one deliberate diagnostic row.
-   The new `tool-surface-parity` fixture proves exact inventory/schema coverage for the shared public surface, and it now also proves accepted `index_repository(mode="moderate")`. It intentionally stays diagnostic-only because Zig still lacks the latest-upstream vector-backed `search_graph.semantic_query` surface and its related schema.
+7. Latest-upstream semantic/tool-surface parity now has deliberate diagnostic rows only because the local full-compare baseline is stale.
+   The `tool-surface-parity` fixture now proves exact inventory/schema coverage for the shared public surface, including accepted `index_repository(mode="moderate")` and the released `search_graph.semantic_query` schema. The new `semantic-query-contract` fixture locks the Zig-side semantic query payload and `SEMANTICALLY_RELATED` row shape. Both stay diagnostic-only in the full compare because the local C checkout used there predates `v0.6.0`, not because Zig still lacks the semantic layer.
 
 ## Current Judgment
 
@@ -121,6 +121,7 @@ The interop and parity verification surface is now strong enough to support the 
 
 - all shared MCP tools are behavior-tested somewhere in the manifest
 - the MCP handshake and tool-surface layer now have dedicated exact fixtures via `protocol-contract` and `tool-surface-parity`
+- the released semantic-search layer now also has a dedicated exact Zig-side fixture via `semantic-query-contract`
 - the query/analysis surface now also has dedicated exact fixtures for snippet or trace behavior, architecture-aspect coverage, and search-code ranking or mode behavior
 - the graph-exactness surface now also has dedicated exact fixtures for `TESTS`, `IMPORTS`, `CONFIGURES`, `USES_TYPE`, route-linked `DATA_FLOWS`, `THROWS`/`RAISES`, `SIMILAR_TO`, and `FILE_CHANGES_WITH`
 - the runtime lifecycle surface now also has dedicated direct coverage for startup watcher registration and startup auto-index, in addition to the live stdio lifecycle scripts

@@ -17,6 +17,7 @@
         "DEFINES",
         "DEFINES_METHOD",
         "IMPORTS",
+        "SEMANTICALLY_RELATED",
         "USAGE"
       ],
       "node_labels": [
@@ -29,7 +30,7 @@
         "Variable"
       ],
       "project": "python-parity",
-      "total_edges": 29,
+      "total_edges": 77,
       "total_nodes": 19
     }
   ],
@@ -62,9 +63,10 @@
         "DEFINES",
         "DEFINES_METHOD",
         "IMPORTS",
+        "SEMANTICALLY_RELATED",
         "USAGE"
       ],
-      "edges": 29,
+      "edges": 77,
       "languages": [
         "python",
         "yaml"
@@ -84,7 +86,7 @@
     }
   ],
   "index_repository": {
-    "edges_actual": 29,
+    "edges_actual": 77,
     "edges_min": 5,
     "nodes_actual": 19,
     "nodes_min": 7

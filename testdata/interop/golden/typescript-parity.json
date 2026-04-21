@@ -8,7 +8,8 @@
         "CALLS",
         "CONTAINS_FILE",
         "DEFINES",
-        "DEFINES_METHOD"
+        "DEFINES_METHOD",
+        "SEMANTICALLY_RELATED"
       ],
       "node_labels": [
         "Class",
@@ -20,14 +21,14 @@
         "Project"
       ],
       "project": "typescript-parity",
-      "total_edges": 11,
+      "total_edges": 23,
       "total_nodes": 9
     }
   ],
   "get_code_snippet": [],
   "get_graph_schema": [],
   "index_repository": {
-    "edges_actual": 11,
+    "edges_actual": 23,
     "edges_min": 5,
     "nodes_actual": 9,
     "nodes_min": 8

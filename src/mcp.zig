@@ -28,6 +28,7 @@ const query_router = @import("query_router.zig");
 const runtime_lifecycle = @import("runtime_lifecycle.zig");
 const cypher = @import("cypher.zig");
 const search_index = @import("search_index.zig");
+const semantic_index = @import("semantic_index.zig");
 const watcher = @import("watcher.zig");
 
 const Store = store.Store;
@@ -258,7 +259,7 @@ pub const McpServer = struct {
             const payload =
                 \\{"tools":[
                 \\{"name":"index_repository","description":"Index a repository into the knowledge graph","inputSchema":{"type":"object","properties":{"repo_path":{"type":"string","description":"Path to the repository"},"mode":{"type":"string","enum":["full","moderate","fast"],"default":"full","description":"full: full discovery plus all current enrichment passes. moderate: fast discovery plus the current enrichment passes. fast: fast discovery without optional enrichment passes."}},"required":["repo_path"]}},
-                \\{"name":"search_graph","description":"Structured graph search with filtering, degree-aware ranking, pagination, and optional connected-node context","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"query":{"type":"string","description":"Natural-language or keyword full-text search using BM25 ranking over indexed project files. When this yields usable terms, name_pattern is ignored and the response includes search_mode:\"bm25\"."},"label":{"type":"string"},"label_pattern":{"type":"string"},"name_pattern":{"type":"string"},"qn_pattern":{"type":"string"},"file_pattern":{"type":"string"},"relationship":{"type":"string"},"exclude_entry_points":{"type":"boolean"},"include_connected":{"type":"boolean"},"limit":{"type":"number"},"offset":{"type":"number"},"min_degree":{"type":"number"},"max_degree":{"type":"number"},"sort_by":{"type":"string"},"sort_direction":{"type":"string"}}}},
+                \\{"name":"search_graph","description":"Structured graph search with filtering, degree-aware ranking, pagination, optional connected-node context, BM25 query search, and semantic keyword search","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"query":{"type":"string","description":"Natural-language or keyword full-text search using BM25 ranking over indexed project files. When this yields usable terms, name_pattern is ignored and the response includes search_mode:\"bm25\"."},"semantic_query":{"type":"array","items":{"type":"string"},"description":"Array of keyword strings for semantic search (e.g. [\"send\",\"publish\"]). Results appear in semantic_results and require moderate/full indexing."},"label":{"type":"string"},"label_pattern":{"type":"string"},"name_pattern":{"type":"string"},"qn_pattern":{"type":"string"},"file_pattern":{"type":"string"},"relationship":{"type":"string"},"exclude_entry_points":{"type":"boolean"},"include_connected":{"type":"boolean"},"limit":{"type":"number"},"offset":{"type":"number"},"min_degree":{"type":"number"},"max_degree":{"type":"number"},"sort_by":{"type":"string"},"sort_direction":{"type":"string"}}}},
                 \\{"name":"query_graph","description":"Run a read-only Cypher-like query","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"query":{"type":"string"},"max_rows":{"type":"number"}}}},
                 \\{"name":"trace_call_path","description":"Trace call paths between nodes with configurable edge types, modes, risk labels, and test filtering","inputSchema":{"type":"object","properties":{"project":{"type":"string"},"start_node_qn":{"type":"string","description":"Qualified name of start node"},"function_name":{"type":"string","description":"Alias for start_node_qn (bare name lookup)"},"direction":{"type":"string","enum":["in","out","both"]},"depth":{"type":"number"},"mode":{"type":"string","enum":["calls","data_flow","cross_service"],"description":"Preset edge type set (default: calls)"},"edge_types":{"type":"array","items":{"type":"string"},"description":"Explicit edge types override (takes priority over mode)"},"risk_labels":{"type":"boolean","description":"Include hop-based risk classification per node"},"include_tests":{"type":"boolean","description":"Include test-file nodes in results (default: false)"}}}},
                 \\{"name":"get_code_snippet","description":"Read source code for a function/class/symbol. IMPORTANT: First call search_graph to find the exact qualified_name, then pass it here. This is a read tool, not a search tool. Accepts full qualified_name (exact match) or short function name (returns suggestions if ambiguous).","inputSchema":{"type":"object","properties":{"qualified_name":{"type":"string","description":"Full qualified_name from search_graph, or short function name"},"project":{"type":"string"},"include_neighbors":{"type":"boolean","default":false}},"required":["qualified_name","project"]}},
@@ -344,7 +345,7 @@ pub const McpServer = struct {
 
         var fds = [_]std.posix.pollfd{.{
             .fd = stdin_file.handle,
-            .events = std.posix.POLL.IN,
+            .events = std.posix.POLL.IN | std.posix.POLL.HUP | std.posix.POLL.ERR,
             .revents = 0,
         }};
         const timeout_ms: i32 = @intCast(@min(self.idle_store_timeout_ms, @as(u64, @intCast(std.math.maxInt(i32)))));
@@ -432,6 +433,16 @@ pub const McpServer = struct {
         const limit = intArg(args, "limit") orelse 100;
         const offset = intArg(args, "offset") orelse 0;
 
+        const semantic_query_present = hasArg(args, "semantic_query");
+        if (semantic_query_present and !argIsArray(args, "semantic_query")) {
+            return self.errorResponse(request_id, -32602, "semantic_query must be an array of keyword strings, e.g. [\"send\",\"pubsub\",\"publish\"]");
+        }
+        const semantic_terms = stringArrayArg(self.allocator, args, "semantic_query");
+        defer if (semantic_terms) |terms| self.allocator.free(terms);
+
+        var payload = std.ArrayList(u8).empty;
+        var wrote_body = false;
+
         if (stringArg(args, "query")) |query| {
             if (query.len > 0) {
                 if (try search_index.buildFtsQuery(self.allocator, query, false)) |fts_query| {
@@ -439,75 +450,95 @@ pub const McpServer = struct {
                     const page = try self.db.searchGraphQuery(project, fts_query, limit, offset);
                     defer self.db.freeGraphQueryPage(page);
 
-                    var query_payload = std.ArrayList(u8).empty;
-                    try query_payload.writer(self.allocator).print(
+                    try payload.writer(self.allocator).print(
                         "{{\"total\":{d},\"search_mode\":\"bm25\",\"results\":[",
                         .{page.total},
                     );
                     for (page.hits, 0..) |hit, idx| {
-                        if (idx > 0) try query_payload.append(self.allocator, ',');
-                        try query_payload.appendSlice(self.allocator, "{");
-                        try appendJsonStringField(&query_payload, self.allocator, "name", hit.node.name, true);
-                        try appendJsonStringField(&query_payload, self.allocator, "qualified_name", hit.node.qualified_name, false);
-                        try appendJsonStringField(&query_payload, self.allocator, "label", hit.node.label, false);
-                        try appendJsonStringField(&query_payload, self.allocator, "file_path", hit.node.file_path, false);
-                        try appendJsonIntField(&query_payload, self.allocator, "start_line", hit.node.start_line, false);
-                        try appendJsonIntField(&query_payload, self.allocator, "end_line", hit.node.end_line, false);
-                        try query_payload.appendSlice(self.allocator, ",\"rank\":");
-                        try query_payload.writer(self.allocator).print("{f}", .{std.json.fmt(hit.rank, .{})});
-                        try query_payload.appendSlice(self.allocator, "}");
+                        if (idx > 0) try payload.append(self.allocator, ',');
+                        try payload.appendSlice(self.allocator, "{");
+                        try appendJsonStringField(&payload, self.allocator, "name", hit.node.name, true);
+                        try appendJsonStringField(&payload, self.allocator, "qualified_name", hit.node.qualified_name, false);
+                        try appendJsonStringField(&payload, self.allocator, "label", hit.node.label, false);
+                        try appendJsonStringField(&payload, self.allocator, "file_path", hit.node.file_path, false);
+                        try appendJsonIntField(&payload, self.allocator, "start_line", hit.node.start_line, false);
+                        try appendJsonIntField(&payload, self.allocator, "end_line", hit.node.end_line, false);
+                        try payload.appendSlice(self.allocator, ",\"rank\":");
+                        try payload.writer(self.allocator).print("{f}", .{std.json.fmt(hit.rank, .{})});
+                        try payload.appendSlice(self.allocator, "}");
                     }
-                    try query_payload.writer(self.allocator).print(
-                        "],\"has_more\":{s}}}",
+                    try payload.writer(self.allocator).print(
+                        "],\"has_more\":{s}",
                         .{if (page.total > page.hits.len + offset) "true" else "false"},
                     );
-                    const owned_query_payload = try query_payload.toOwnedSlice(self.allocator);
-                    defer self.allocator.free(owned_query_payload);
-                    return self.successResponse(request_id, owned_query_payload);
+                    wrote_body = true;
                 }
             }
         }
 
-        const page = try self.db.searchGraph(.{
-            .project = project,
-            .label_pattern = label_pattern,
-            .name_pattern = stringArg(args, "name_pattern"),
-            .qn_pattern = stringArg(args, "qn_pattern"),
-            .file_pattern = stringArg(args, "file_pattern"),
-            .relationship = relationship,
-            .min_degree = signedIntArg(args, "min_degree"),
-            .max_degree = signedIntArg(args, "max_degree"),
-            .exclude_entry_points = boolArg(args, "exclude_entry_points") orelse false,
-            .limit = limit,
-            .offset = offset,
-            .sort_field = parseGraphSortField(sort_by),
-            .descending = sort_direction != null and std.ascii.eqlIgnoreCase(sort_direction.?, "desc"),
-        });
-        defer self.db.freeGraphSearchPage(page);
+        if (!wrote_body) {
+            const page = try self.db.searchGraph(.{
+                .project = project,
+                .label_pattern = label_pattern,
+                .name_pattern = stringArg(args, "name_pattern"),
+                .qn_pattern = stringArg(args, "qn_pattern"),
+                .file_pattern = stringArg(args, "file_pattern"),
+                .relationship = relationship,
+                .min_degree = signedIntArg(args, "min_degree"),
+                .max_degree = signedIntArg(args, "max_degree"),
+                .exclude_entry_points = boolArg(args, "exclude_entry_points") orelse false,
+                .limit = limit,
+                .offset = offset,
+                .sort_field = parseGraphSortField(sort_by),
+                .descending = sort_direction != null and std.ascii.eqlIgnoreCase(sort_direction.?, "desc"),
+            });
+            defer self.db.freeGraphSearchPage(page);
 
-        var payload = std.ArrayList(u8).empty;
-        try payload.writer(self.allocator).print(
-            "{{\"total\":{d},\"results\":[",
-            .{page.total},
-        );
-        for (page.hits, 0..) |hit, idx| {
-            if (idx > 0) try payload.append(self.allocator, ',');
-            try payload.appendSlice(self.allocator, "{");
-            try appendJsonStringField(&payload, self.allocator, "name", hit.node.name, true);
-            try appendJsonStringField(&payload, self.allocator, "qualified_name", hit.node.qualified_name, false);
-            try appendJsonStringField(&payload, self.allocator, "label", hit.node.label, false);
-            try appendJsonStringField(&payload, self.allocator, "file_path", hit.node.file_path, false);
-            try appendJsonIntField(&payload, self.allocator, "in_degree", hit.in_degree, false);
-            try appendJsonIntField(&payload, self.allocator, "out_degree", hit.out_degree, false);
-            if (include_connected) {
-                try appendConnectedSummary(&payload, self, project, hit.node.id, relationship);
+            try payload.writer(self.allocator).print(
+                "{{\"total\":{d},\"results\":[",
+                .{page.total},
+            );
+            for (page.hits, 0..) |hit, idx| {
+                if (idx > 0) try payload.append(self.allocator, ',');
+                try payload.appendSlice(self.allocator, "{");
+                try appendJsonStringField(&payload, self.allocator, "name", hit.node.name, true);
+                try appendJsonStringField(&payload, self.allocator, "qualified_name", hit.node.qualified_name, false);
+                try appendJsonStringField(&payload, self.allocator, "label", hit.node.label, false);
+                try appendJsonStringField(&payload, self.allocator, "file_path", hit.node.file_path, false);
+                try appendJsonIntField(&payload, self.allocator, "in_degree", hit.in_degree, false);
+                try appendJsonIntField(&payload, self.allocator, "out_degree", hit.out_degree, false);
+                if (include_connected) {
+                    try appendConnectedSummary(&payload, self, project, hit.node.id, relationship);
+                }
+                try payload.appendSlice(self.allocator, "}");
             }
-            try payload.appendSlice(self.allocator, "}");
+            try payload.writer(self.allocator).print(
+                "],\"has_more\":{s}",
+                .{if (page.total > page.hits.len + offset) "true" else "false"},
+            );
         }
-        try payload.writer(self.allocator).print(
-            "],\"has_more\":{s}}}",
-            .{if (page.total > page.hits.len + offset) "true" else "false"},
-        );
+
+        if (semantic_terms) |terms| {
+            const semantic_page = try semantic_index.search(self.allocator, self.db, project, terms, limit, offset);
+            defer semantic_index.freeSearchPage(self.allocator, semantic_page);
+            if (semantic_page.hits.len > 0) {
+                try payload.appendSlice(self.allocator, ",\"semantic_results\":[");
+                for (semantic_page.hits, 0..) |hit, idx| {
+                    if (idx > 0) try payload.append(self.allocator, ',');
+                    try payload.appendSlice(self.allocator, "{");
+                    try appendJsonStringField(&payload, self.allocator, "name", hit.node.name, true);
+                    try appendJsonStringField(&payload, self.allocator, "qualified_name", hit.node.qualified_name, false);
+                    try appendJsonStringField(&payload, self.allocator, "label", hit.node.label, false);
+                    try appendJsonStringField(&payload, self.allocator, "file_path", hit.node.file_path, false);
+                    try payload.appendSlice(self.allocator, ",\"score\":");
+                    try payload.writer(self.allocator).print("{f}", .{std.json.fmt(hit.score, .{})});
+                    try payload.appendSlice(self.allocator, "}");
+                }
+                try payload.append(self.allocator, ']');
+            }
+        }
+
+        try payload.appendSlice(self.allocator, "}");
         const owned_payload = try payload.toOwnedSlice(self.allocator);
         defer self.allocator.free(owned_payload);
         return self.successResponse(request_id, owned_payload);
@@ -528,9 +559,7 @@ pub const McpServer = struct {
         try payload.appendSlice(self.allocator, "{\"columns\":[");
         for (result.columns, 0..) |col, idx| {
             if (idx > 0) try payload.append(self.allocator, ',');
-            try payload.appendSlice(self.allocator, "\"");
-            try payload.appendSlice(self.allocator, col);
-            try payload.appendSlice(self.allocator, "\"");
+            try payload.writer(self.allocator).print("{f}", .{std.json.fmt(col, .{})});
         }
         try payload.appendSlice(self.allocator, "],\"rows\":[");
         for (result.rows, 0..) |row, row_idx| {
@@ -538,9 +567,7 @@ pub const McpServer = struct {
             try payload.appendSlice(self.allocator, "[");
             for (row, 0..) |cell, cell_idx| {
                 if (cell_idx > 0) try payload.append(self.allocator, ',');
-                try payload.appendSlice(self.allocator, "\"");
-                try payload.appendSlice(self.allocator, cell);
-                try payload.appendSlice(self.allocator, "\"");
+                try payload.writer(self.allocator).print("{f}", .{std.json.fmt(cell, .{})});
             }
             try payload.appendSlice(self.allocator, "]");
         }
@@ -1266,6 +1293,17 @@ fn stringArg(value: std.json.Value, key: []const u8) ?[]const u8 {
     };
 }
 
+fn hasArg(value: std.json.Value, key: []const u8) bool {
+    if (value != .object) return false;
+    return value.object.get(key) != null;
+}
+
+fn argIsArray(value: std.json.Value, key: []const u8) bool {
+    if (value != .object) return false;
+    const child = value.object.get(key) orelse return false;
+    return child == .array;
+}
+
 fn intArg(value: std.json.Value, key: []const u8) ?u32 {
     if (value != .object) return null;
     const child = value.object.get(key) orelse return null;
@@ -1474,7 +1512,7 @@ test "tools/list advertises manage_adr" {
     try std.testing.expect(std.mem.indexOf(u8, response, "\"manage_adr\"") != null);
 }
 
-test "tools/list advertises ingest_traces, repo_path, moderate mode, detect_changes since, and search_graph query" {
+test "tools/list advertises ingest_traces, repo_path, moderate mode, detect_changes since, and search_graph semantic query surface" {
     var s = try store.Store.openMemory(std.testing.allocator);
     defer s.deinit();
     var srv = McpServer.init(std.testing.allocator, &s);
@@ -1489,6 +1527,7 @@ test "tools/list advertises ingest_traces, repo_path, moderate mode, detect_chan
     try std.testing.expect(std.mem.indexOf(u8, response, "\"enum\":[\"full\",\"moderate\",\"fast\"]") != null);
     try std.testing.expect(std.mem.indexOf(u8, response, "\"since\":{\"type\":\"string\",\"description\":\"Git ref or date to compare from (e.g. HEAD~5, v0.5.0, 2026-01-01)\"}") != null);
     try std.testing.expect(std.mem.indexOf(u8, response, "\"query\":{\"type\":\"string\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, response, "\"semantic_query\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}") != null);
     try std.testing.expect(std.mem.indexOf(u8, response, "\"project_path\"") == null);
 }
 
@@ -1826,6 +1865,49 @@ test "query_graph returns MCP error for unsupported query" {
     const error_obj = parsed.value.object.get("error").?.object;
     try std.testing.expectEqual(@as(i64, -32602), error_obj.get("code").?.integer);
     try std.testing.expectEqualStrings("unsupported query", error_obj.get("message").?.string);
+}
+
+test "query_graph escapes quoted string cells in JSON rows" {
+    var s = try store.Store.openMemory(std.testing.allocator);
+    defer s.deinit();
+    try s.upsertProject("demo", "/tmp/demo");
+
+    const source_id = try s.upsertNode(.{
+        .project = "demo",
+        .label = "Function",
+        .name = "enqueue_users",
+        .qualified_name = "demo.enqueue_users",
+        .file_path = "main.py",
+    });
+    const target_id = try s.upsertNode(.{
+        .project = "demo",
+        .label = "Function",
+        .name = "refresh_users",
+        .qualified_name = "demo.refresh_users",
+        .file_path = "main.py",
+    });
+    _ = try s.upsertEdge(.{
+        .project = "demo",
+        .source_id = source_id,
+        .target_id = target_id,
+        .edge_type = "SEMANTICALLY_RELATED",
+        .properties_json = "{\"score\":1.000,\"same_file\":true}",
+    });
+
+    var srv = McpServer.init(std.testing.allocator, &s);
+    defer srv.deinit();
+
+    const response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":27,"method":"tools/call","params":{"name":"query_graph","arguments":{"project":"demo","query":"MATCH (a)-[r:SEMANTICALLY_RELATED]->(b) RETURN a.name, b.name, r.properties ORDER BY a.name ASC, b.name ASC","max_rows":20}}}
+    )).?;
+    defer std.testing.allocator.free(response);
+
+    const parsed = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, response, .{});
+    defer parsed.deinit();
+
+    const rows = parsed.value.object.get("result").?.object.get("rows").?.array;
+    try std.testing.expectEqual(@as(usize, 1), rows.items.len);
+    try std.testing.expectEqualStrings("{\"score\":1.000,\"same_file\":true}", rows.items[0].array.items[2].string);
 }
 
 test "get_graph_schema returns schema summary for indexed project" {
@@ -2593,6 +2675,57 @@ test "search_graph query returns bm25-ranked results and falls back when terms a
     const fallback_hits = fallback_result.get("results").?.array;
     try std.testing.expectEqual(@as(usize, 1), fallback_hits.items.len);
     try std.testing.expectEqualStrings("beta", fallback_hits.items[0].object.get("name").?.string);
+}
+
+test "search_graph semantic_query returns semantic_results and rejects non-array input" {
+    var s = try store.Store.openMemory(std.testing.allocator);
+    defer s.deinit();
+    try s.upsertProject("demo", "/tmp/demo");
+
+    const enqueue_id = try s.upsertNode(.{
+        .project = "demo",
+        .label = "Function",
+        .name = "enqueue_users",
+        .qualified_name = "demo.enqueue_users",
+        .file_path = "src/main.py",
+        .start_line = 1,
+        .end_line = 3,
+    });
+    _ = try s.upsertNode(.{
+        .project = "demo",
+        .label = "Function",
+        .name = "refresh_users",
+        .qualified_name = "demo.refresh_users",
+        .file_path = "src/main.py",
+        .start_line = 5,
+        .end_line = 7,
+    });
+
+    const dense_vector = [_]i8{1} ** semantic_index.vector_dim;
+    try s.insertSemanticVector("demo", enqueue_id, &dense_vector);
+
+    var srv = McpServer.init(std.testing.allocator, &s);
+    defer srv.deinit();
+
+    const semantic_response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":25,"method":"tools/call","params":{"name":"search_graph","arguments":{"project":"demo","semantic_query":["publish"],"limit":5}}}
+    )).?;
+    defer std.testing.allocator.free(semantic_response);
+
+    const semantic_parsed = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, semantic_response, .{});
+    defer semantic_parsed.deinit();
+    const semantic_result = semantic_parsed.value.object.get("result").?.object;
+    const semantic_hits = semantic_result.get("semantic_results").?.array;
+    try std.testing.expectEqual(@as(usize, 1), semantic_hits.items.len);
+    try std.testing.expectEqualStrings("enqueue_users", semantic_hits.items[0].object.get("name").?.string);
+    try std.testing.expect(semantic_hits.items[0].object.get("score") != null);
+
+    const invalid_response = (try srv.handleRequest(
+        \\{"jsonrpc":"2.0","id":26,"method":"tools/call","params":{"name":"search_graph","arguments":{"project":"demo","semantic_query":"publish"}}}
+    )).?;
+    defer std.testing.allocator.free(invalid_response);
+    try std.testing.expect(std.mem.indexOf(u8, invalid_response, "\"code\":-32602") != null);
+    try std.testing.expect(std.mem.indexOf(u8, invalid_response, "semantic_query must be an array of keyword strings") != null);
 }
 
 test "get_architecture and search_code expose phase 5 summaries" {

@@ -28,14 +28,14 @@ Verification posture today:
 - Treat [port-comparison.md](/Users/skooch/projects/codebase-memory-zig/docs/port-comparison.md) as the authoritative statement of what the repo can truthfully claim today.
 
 Newest latest-upstream deltas reopened by `v0.6.0`:
-- `search_graph` in the original now has vector-backed `semantic_query`; Zig now exposes the released BM25 `query` path but still lacks the semantic-search mode and payload.
-- The original now emits `SEMANTICALLY_RELATED` and channel `LISTENS_ON` edges; Zig still lacks those exact graph contracts, even where bounded route/topic behavior overlaps.
+- `search_graph` in the original now has vector-backed `semantic_query`; Zig now exposes both the released BM25 `query` path and the released semantic-search mode with separate `semantic_results`.
+- The original now emits `SEMANTICALLY_RELATED` and channel `LISTENS_ON` edges; Zig now emits `SEMANTICALLY_RELATED`, so the remaining latest-upstream graph-model delta is the channel vocabulary and `LISTENS_ON` contract.
 - Protocol/tool-surface exactness also now requires the visible `ingest_traces`
   stub and upstream-style `repo_path` naming, but those are surface-plumbing
   tasks rather than substantive graph-model gaps.
 
 Known coverage gaps in the current automated suite:
-- Current local audit on `2026-04-21`: `zig build`, `zig build test`, `bash scripts/run_interop_alignment.sh --zig-only`, `bash scripts/run_cli_parity.sh --zig-only`, and the current ops suite entrypoints all pass. The current `bash scripts/run_interop_alignment.sh` baseline now reports `39` fixtures, `301` comparisons, `164` strict matches, `45` diagnostic-only comparisons, and `0` mismatches, with `protocol-contract`, the query-analysis exact fixtures, and the new graph-exactness fixture set scoring as strict shared matches while `tool-surface-parity` remains diagnostic-only because Zig still lacks the latest-upstream vector-backed `search_graph.semantic_query` surface.
+- Current local audit on `2026-04-21`: `zig build` and `zig build test` pass for the semantic slice, and the interop harness now includes the dedicated `semantic-query-contract` fixture alongside `protocol-contract`, `tool-surface-parity`, the query-analysis exact fixtures, and the graph-exactness fixtures. The tool-surface and semantic-query contract rows stay diagnostic-only in the full compare because the local C comparator predates `v0.6.0`, not because Zig still lacks the semantic surface.
 - `search_graph.query` is no longer part of the latest-upstream gap list: Zig now exposes the released BM25 query surface with direct unit coverage for ranked results, schema advertisement, and fallback to the structured path when tokenization produces no usable terms.
 - `detect_changes.since` is no longer part of the latest-upstream gap list: Zig now exposes the released selector surface with direct unit coverage for commit-ish refs, ISO-date selectors, and invalid-selector errors, even though the stale local C comparator still only exercises `base_branch`.
 - Merge-blocking CI now includes the full Zig-vs-C compare for interop-touching pull requests and pushes to `main`, while non-interop changes still rely on zig-only goldens plus unit and integration tests.
@@ -88,7 +88,8 @@ Completed now:
   - `snippet-trace-contract`: strict shared match
   - `search-code-ranking-parity`: strict shared match
   - `history-similarity-parity`: strict shared match
-  - `tool-surface-parity`: diagnostic-only by design because latest-upstream `search_graph.semantic_query` is still missing in Zig
+  - `tool-surface-parity`: diagnostic-only by design because the local full-compare C baseline predates the released `search_graph.semantic_query` surface
+  - `semantic-query-contract`: diagnostic-only by design for the same stale-local-baseline reason, while still locking the Zig-side semantic contract exactly in zig-only verification
   - no remaining snippet, trace, search, JavaScript-ordering, Java query-shape, or error-path comparison mismatches
   - the former Go method-ownership delta is now diagnostic-only instead of a hard mismatch
 

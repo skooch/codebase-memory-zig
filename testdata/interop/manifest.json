@@ -3270,7 +3270,7 @@
       },
       "contract_checks": {
         "compare_mode": "diagnostic",
-        "compare_note": "latest-upstream tool schema still differs because Zig still lacks the vector-backed search_graph semantic_query surface",
+        "compare_note": "Zig now matches the released semantic_query schema, but the local full-compare C baseline predates that v0.6.0 surface",
         "tools_list": {
           "tool_schemas": {
             "index_repository": {
@@ -3324,6 +3324,61 @@
             "arguments": {
               "repo_path": "$PROJECT_PATH",
               "mode": "moderate"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "semantic-query-contract",
+      "path": "testdata/interop/semantic-expansion/celery_send_task",
+      "project": "celery_send_task",
+      "language": "python",
+      "scope_tools": [
+        "index_repository",
+        "query_graph",
+        "list_projects"
+      ],
+      "assertions": {
+        "index_repository": {
+          "expect": {
+            "nodes_min": 4,
+            "edges_min": 4
+          }
+        },
+        "query_graph": [
+          {
+            "args": {
+              "query": "MATCH (a)-[r:SEMANTICALLY_RELATED]->(b) RETURN a.name, b.name, r.properties ORDER BY a.name ASC, b.name ASC",
+              "project": "celery_send_task",
+              "max_rows": 20
+            },
+            "expect": {
+              "columns": [
+                "a.name",
+                "b.name",
+                "r.properties"
+              ],
+              "required_rows_min": 1,
+              "exact_compare": true,
+              "compare_mode": "diagnostic"
+            }
+          }
+        ]
+      },
+      "contract_checks": {
+        "compare_mode": "diagnostic",
+        "compare_note": "local full-compare C baseline predates the v0.6.0 semantic_query surface even though Zig now implements it",
+        "tool_calls": [
+          {
+            "label": "semantic_query_contract",
+            "name": "search_graph",
+            "arguments": {
+              "project": "celery_send_task",
+              "semantic_query": [
+                "publish"
+              ],
+              "limit": 5
             }
           }
         ]

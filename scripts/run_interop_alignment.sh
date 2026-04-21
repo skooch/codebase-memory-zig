@@ -67,6 +67,7 @@ fi
 python3 - "$MANIFEST_PATH" "$ROOT_DIR" "$C_BIN" "$ZIG_BIN" "$REPORT_DIR" "$MODE" "$GOLDEN_DIR" <<'PY'
 import json
 import os
+import select
 import shutil
 import subprocess
 import sys
@@ -896,6 +897,9 @@ def send_rpc_request(process: subprocess.Popen[str], request: dict[str, Any]) ->
 
     buffer = ""
     while True:
+        ready, _, _ = select.select([process.stdout], [], [], 15.0)
+        if not ready:
+            raise TimeoutError(f"timed out waiting for response to request id {request.get('id')}: {json.dumps(request)}")
         line = process.stdout.readline()
         if line == "":
             raise ValueError(f"missing response for request id {request.get('id')}")
@@ -1020,21 +1024,25 @@ def call_mcp_sequence(
                 }
             )
     finally:
-        if process.stdin is not None and not process.stdin.closed:
-            process.stdin.close()
-        if process.stdout is not None:
-            remainder = process.stdout.read()
-            if remainder:
-                tool_results["stdout"].extend([line for line in remainder.splitlines() if line.strip()])
-        if process.stderr is not None:
-            stderr = process.stderr.read()
-            if stderr:
-                tool_results["stderr"] = stderr.splitlines()
         try:
-            process.wait(timeout=60)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            raise
+            if process.stdin is not None and not process.stdin.closed:
+                process.stdin.close()
+            try:
+                process.terminate()
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+            if process.stdout is not None:
+                remainder = process.stdout.read()
+                if remainder:
+                    tool_results["stdout"].extend([line for line in remainder.splitlines() if line.strip()])
+            if process.stderr is not None:
+                stderr = process.stderr.read()
+                if stderr:
+                    tool_results["stderr"] = stderr.splitlines()
+            if process.returncode is None:
+                process.kill()
         finally:
             temp_home.cleanup()
 

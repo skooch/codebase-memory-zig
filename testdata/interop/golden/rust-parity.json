@@ -10,6 +10,7 @@
         "CONTAINS_FOLDER",
         "DEFINES",
         "DEFINES_METHOD",
+        "SEMANTICALLY_RELATED",
         "USAGE"
       ],
       "node_labels": [
@@ -25,14 +26,14 @@
         "Variable"
       ],
       "project": "rust-parity",
-      "total_edges": 24,
+      "total_edges": 62,
       "total_nodes": 19
     }
   ],
   "get_code_snippet": [],
   "get_graph_schema": [],
   "index_repository": {
-    "edges_actual": 24,
+    "edges_actual": 62,
     "edges_min": 5,
     "nodes_actual": 19,
     "nodes_min": 9

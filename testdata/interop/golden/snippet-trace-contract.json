@@ -72,10 +72,11 @@
         "CONTAINS_FILE",
         "DEFINES",
         "IMPORTS",
+        "SEMANTICALLY_RELATED",
         "TESTS",
         "TESTS_FILE"
       ],
-      "edges": 17,
+      "edges": 37,
       "languages": [
         "python"
       ],
@@ -91,7 +92,7 @@
     }
   ],
   "index_repository": {
-    "edges_actual": 17,
+    "edges_actual": 37,
     "edges_min": 3,
     "nodes_actual": 12,
     "nodes_min": 6

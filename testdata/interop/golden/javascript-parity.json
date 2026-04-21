@@ -9,6 +9,7 @@
         "CONTAINS_FILE",
         "DEFINES",
         "DEFINES_METHOD",
+        "SEMANTICALLY_RELATED",
         "USAGE"
       ],
       "node_labels": [
@@ -21,14 +22,14 @@
         "Variable"
       ],
       "project": "javascript-parity",
-      "total_edges": 16,
+      "total_edges": 32,
       "total_nodes": 10
     }
   ],
   "get_code_snippet": [],
   "get_graph_schema": [],
   "index_repository": {
-    "edges_actual": 16,
+    "edges_actual": 32,
     "edges_min": 4,
     "nodes_actual": 10,
     "nodes_min": 7

@@ -53,6 +53,7 @@
             "qn_pattern",
             "query",
             "relationship",
+            "semantic_query",
             "sort_by",
             "sort_direction"
           ]
@@ -67,7 +68,7 @@
   "get_code_snippet": [],
   "get_graph_schema": [],
   "index_repository": {
-    "edges_actual": 6,
+    "edges_actual": 8,
     "edges_min": 2,
     "nodes_actual": 5,
     "nodes_min": 4
